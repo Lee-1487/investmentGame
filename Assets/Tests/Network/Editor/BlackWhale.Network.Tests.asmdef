@@ -1,0 +1,8 @@
+{
+  "name": "BlackWhale.Network.Tests",
+  "rootNamespace": "BlackWhale.Tests",
+  "references": ["BlackWhale.Shared", "BlackWhale.Flow", "BlackWhale.Network"],
+  "includePlatforms": ["Editor"],
+  "optionalUnityReferences": ["TestAssemblies"],
+  "autoReferenced": false
+}
