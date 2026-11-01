@@ -1,0 +1,20 @@
+{
+    "name": "BlackWhale.UI.Dev",
+    "rootNamespace": "BlackWhale.UI.Dev",
+    "references": [
+        "BlackWhale.Shared",
+        "BlackWhale.Flow",
+        "BlackWhale.UI",
+        "UnityEngine.UI",
+        "Unity.InputSystem"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
