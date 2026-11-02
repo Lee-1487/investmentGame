@@ -90,6 +90,22 @@ namespace InvestmentGame.Tests.Rules.Information
         }
 
         [Test]
+        public void RequestIdsAreScopedToTurn_AndConflictingPayloadDoesNotCharge()
+        {
+            var service = CreateService(new PlayerInformationSeed("P1", 3, new[] { 1 }));
+            Assert.That(service.BuyInformation("P1", 1, "INFO", new InformationRequest("same", 1, "AI", 1)).Success, Is.True);
+            var conflict = service.BuyInformation("P1", 1, "INFO", new InformationRequest("same", 1, "BIO", 1));
+            Assert.That(conflict.ErrorCode, Is.EqualTo("REQUEST_ID_CONFLICT"));
+            Assert.That(service.GetCoins("P1"), Is.EqualTo(2));
+            service.GrantTurnCoins(2, new[] { "P1" });
+            Assert.That(service.BuyInformation("P1", 2, "INFO", new InformationRequest("same", 2, "AI", 1)).Success, Is.True);
+            Assert.That(service.GetCoins("P1"), Is.EqualTo(4));
+            Assert.That(service.BuyInformation("P1", 2, "RESULT", new InformationRequest("same", 1, "AI", 1)).Success, Is.True,
+                "이전 턴에 처리한 요청의 재전송은 원응답만 반환한다");
+            Assert.That(service.GetCoins("P1"), Is.EqualTo(4));
+        }
+
+        [Test]
         /// <summary>시장 조회 실패 시 코인과 구매 원장이 모두 유지되는 원자성을 확인한다.</summary>
         public void FailedMarketLookup_IsAtomic()
         {

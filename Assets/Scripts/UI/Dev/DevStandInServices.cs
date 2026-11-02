@@ -1,9 +1,9 @@
-// [개발 전용] D 화면 확인용 B·C 대역(stand-in). 실제 B·C 구현이 아니다.
+// [개발 전용] D 화면 확인용 B 대역과 실제 C의 오류 주입용 래퍼.
 // - 시장: fixture(B_market_server.json)의 고정 주가·무료 공개 위치를 그대로 쓴다.
 // - 주문 검사: D의 화면 사전검사(OrderInputValidator)를 재사용한다. 정식 검증은 B 담당.
 // - 정산: 계산하지 않고 fixture 기대 전광판(D_scoreboard_expected.json)을 그대로 돌려준다.
-// - 코인: 1~5턴 3개, 6~10턴 5개 지급(멱등). 정식 원장은 C 담당.
-// 실제 B·C가 IMarketService / IInformationService를 구현하면 이 파일 대신 그것을 넣는다.
+// - 코인·구매·개인뷰: 실제 C 구현에 위임한다.
+// B는 개발용 대역이며 C는 실제 SharedInformationService에 위임한다.
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -126,28 +126,16 @@ namespace BlackWhale.UI.Dev
         }
     }
 
+    // Development-only error injection around the real C service; no duplicate coin/purchase rules.
     public sealed class DevInformationService : IInformationService
     {
-        private readonly IMarketDataSource _source;
-        private readonly Dictionary<string, int> _coins = new Dictionary<string, int>();
-        private readonly Dictionary<string, HashSet<string>> _purchases = new Dictionary<string, HashSet<string>>();
-        private readonly HashSet<string> _grants = new HashSet<string>();
-
-        /// <summary>개발 도구: 다음 구매 1회를 이 오류로 거절(UI 오류 표시 확인용).</summary>
+        private readonly IInformationService inner;
         public string ForceNextBuyError { get; set; }
-
-        public DevInformationService(IMarketDataSource source) => _source = source;
+        public DevInformationService(IMarketDataSource source)
+            => inner = new BlackWhale.Rules.Information.SharedInformationService(source);
 
         public void GrantTurnCoins(RequestContext context, string[] playerIds)
-        {
-            if (!_grants.Add(context.RoomId + ":" + context.Turn)) return; // 같은 턴 중복 지급 방지
-            foreach (var id in playerIds)
-            {
-                if (!_coins.ContainsKey(id)) _coins[id] = 0;
-                _purchases[id] = new HashSet<string>(); // 이전 턴 구매권으로 새 턴 정보를 열람하지 못함
-                _coins[id] += context.Turn < 6 ? 3 : 5;
-            }
-        }
+            => inner.GrantTurnCoins(context, playerIds);
 
         public RuleResult BuyInformation(RequestContext context, string companyId, int bundleIndex)
         {
@@ -157,53 +145,10 @@ namespace BlackWhale.UI.Dev
                 ForceNextBuyError = null;
                 return new RuleResult(forced);
             }
-            if (!_source.GetCompanyIds().Contains(companyId)) return new RuleResult(ErrorCodes.InvalidCompany);
-            if (bundleIndex < 0 || bundleIndex >= UiRules.BundleCount) return new RuleResult(ErrorCodes.InvalidBundle);
-
-            var bundle = _source.GetBundle(context.Turn, companyId, bundleIndex);
-            var key = companyId + ":" + bundleIndex;
-            if (bundle.IsPublic || _purchases[context.PlayerId].Contains(key)) return new RuleResult(ErrorCodes.AlreadyVisible);
-            if (_coins[context.PlayerId] < 1) return new RuleResult(ErrorCodes.NotEnoughCoins);
-
-            _coins[context.PlayerId]--;
-            _purchases[context.PlayerId].Add(key);
-            return new RuleResult(payload: new ResultPayload
-            {
-                companyId = companyId,
-                bundleIndex = bundleIndex,
-                startDay = bundle.StartDay,
-                dailyChangesBps = (int[])bundle.DailyChangesBps.Clone(),
-                remainingCoins = _coins[context.PlayerId]
-            });
+            return inner.BuyInformation(context, companyId, bundleIndex);
         }
 
         public PlayerView BuildPlayerView(RequestContext context, OwnInvestmentState ownState)
-        {
-            var id = context.PlayerId;
-            return new PlayerView
-            {
-                recipientPlayerId = id,
-                turn = context.Turn,
-                phase = context.Phase,
-                assets = ownState.TotalAssets,
-                coins = _coins.TryGetValue(id, out var c) ? c : 0,
-                selectedCompanies = ownState.SelectedCompanies,
-                ownInvestments = ownState.Investments,
-                companies = _source.GetCompanyIds().Select(companyId => new VisibleCompany
-                {
-                    companyId = companyId,
-                    visibleBundles = Enumerable.Range(0, UiRules.BundleCount)
-                        .Select(i => _source.GetBundle(context.Turn, companyId, i))
-                        .Where(b => b.IsPublic || (_purchases.TryGetValue(id, out var p) && p.Contains(companyId + ":" + b.BundleIndex)))
-                        .Select(b => new VisibleBundle
-                        {
-                            bundleIndex = b.BundleIndex,
-                            startDay = b.StartDay,
-                            source = b.IsPublic ? BundleSources.Public : BundleSources.Purchased,
-                            dailyChangesBps = (int[])b.DailyChangesBps.Clone()
-                        }).ToArray()
-                }).ToArray()
-            };
-        }
+            => inner.BuildPlayerView(context, ownState);
     }
 }

@@ -1,6 +1,6 @@
 // [개발 전용] 빈 씬의 GameObject에 붙이고 Play.
 // A의 실제 GameRoom(진행·시간·자동 행동·재전송 캐시)을 같은 프로세스에서 돌리고,
-// B·C 자리에 개발용 대역을, 다른 참가자 3명 자리에 봇을 넣어 D 화면을 한 턴 끝까지 확인한다.
+// B 자리에 개발용 대역, C 자리에 실제 정보 서비스를, 다른 참가자 3명 자리에 봇을 넣어 D 화면을 한 턴 끝까지 확인한다.
 // 실제 4인 접속은 A의 NetworkSession.Host / Connect + 실제 B·C 서비스로 한다.
 using System.Collections.Generic;
 using BlackWhale.Flow;
@@ -108,7 +108,7 @@ namespace BlackWhale.UI.Dev
             _view = TabletView.Create(_canvasRoot, _controller);
             BuildDevPanel();
             _host.Pump(); // 입장 메시지 전달
-            _view.ShowBanner("개발 모드 · A GameRoom + B/C 대역 · " + _source);
+            _view.ShowBanner("개발 모드 · A GameRoom + 실제 C + B 대역 · " + _source);
         }
 
         private void Update()
