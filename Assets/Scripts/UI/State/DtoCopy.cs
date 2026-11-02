@@ -54,7 +54,7 @@ namespace BlackWhale.UI.State
             => s == null ? null : new CompanySeat { companyId = s.companyId, remainingSeats = s.remainingSeats };
 
         public static Player Copy(Player s)
-            => s == null ? null : new Player { playerId = s.playerId, displayName = s.displayName, connected = s.connected, ready = s.ready };
+            => s == null ? null : new Player { playerId = s.playerId, displayName = s.displayName, connected = s.connected, ready = s.ready, isBot = s.isBot };
 
         public static PublicState Copy(PublicState s)
             => s == null ? null : new PublicState

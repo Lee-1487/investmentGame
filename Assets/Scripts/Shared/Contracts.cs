@@ -55,6 +55,7 @@ namespace BlackWhale.Shared
     {
         public string playerId, displayName;
         public bool connected, ready;
+        public bool isBot;
     }
     [Serializable] public sealed class CompanySeat { public string companyId; public int remainingSeats; }
     [Serializable] public sealed class PublicState

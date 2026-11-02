@@ -14,10 +14,10 @@ namespace BlackWhale.UI.Dev
         private string _stateKey = "";
         private float _since;
 
-        public LocalGameClient Client { get; }
+        public IGameClient Client { get; }
         public GameClientController Controller => _c;
 
-        public DevBot(LocalGameClient client, float thinkSeconds)
+        public DevBot(IGameClient client, float thinkSeconds)
         {
             Client = client;
             _c = new GameClientController(client);
