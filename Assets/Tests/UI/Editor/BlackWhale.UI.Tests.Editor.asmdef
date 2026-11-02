@@ -1,0 +1,27 @@
+{
+    "name": "BlackWhale.UI.Tests.Editor",
+    "rootNamespace": "BlackWhale.UI.Tests",
+    "references": [
+        "BlackWhale.Shared",
+        "BlackWhale.Flow",
+        "BlackWhale.UI",
+        "BlackWhale.UI.Dev",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
