@@ -12,11 +12,12 @@ namespace BlackWhale.Tests
 {
     public static class RealInformationValidation
     {
-        // Real A transport + real C. Only B's market/settlement remain fixture doubles.
+        // Real A transport + B market/settlement + C information. Fixed market input only.
         public static async Task<string[]> Run(RoomValidation suite, IWireCodec codec)
         {
             var fixture = suite.NewRoom(start: false);
-            var room = new GameRoom("REAL-C", fixture.Market, new SharedInformationService(fixture.Market),
+            var market = suite.NewRealMarket();
+            var room = new GameRoom("REAL-BC", market, new SharedInformationService(market),
                 fixture.Clock, TimerMode.ManualForFixture, true);
             var clients = new List<TcpGameClient>();
             var logs = new List<List<ServerMessage>>();
@@ -28,7 +29,7 @@ namespace BlackWhale.Tests
                 {
                     server.Pump();
                     foreach (var client in clients) client.Pump();
-                    if (DateTime.UtcNow > deadline) throw new TimeoutException("Real C TCP integration timed out.");
+                    if (DateTime.UtcNow > deadline) throw new TimeoutException("Real B/C TCP integration timed out.");
                     await Task.Delay(3);
                 }
             };
@@ -73,7 +74,27 @@ namespace BlackWhale.Tests
                 await until(() => restored.Any(m => m.type == "PLAYER_VIEW"));
                 var view = restored.Last(m => m.type == "PLAYER_VIEW").playerView;
                 RoomValidation.Check(view.recipientPlayerId == "P2" && view.coins == 2 && RoomValidation.Visible(view), "real C reconnect restores purchases");
-                return new[] { "TCP/real-C-grants", "TCP/real-C-private-purchase-and-replay", "TCP/real-C-reconnect" };
+                clients[1] = returning; // use the restored P2 connection for the rest of the turn
+                clients.RemoveAt(clients.Count - 1);
+                var pickPlayers = new[] { 0, 1, 2, 3, 3, 2, 1, 0 };
+                var picks = new[] { "AI", "SPACE", "BIO", "AI", "BIO", "AUTO", "BANK", "FOOD" };
+                room.AdvanceManualPhase();
+                for (int i = 0; i < picks.Length; i++)
+                {
+                    int index = i;
+                    clients[pickPlayers[i]].SendCommand(RoomValidation.Command("SELECT_COMPANY", "pick-" + i, 1,
+                        new CommandPayload { companyId = picks[i] }));
+                    await until(() => room.Snapshot().selectionIndex == index + 1);
+                }
+                for (int i = 0; i < 4; i++) clients[i].SendCommand(RoomValidation.Command("SUBMIT_INVESTMENT", "order", 1,
+                    new CommandPayload { investments = suite.FixtureInvestments("P" + (i + 1)) }));
+                await until(() => room.Snapshot().phase == Protocol.Reveal);
+                room.AdvanceManualPhase();
+                await until(() => logs[0].Any(m => m.type == "SCOREBOARD"));
+                var board = logs[0].Last(m => m.type == "SCOREBOARD").scoreboard;
+                foreach (var row in suite.ExpectedScoreboard().rows)
+                    RoomValidation.Check(board.rows.Single(r => r.playerId == row.playerId).totalAssets == row.totalAssets, "real B settlement " + row.playerId);
+                return new[] { "TCP/real-BC-grants", "TCP/real-BC-private-purchase-and-replay", "TCP/real-BC-reconnect", "TCP/real-BC-full-turn-settlement" };
             }
             finally { foreach (var client in clients) client.Dispose(); server.Dispose(); }
         }

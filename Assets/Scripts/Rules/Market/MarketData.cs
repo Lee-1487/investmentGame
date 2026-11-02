@@ -28,11 +28,12 @@ namespace BlackWhale.Rules
 
         public MarketBook(MarketData data, InvestmentRules rules)
         {
-            this.rules = rules;
-            if (data == null || data.companies == null) throw new ArgumentException("Market data is empty.");
+            this.rules = rules = (rules ?? throw new ArgumentNullException(nameof(rules))).Copy();
+            if (data == null || data.turn < 1 || data.companies == null) throw new ArgumentException("Market data is empty or has an invalid turn.");
             Turn = data.turn;
             foreach (CompanyMarketData c in data.companies)
             {
+                if (c == null) throw new ArgumentException("Market company is null.");
                 if (Array.IndexOf(InvestmentRules.CompanyIds, c.companyId) < 0 || companies.ContainsKey(c.companyId))
                     throw new ArgumentException("Unknown or duplicate company: " + c.companyId);
                 if (c.dailyChangesBps == null || c.dailyChangesBps.Length != rules.daysPerTurn + 1 || c.dailyChangesBps[0] != 0)
@@ -41,7 +42,12 @@ namespace BlackWhale.Rules
                     || c.publicBundleIndices[0] == c.publicBundleIndices[1]
                     || Array.Exists(c.publicBundleIndices, b => b < 0 || b >= InvestmentRules.BundlesPerCompany))
                     throw new ArgumentException(c.companyId + ": need two distinct free bundles in 0..5.");
-                companies.Add(c.companyId, c);
+                companies.Add(c.companyId, new CompanyMarketData
+                {
+                    companyId = c.companyId,
+                    dailyChangesBps = (int[])c.dailyChangesBps.Clone(),
+                    publicBundleIndices = (int[])c.publicBundleIndices.Clone()
+                });
             }
             if (companies.Count != InvestmentRules.CompanyIds.Length) throw new ArgumentException("Exactly 6 companies required.");
         }

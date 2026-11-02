@@ -5,6 +5,8 @@ using System.Linq;
 using BlackWhale.Flow;
 using BlackWhale.Network;
 using BlackWhale.Shared;
+using BlackWhale.Rules;
+using BlackWhale.Rules.Information;
 using UnityEditor;
 using UnityEngine;
 
@@ -50,11 +52,10 @@ namespace BlackWhale.Tests
                 {
                     string path = Path.Combine(Path.GetDirectoryName(Application.dataPath), "개발 정리", "임시 데이터 및 검증용");
                     var json = new UnityTestJson();
-                    var market = json.Decode<MarketFixture>(File.ReadAllText(Path.Combine(path, "B_market_server.json")));
-                    var scoreboard = json.Decode<Scoreboard>(File.ReadAllText(Path.Combine(path, "D_scoreboard_expected.json")));
+                    var market = json.Decode<MarketData>(File.ReadAllText(Path.Combine(path, "B_market_server.json")));
                     var clock = new MonotonicClock();
-                    var marketService = new FixtureMarketService(market, scoreboard);
-                    var room = new GameRoom("A-LAB", marketService, new FixtureInformationService(marketService),
+                    var marketService = new MarketService(market);
+                    var room = new GameRoom("A-LAB", marketService, new SharedInformationService(marketService),
                         clock, realtime ? TimerMode.Realtime : TimerMode.ManualForFixture, true);
                     server = new TcpGameServer(room, new UnityWireCodec(), clock, number, System.Net.IPAddress.Any);
                 }
@@ -62,7 +63,7 @@ namespace BlackWhale.Tests
                 var screen = new Screen { Client = client };
                 client.MessageReceived += message =>
                 {
-                    if (message.state != null) screen.State = message.state;
+                    if (message.type == "PUBLIC_STATE" && message.state != null) screen.State = message.state;
                     if (message.type == "PLAYER_VIEW" && message.playerView != null)
                     {
                         screen.View = message.playerView;
@@ -85,7 +86,7 @@ namespace BlackWhale.Tests
         }
         private void OnGUI()
         {
-            EditorGUILayout.HelpBox("A diagnostics / B+C FIXTURE MOCKS / one turn. Settlement is scripted. Each panel has its own TCP connection and filtered view.", MessageType.Info);
+            EditorGUILayout.HelpBox("A diagnostics / real B+C / fixed market / one turn. Settlement uses submitted orders. Each panel has its own TCP connection and filtered view.", MessageType.Info);
             address = EditorGUILayout.TextField("Host address", address);
             port = EditorGUILayout.TextField("Port", port);
             displayName = EditorGUILayout.TextField("Display name", displayName);
@@ -95,7 +96,7 @@ namespace BlackWhale.Tests
                 using (new EditorGUILayout.HorizontalScope())
                 {
                     using (new EditorGUI.DisabledScope(server != null || screens.Count != 0))
-                        if (GUILayout.Button("Host (fixture mocks)")) Connect(true);
+                        if (GUILayout.Button("Host (real B+C)")) Connect(true);
                     if (GUILayout.Button("Join / add local client")) Connect(false);
                     if (GUILayout.Button("Close connections")) CloseConnections();
                 }

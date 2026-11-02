@@ -1,11 +1,11 @@
-// [개발 전용] 대역 서비스가 쓸 fixture 읽기.
+// [개발 전용] 실제 B에 전달할 고정 시장 입력 읽기.
 // 에디터에서만 프로젝트 루트의 '개발 정리/임시 데이터 및 검증용'을 읽는다(Assets 밖이라 빌드에 포함되지 않음).
 // 방장 원본 시장·정답 파일을 클라이언트 Resources/StreamingAssets에 넣지 않는다.
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using BlackWhale.Shared;
+using BlackWhale.Rules;
 using BlackWhale.UI.Presentation;
 using UnityEngine;
 
@@ -19,15 +19,15 @@ namespace BlackWhale.UI.Dev
         public static string FixtureDir
             => Path.Combine(Directory.GetParent(Application.dataPath).FullName, "개발 정리", "임시 데이터 및 검증용");
 
-        /// <summary>시장 원본과 기대 전광판을 읽는다. 실패하면 임의 시장(전광판 없음)으로 대체.</summary>
-        public static void Load(out DevMarketFixture market, out Scoreboard scoreboard, out string source)
+        /// <summary>서버용 시장 입력만 읽는다. 정산 결과는 실제 B가 계산한다.</summary>
+        public static void Load(out MarketData market, out string source)
         {
 #if UNITY_EDITOR
             try
             {
-                market = JsonUtility.FromJson<DevMarketFixture>(File.ReadAllText(Path.Combine(FixtureDir, "B_market_server.json")));
-                scoreboard = JsonUtility.FromJson<Scoreboard>(File.ReadAllText(Path.Combine(FixtureDir, "D_scoreboard_expected.json")));
-                if (market?.companies != null && market.companies.Length == UiRules.CompanyIds.Length)
+                market = JsonUtility.FromJson<MarketData>(File.ReadAllText(Path.Combine(FixtureDir, "B_market_server.json")));
+                new MarketBook(market, new InvestmentRules());
+                if (market.turn == 1)
                 {
                     source = "fixture(basic-turn-v2)";
                     return;
@@ -39,23 +39,22 @@ namespace BlackWhale.UI.Dev
             }
 #endif
             market = Synthetic();
-            scoreboard = null;
-            source = "임의 시장(전광판 없음)";
+            source = "개발용 예제 시장";
         }
 
-        private static DevMarketFixture Synthetic()
+        private static MarketData Synthetic()
         {
-            var companies = new List<DevMarketCompany>();
+            var companies = new List<CompanyMarketData>();
             int seed = 0;
             foreach (var id in UiRules.CompanyIds)
             {
                 int cap = UiRules.AbsoluteChangeCapBps(id);
                 var values = Enumerable.Range(0, UiRules.MaxDay + 1)
                     .Select(d => d == 0 ? 0 : (int)(Math.Sin(d * 0.35 + seed) * cap * 0.6)).ToArray();
-                companies.Add(new DevMarketCompany { companyId = id, dailyChangesBps = values, publicBundleIndices = new[] { seed % 6, (seed + 3) % 6 } });
+                companies.Add(new CompanyMarketData { companyId = id, dailyChangesBps = values, publicBundleIndices = new[] { seed % 6, (seed + 3) % 6 } });
                 seed++;
             }
-            return new DevMarketFixture { companies = companies.ToArray() };
+            return new MarketData { turn = 1, companies = companies.ToArray() };
         }
     }
 }

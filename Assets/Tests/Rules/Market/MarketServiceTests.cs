@@ -185,8 +185,86 @@ namespace BlackWhale.Rules.Tests
         {
             MarketService s = PlayFixtureTurn();
             Scoreboard first = s.SettleTurn(Ctx(Protocol.Reveal));
-            Assert.AreSame(first, s.SettleTurn(Ctx(Protocol.Reveal)));
+            Scoreboard replay = s.SettleTurn(Ctx(Protocol.Reveal));
+            CollectionAssert.AreEqual(first.rows.Select(r => r.totalAssets), replay.rows.Select(r => r.totalAssets));
             Assert.AreEqual(14280, s.GetAssets("P1"));
+        }
+
+        [Test]
+        public void MarketAndRulesInputsAreSnapshots()
+        {
+            var data = JsonUtility.FromJson<MarketData>(Fixture("B_market_server.json"));
+            var rules = new InvestmentRules();
+            var s = new MarketService(data, rules);
+            s.BeginTurn(Ctx(Protocol.Info), Players);
+            data.companies[0].dailyChangesBps[6] = 99999;
+            data.companies[0].publicBundleIndices[0] = 1;
+            rules.maxPlayersPerCompany = 1;
+            rules.firstCompanyWeightOptionsBps[0] = 123;
+            Assert.AreEqual(-1500, s.GetBundle(1, "AI", 1).DailyChangesBps[0]);
+            Assert.IsTrue(s.GetBundle(1, "AI", 0).IsPublic);
+            Assert.AreEqual(2, s.GetCompanySeats()[0].remainingSeats);
+            Assert.IsTrue(s.ValidateAndSelectCompany(Ctx(Protocol.Selection, "P1"), "AI").Success);
+            Assert.IsTrue(s.ValidateAndSelectCompany(Ctx(Protocol.Selection, "P2"), "AI").Success);
+        }
+
+        [Test]
+        public void ThirdSelectionIsRejectedWithoutTakingASeat()
+        {
+            var s = WithP1Picked("AI", "FOOD");
+            Assert.AreEqual(ErrorCodes.SelectionComplete, s.ValidateAndSelectCompany(Ctx(Protocol.Selection, "P1"), "BANK").ErrorCode);
+            Assert.AreEqual(2, s.GetCompanySeats().Single(c => c.companyId == "BANK").remainingSeats);
+            CollectionAssert.AreEqual(new[] { "AI", "FOOD" }, s.GetSelectedCompanies("P1"));
+        }
+
+        [Test]
+        public void WrongMarketTurnDoesNotResetCurrentState()
+        {
+            var data = JsonUtility.FromJson<MarketData>(Fixture("B_market_server.json"));
+            var s = new MarketService(data);
+            s.BeginTurn(Ctx(Protocol.Info), Players);
+            s.ValidateAndSelectCompany(Ctx(Protocol.Selection, "P1"), "AI");
+            Assert.Throws<ArgumentException>(() => s.BeginTurn(Ctx(Protocol.Info, turn: 2), Players));
+            Assert.AreEqual(1, s.CurrentTurn);
+            CollectionAssert.AreEqual(new[] { "AI" }, s.GetSelectedCompanies("P1"));
+        }
+
+        [Test]
+        public void PastMarketOwnOrdersAndScoreboardSurviveNextTurn()
+        {
+            var s = new MarketService(t =>
+            {
+                var data = JsonUtility.FromJson<MarketData>(Fixture("B_market_server.json"));
+                data.turn = t;
+                if (t == 2) data.companies[0].dailyChangesBps[6] = 1234;
+                return data;
+            });
+            s.BeginTurn(Ctx(Protocol.Info), Players);
+            for (int i = 0; i < 8; i++) s.ValidateAndSelectCompany(Ctx(Protocol.Selection, PickOrder[i]), Picks[i]);
+            foreach (var order in JsonUtility.FromJson<FixtureOrders>(Fixture("B_investment_orders.json")).orders)
+                s.SubmitInvestment(Ctx(Protocol.Investment, order.playerId), order.investments);
+            s.LockAllOrders(Ctx(Protocol.Investment));
+            s.SettleTurn(Ctx(Protocol.Reveal));
+            s.BeginTurn(Ctx(Protocol.Info, turn: 2), Players);
+            Assert.AreEqual(-1500, s.GetBundle(1, "AI", 1).DailyChangesBps[0]);
+            Assert.AreEqual(1234, s.GetBundle(2, "AI", 1).DailyChangesBps[0]);
+            Assert.AreEqual(-1500, s.GetRevealedMarket(Ctx(Protocol.Result)).Single(c => c.companyId == "AI").dailyChangesBps[6]);
+            Assert.Throws<InvalidOperationException>(() => s.GetRevealedMarket(Ctx(Protocol.Info, turn: 2)));
+            var own = s.GetOwnInvestmentState("P1", 1);
+            Assert.AreEqual(14280, own.TotalAssets);
+            Assert.AreEqual(10, own.Investments[0].intervals[0].entryDay);
+            Assert.AreEqual(0, s.GetOwnInvestmentState("P1").Investments.Length);
+            Assert.AreEqual(14280, s.GetScoreboard(1).rows.Single(r => r.playerId == "P1").totalAssets);
+            own.Investments[0].intervals[0].entryDay = 99;
+            var board = s.GetScoreboard(1);
+            board.rows[0].totalAssets = 0;
+            board.rows[0].returnHistory[1].returnBps = 999;
+            var detail = s.GetSettlementDetail(1);
+            detail[0].companyProfits.Clear();
+            Assert.AreEqual(10, s.GetOwnInvestmentState("P1", 1).Investments[0].intervals[0].entryDay);
+            Assert.AreEqual(14280, s.GetScoreboard(1).rows[0].totalAssets);
+            Assert.AreEqual(4280, s.GetScoreboard(1).rows[0].returnHistory[1].returnBps);
+            Assert.AreEqual(2, s.GetSettlementDetail(1)[0].companyProfits.Count);
         }
 
         [Test]

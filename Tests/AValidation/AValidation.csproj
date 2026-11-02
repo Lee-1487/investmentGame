@@ -10,6 +10,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="../../Assets/Scripts/Shared/*.cs" />
     <Compile Include="../../Assets/Scripts/Rules/Information/*.cs" />
+    <Compile Include="../../Assets/Scripts/Rules/Market/*.cs" />
     <Compile Include="../../Assets/Scripts/Flow/*.cs" />
     <Compile Include="../../Assets/Scripts/Network/TcpTransport.cs" />
     <Compile Include="../../Assets/Scripts/Network/RequestJsonValidator.cs" />

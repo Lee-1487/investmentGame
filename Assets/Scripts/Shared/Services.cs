@@ -38,6 +38,7 @@ namespace BlackWhale.Shared
     public interface IMarketDataSource
     {
         string[] GetCompanyIds();
+        // Server-only. Real B retains immutable bundles for completed turns for the room's lifetime.
         ServerInformationBundle GetBundle(int turn, string companyId, int bundleIndex);
     }
     // B owns all selections, capacity, orders, market and asset state.

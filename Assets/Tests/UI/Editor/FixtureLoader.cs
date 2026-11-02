@@ -27,6 +27,9 @@ namespace BlackWhale.UI.Tests
         public static PlayerView P1After() => Load<PlayerView>("D_P1_after_purchase.json");
         public static PlayerView P2AfterP1Purchase() => Load<PlayerView>("D_P2_after_P1_purchase.json");
         public static Scoreboard ScoreboardExpected() => Load<Scoreboard>("D_scoreboard_expected.json");
+        [Serializable] internal class FixtureOrder { public string playerId; public Investment[] investments; }
+        [Serializable] internal class FixtureOrders { public FixtureOrder[] orders; }
+        public static FixtureOrder[] Orders() => Load<FixtureOrders>("B_investment_orders.json").orders;
 
         // ---- exchange_examples.json: 외곽 라우팅 정보 + 안쪽 request/response ----
         [Serializable] internal class Example { public string senderPlayerId; public Command request; public CommandResult response; }

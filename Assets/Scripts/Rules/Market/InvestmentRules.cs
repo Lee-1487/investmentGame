@@ -24,5 +24,12 @@ namespace BlackWhale.Rules
         public const int BundlesPerCompany = 6;
         public const int PublicBundlesPerCompany = 2;
         public static readonly string[] CompanyIds = { "AI", "SPACE", "FOOD", "BANK", "BIO", "AUTO" };
+
+        public InvestmentRules Copy()
+        {
+            var copy = (InvestmentRules)MemberwiseClone();
+            copy.firstCompanyWeightOptionsBps = (int[])firstCompanyWeightOptionsBps.Clone();
+            return copy;
+        }
     }
 }

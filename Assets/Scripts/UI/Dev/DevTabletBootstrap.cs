@@ -1,10 +1,11 @@
 // [개발 전용] 빈 씬의 GameObject에 붙이고 Play.
 // A의 실제 GameRoom(진행·시간·자동 행동·재전송 캐시)을 같은 프로세스에서 돌리고,
-// B 자리에 개발용 대역, C 자리에 실제 정보 서비스를, 다른 참가자 3명 자리에 봇을 넣어 D 화면을 한 턴 끝까지 확인한다.
+// B·C의 실제 서비스를, 다른 참가자 3명 자리에 봇을 넣어 D 화면을 한 턴 끝까지 확인한다.
 // 실제 4인 접속은 A의 NetworkSession.Host / Connect + 실제 B·C 서비스로 한다.
 using System.Collections.Generic;
 using BlackWhale.Flow;
 using BlackWhale.Shared;
+using BlackWhale.Rules;
 using BlackWhale.UI.State;
 using BlackWhale.UI.View;
 using UnityEngine;
@@ -84,8 +85,8 @@ namespace BlackWhale.UI.Dev
         {
             Teardown();
 
-            DevFixtures.Load(out var market, out var scoreboard, out _source);
-            var marketService = new DevMarketService(market, scoreboard);
+            DevFixtures.Load(out var market, out _source);
+            var marketService = new MarketService(market);
             _information = new DevInformationService(marketService);
             _host = new LocalRoomHost(marketService, _information,
                 manualTimer ? TimerMode.ManualForFixture : TimerMode.Realtime, fixedSeatOrder: true);
@@ -108,7 +109,7 @@ namespace BlackWhale.UI.Dev
             _view = TabletView.Create(_canvasRoot, _controller);
             BuildDevPanel();
             _host.Pump(); // 입장 메시지 전달
-            _view.ShowBanner("개발 모드 · A GameRoom + 실제 C + B 대역 · " + _source);
+            _view.ShowBanner("개발 모드 · A/B/C 실제 서비스 · " + _source);
         }
 
         private void Update()

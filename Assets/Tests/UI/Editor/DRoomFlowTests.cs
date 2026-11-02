@@ -1,9 +1,10 @@
 // A의 실제 GameRoom(수동 타이머·고정 자리 순서)에 4개 클라이언트를 붙여 D 컨트롤러·저장소를 끝까지 돌려 본다.
-// B는 개발용 대역, C는 실제 정보 서비스다. B의 실제 정산 검증은 아니다.
+// B·C의 실제 서비스와 D 화면 상태를 연결해 검증한다.
 using System.Collections.Generic;
 using System.Linq;
 using BlackWhale.Flow;
 using BlackWhale.Shared;
+using BlackWhale.Rules;
 using BlackWhale.UI.Dev;
 using BlackWhale.UI.Presentation;
 using BlackWhale.UI.State;
@@ -24,9 +25,8 @@ namespace BlackWhale.UI.Tests
         [SetUp]
         public void SetUp()
         {
-            var market = F.Load<DevMarketFixture>("B_market_server.json");
-            var board = F.ScoreboardExpected();
-            var marketService = new DevMarketService(market, board);
+            var market = F.Load<MarketData>("B_market_server.json");
+            var marketService = new MarketService(market);
             _info = new DevInformationService(marketService);
             _host = new LocalRoomHost(marketService, _info, TimerMode.ManualForFixture, fixedSeatOrder: true);
             for (int i = 1; i <= 4; i++)
@@ -113,8 +113,9 @@ namespace BlackWhale.UI.Tests
             Assert.IsFalse(P(1).IsVisible("AI", 1));
         }
 
-        [Test]
-        public void FullTurn_SelectionOrderOrderLockRevealResult()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void FullTurn_SelectionOrderOrderLockRevealResult(bool differentOrder)
         {
             StartGame();
 
@@ -144,8 +145,9 @@ namespace BlackWhale.UI.Tests
             CollectionAssert.AreEqual(new[] { "AI", "FOOD" }, P(1).Store.OwnSelections.ToArray());
             Assert.IsFalse(P(1).CanFinishPhase(), "투자 단계는 완료 버튼이 아니라 주문 잠금으로 진행");
 
-            // 주문: P1은 공통 예시 주문, 나머지는 각자 선택 기업 50:50
+            // 주문: P1은 공통 예시, 나머지도 정산 기대값에 대응하는 실제 fixture 주문
             var example = F.Exchange(1).request.payload.investments;
+            if (differentOrder) example[0].intervals[0] = new Interval { entryDay = 0, exitDay = 5 };
             Assert.AreEqual(CommandStatus.Sent, P(1).SubmitInvestment(example));
             _host.Pump();
             Assert.IsTrue(P(1).Store.OrderLocked);
@@ -153,10 +155,7 @@ namespace BlackWhale.UI.Tests
 
             for (int n = 2; n <= 4; n++)
             {
-                var draft = InvestmentDraft.FromSelections(P(n).Store.OwnSelections);
-                draft.TryAddInterval(draft.FirstCompanyId, 0, 5);
-                draft.TryAddInterval(draft.SecondCompanyId, 5, 10);
-                P(n).SubmitInvestment(draft.ToInvestments());
+                P(n).SubmitInvestment(F.Orders().Single(o => o.playerId == "P" + n).investments);
             }
             _host.Pump();
 
@@ -167,8 +166,14 @@ namespace BlackWhale.UI.Tests
             _host.AdvanceManualPhase();
             _host.Pump();
             Assert.AreEqual(Protocol.Result, P(1).Store.Public.phase);
-            CollectionAssert.AreEqual(new[] { "P1", "P4", "P2", "P3" },
+            CollectionAssert.AreEqual(differentOrder ? new[] { "P4", "P2", "P1", "P3" } : new[] { "P1", "P4", "P2", "P3" },
                 P(2).Store.Scoreboard.rows.OrderBy(r => r.rank).Select(r => r.playerId).ToArray());
+            foreach (var row in F.ScoreboardExpected().rows)
+            {
+                long expectedAssets = differentOrder && row.playerId == "P1" ? 9480 : row.totalAssets;
+                Assert.AreEqual(expectedAssets, P(1).Store.Scoreboard.rows.Single(r => r.playerId == row.playerId).totalAssets);
+                Assert.AreEqual(expectedAssets, P(row.playerId[1] - '0').Store.View.assets);
+            }
         }
 
         [Test]

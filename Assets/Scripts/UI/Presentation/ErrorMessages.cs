@@ -17,6 +17,7 @@ namespace BlackWhale.UI.Presentation
                 case ErrorCodes.WrongPhase: return "지금 단계에서는 할 수 없는 행동입니다.";
                 case ErrorCodes.StaleTurn: return "이미 지난 턴의 요청입니다.";
                 case ErrorCodes.CompanyFull: return "이 기업은 남은 자리가 없습니다.";
+                case ErrorCodes.SelectionComplete: return "이미 기업 두 개를 모두 선택했습니다.";
                 case ErrorCodes.DuplicateCompany: return "이미 선택한 기업입니다.";
                 case ErrorCodes.NotYourTurn: return "지금은 내 차례가 아닙니다.";
                 case ErrorCodes.InvalidHoldingDays: return "보유 기간은 5~10일이어야 합니다.";
