@@ -21,7 +21,7 @@ namespace InvestmentGame.Rules.Information
             public readonly HashSet<string> GrantedTurns = new HashSet<string>();
             // 구매 원장을 턴별로 분리해 이전 턴의 열람 권한이 새 시장으로 넘어가지 않게 한다.
             public readonly Dictionary<int, HashSet<BundleKey>> PurchasedByTurn = new Dictionary<int, HashSet<BundleKey>>();
-            // requestId별 결과를 보관해 네트워크 재전송 시 중복 차감하지 않는다.
+            // 턴/requestId별 결과를 보관해 다음 턴의 같은 ID와 구분한다.
             public readonly Dictionary<string, CachedRequest> Requests = new Dictionary<string, CachedRequest>();
         }
 
@@ -161,7 +161,8 @@ namespace InvestmentGame.Rules.Information
                 var state = GetPlayer(playerId);
                 // 지문은 같은 requestId로 다른 기업·묶음을 보내는 요청 변조를 감지한다.
                 var fingerprint = request.Turn + "|" + request.CompanyId + "|" + request.BundleIndex;
-                if (!string.IsNullOrEmpty(request.RequestId) && state.Requests.TryGetValue(request.RequestId, out var cached))
+                var requestKey = request.Turn + ":" + request.RequestId;
+                if (!string.IsNullOrEmpty(request.RequestId) && state.Requests.TryGetValue(requestKey, out var cached))
                 {
                     // 동일 요청 재전송은 이전 결과의 복사본만 반환하여 두 번째 차감을 막는다.
                     if (cached.Fingerprint != fingerprint) return InformationBuyResponse.Failed("REQUEST_ID_CONFLICT", state.Coins);
@@ -192,7 +193,7 @@ namespace InvestmentGame.Rules.Information
                 }
 
                 // 실패도 캐시하여 동일 요청 재전송이 상태를 다시 평가하지 않게 한다.
-                if (!string.IsNullOrEmpty(request.RequestId)) state.Requests[request.RequestId] = new CachedRequest(fingerprint, response.CopyOf());
+                if (!string.IsNullOrEmpty(request.RequestId)) state.Requests[requestKey] = new CachedRequest(fingerprint, response.CopyOf());
                 return response;
             }
         }
@@ -221,7 +222,7 @@ namespace InvestmentGame.Rules.Information
                     {
                         if (TryCopyBundle(turn, record.CompanyId, record.BundleIndex, out var bundle)) bundles.Add(new VisibleInformationBundle(bundle, "PURCHASED"));
                     }
-                    views.Add(new CompanyInformationView(companyId, bundles));
+                    views.Add(new CompanyInformationView(companyId, bundles.OrderBy(x => x.BundleIndex).ToArray()));
                 }
                 return new PlayerInformationView(turn, state.Coins, views);
             }

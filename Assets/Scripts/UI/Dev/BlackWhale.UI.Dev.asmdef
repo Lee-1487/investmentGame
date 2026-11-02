@@ -3,6 +3,7 @@
     "rootNamespace": "BlackWhale.UI.Dev",
     "references": [
         "BlackWhale.Shared",
+        "BlackWhale.Information",
         "BlackWhale.Flow",
         "BlackWhale.UI",
         "UnityEngine.UI",

@@ -1,5 +1,5 @@
 // A의 실제 GameRoom(수동 타이머·고정 자리 순서)에 4개 클라이언트를 붙여 D 컨트롤러·저장소를 끝까지 돌려 본다.
-// B·C 자리는 개발용 대역(DevStandInServices)이다. 실제 B·C 규칙·정산 검증이 아니다.
+// B는 개발용 대역, C는 실제 정보 서비스다. B의 실제 정산 검증은 아니다.
 using System.Collections.Generic;
 using System.Linq;
 using BlackWhale.Flow;

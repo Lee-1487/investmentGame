@@ -10,6 +10,7 @@ namespace BlackWhale.UI.Presentation
             switch (errorCode)
             {
                 case ErrorCodes.NotEnoughCoins: return "코인이 부족합니다.";
+                case "MARKET_UNAVAILABLE": return "시장 정보를 불러오지 못했습니다. 코인은 차감되지 않았습니다.";
                 case ErrorCodes.AlreadyVisible: return "이미 볼 수 있는 정보입니다. 코인은 차감되지 않았습니다.";
                 case ErrorCodes.InvalidBundle: return "존재하지 않는 정보 묶음입니다.";
                 case ErrorCodes.InvalidCompany: return "존재하지 않는 기업입니다.";
