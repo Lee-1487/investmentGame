@@ -225,6 +225,46 @@ namespace BlackWhale.UI.Tests
         }
 
         [Test]
+        public void LobbySeatReplacement_ClearsOldTokenAndRequests_OnlyBeforeGameStarts()
+        {
+            var market = new MarketService(F.Load<MarketData>("B_market_server.json"));
+            using (var host = new LocalRoomHost(market, new DevInformationService(market), TimerMode.ManualForFixture))
+            {
+                var room = host.Room;
+                room.Join("host", "Host"); room.Join("old", "Bot"); room.Join("guest", "Guest");
+                string oldToken = room.DrainMessages().Single(d => d.PlayerId == "P2" && d.Message.type == "WELCOME").Message.session.reconnectToken;
+                var request = new Command { type = CommandTypes.SetReady, requestId = "reuse", turn = 0, payload = new CommandPayload { ready = true } };
+                Assert.IsTrue(room.ProcessCommand("old", request).success);
+                Assert.IsFalse(room.RegisterLocalBot("P1"));
+                Assert.IsTrue(room.RegisterLocalBot("P2"));
+                Assert.IsTrue(room.Snapshot().players.Single(p => p.playerId == "P2").isBot);
+                Assert.IsFalse(room.RemoveLobbyBot("P3"), "human cannot be removed as a bot");
+                Assert.IsTrue(room.RemoveLobbyBot("P2"));
+                Assert.AreEqual("", room.Join("replacement", "Human"));
+                Assert.AreEqual("P2", room.PlayerForConnection("replacement"));
+                Assert.IsFalse(room.DrainMessages().Any(d => d.PlayerId == "P2" && d.Message.type == "COMMAND_RESULT"), "previous occupant's queued reply is discarded");
+                request.payload.ready = false;
+                Assert.IsTrue(room.ProcessCommand("replacement", request).success, "reused ID must not inherit cached request conflict");
+                Assert.IsFalse(room.Snapshot().players.Single(p => p.playerId == "P2").isBot);
+                Assert.AreEqual(ErrorCodes.InvalidReconnectToken, room.Join("stale", "Old", oldToken));
+
+                room.Disconnect("guest");
+                Assert.AreEqual(3, room.Snapshot().players.Length, "disconnect reserves a reconnect seat until host fills");
+                room.ReleaseDisconnectedLobbySlots();
+                Assert.AreEqual(2, room.Snapshot().players.Length);
+                room.Join("bot3", "BOT 3"); room.Join("bot4", "BOT 4");
+                Assert.IsTrue(room.RegisterLocalBot("P3")); Assert.IsTrue(room.RegisterLocalBot("P4"));
+                foreach (string connection in new[] { "host", "replacement", "bot3", "bot4" })
+                    Assert.IsTrue(room.ProcessCommand(connection, new Command { type = CommandTypes.SetReady, requestId = "final-ready", payload = new CommandPayload { ready = true } }).success);
+                Assert.IsTrue(room.ProcessCommand("host", new Command { type = CommandTypes.StartGame, requestId = "start" }).success);
+                Assert.IsFalse(room.RemoveLobbyBot("P3"));
+                Assert.IsFalse(room.RegisterLocalBot("P2"));
+                room.ReleaseDisconnectedLobbySlots();
+                Assert.AreEqual(4, room.Snapshot().players.Length);
+            }
+        }
+
+        [Test]
         public void Order_DraftPreservesOrderAndMatchesExample()
         {
             var example = F.Exchange(1).request.payload.investments;

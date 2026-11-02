@@ -29,7 +29,7 @@ namespace BlackWhale.Flow
         private sealed class Member
         {
             public string Id, Name, Connection, Token;
-            public bool Ready;
+            public bool Ready, IsBot;
             public double DisconnectedAt;
         }
         private sealed class Cached
@@ -94,13 +94,57 @@ namespace BlackWhale.Flow
                 if (phase != Protocol.Lobby) return "GAME_STARTED";
                 if (members.Count == 4) return "ROOM_FULL";
                 if (string.IsNullOrWhiteSpace(displayName) || displayName.Length > 32) return "INVALID_NAME";
-                var member = new Member { Id = "P" + (members.Count + 1), Name = displayName,
+                string id = Enumerable.Range(1, 4).Select(i => "P" + i).First(candidate => members.All(m => m.Id != candidate));
+                var member = new Member { Id = id, Name = displayName,
                     Connection = connectionId, Token = NewToken() };
                 members.Add(member);
                 Welcome(member);
                 PublishState();
                 return "";
             }
+        }
+
+        // Host-process administration only. These methods are never exposed as wire commands.
+        public bool RegisterLocalBot(string playerId)
+        {
+            lock (gate)
+            {
+                var member = members.Find(m => m.Id == playerId && m.Id != "P1" && m.Connection != null);
+                if (phase != Protocol.Lobby || member == null) return false;
+                member.IsBot = true;
+                PublishState();
+                return true;
+            }
+        }
+        public bool RemoveLobbyBot(string playerId)
+        {
+            lock (gate)
+            {
+                var member = members.Find(m => m.Id == playerId && m.IsBot);
+                if (phase != Protocol.Lobby || member == null) return false;
+                RemoveLobbyMember(member);
+                PublishState();
+                return true;
+            }
+        }
+        public void ReleaseDisconnectedLobbySlots()
+        {
+            lock (gate)
+            {
+                if (phase != Protocol.Lobby) return;
+                foreach (var member in members.Where(m => m.Id != "P1" && m.Connection == null).ToArray()) RemoveLobbyMember(member);
+                PublishState();
+            }
+        }
+        private void RemoveLobbyMember(Member member)
+        {
+            members.Remove(member);
+            // A new occupant of this ID must not receive the previous occupant's queued replies.
+            var retained = outbox.Where(d => d.PlayerId != member.Id).ToArray();
+            outbox.Clear();
+            foreach (var delivery in retained) outbox.Enqueue(delivery);
+            foreach (string key in cache.Keys.Where(k => k.StartsWith(member.Id + ":", StringComparison.Ordinal)).ToArray()) cache.Remove(key);
+            foreach (string key in counts.Keys.Where(k => k.StartsWith(member.Id + ":", StringComparison.Ordinal)).ToArray()) counts.Remove(key);
         }
         private static string NewToken()
         {
@@ -238,7 +282,7 @@ namespace BlackWhale.Flow
             // Baseline prototype intentionally ends after one turn. Auctions/multi-turn are a separate increment.
             turn = 1;
             if (!begun.Add(turn)) return;
-            string[] ids = members.Select(m => m.Id).ToArray();
+            string[] ids = members.OrderBy(m => m.Id, StringComparer.Ordinal).Select(m => m.Id).ToArray();
             string[] seats = (string[])ids.Clone();
             if (!fixedOrder)
             {
@@ -354,8 +398,8 @@ namespace BlackWhale.Flow
                 selectionIndex = selectionIndex, currentPlayerId = CurrentPlayer,
                 serverElapsedSeconds = turn > 0 ? Now : 0, phaseEndsAtServerSeconds = phaseEnd,
                 selectionDeadlineAtServerSeconds = pickEnd,
-                players = members.Select(m => new Player { playerId = m.Id, displayName = m.Name,
-                    connected = m.Connection != null, ready = m.Ready }).ToArray(),
+                players = members.OrderBy(m => m.Id, StringComparer.Ordinal).Select(m => new Player { playerId = m.Id, displayName = m.Name,
+                    connected = m.Connection != null, ready = m.Ready, isBot = m.IsBot }).ToArray(),
                 companySeats = turn > 0 ? market.GetCompanySeats() : new CompanySeat[0] };
         }
         private void SendView(string player)

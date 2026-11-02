@@ -6,6 +6,7 @@
         "BlackWhale.Information",
         "BlackWhale.Rules.Market",
         "BlackWhale.Flow",
+        "BlackWhale.Network",
         "BlackWhale.UI",
         "UnityEngine.UI",
         "Unity.InputSystem"

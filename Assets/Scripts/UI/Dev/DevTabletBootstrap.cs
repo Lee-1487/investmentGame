@@ -1,12 +1,16 @@
-// [개발 전용] 빈 씬의 GameObject에 붙이고 Play.
-// A의 실제 GameRoom(진행·시간·자동 행동·재전송 캐시)을 같은 프로세스에서 돌리고,
-// B·C의 실제 서비스를, 다른 참가자 3명 자리에 봇을 넣어 D 화면을 한 턴 끝까지 확인한다.
-// 실제 4인 접속은 A의 NetworkSession.Host / Connect + 실제 B·C 서비스로 한다.
+﻿using System;
 using System.Collections.Generic;
-using BlackWhale.Flow;
-using BlackWhale.Shared;
+using System.Linq;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
+using System.Threading;
+using System.Threading.Tasks;
+using BlackWhale.Network;
 using BlackWhale.Rules;
+using BlackWhale.Rules.Information;
+using BlackWhale.Shared;
 using BlackWhale.UI.State;
+using BlackWhale.UI.Presentation;
 using BlackWhale.UI.View;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -15,49 +19,32 @@ using UnityEngine.UI;
 
 namespace BlackWhale.UI.Dev
 {
+    // Scene composition root: only the host owns B/C services and bot clients.
+    // Preserve the existing component GUID so DevTabletUI opens this screen directly.
     public sealed class DevTabletBootstrap : MonoBehaviour
     {
-        [Tooltip("내가 볼 참가자. P1 = 방장(방장도 같은 개인 필터 화면과 같은 요청 경로를 쓴다).")]
-        [SerializeField] private string viewAsPlayer = "P1";
-        [Tooltip("켜면 서버 시계가 자동으로 흐르지 않는다(A의 ManualForFixture). DEV 패널의 '다음 단계'로 진행.")]
-        [SerializeField] private bool manualTimer;
-        [Tooltip("봇이 행동하기 전 기다리는 시간(초)")]
         [SerializeField] private float botThinkSeconds = 1.2f;
-
-        private RectTransform _canvasRoot;
-        private LocalRoomHost _host;
-        private DevInformationService _information;
-        private LocalGameClient _myClient;
-        private GameClientController _controller;
-        private readonly List<DevBot> _bots = new List<DevBot>();
-        private TabletView _view;
-        private string _source;
-
-        private RectTransform _devPanel;
-        private Text _devStatus;
+        private RectTransform canvasRoot, connectionPanel;
+        private InputField nickname, address, port;
+        private Button hostButton, joinButton, cancelButton;
+        private Text connectionStatus;
+        private NetworkSession session;
+        private GameClientController controller;
+        private TabletView view;
+        private LobbyActions lobby;
+        private readonly List<DevBot> bots = new List<DevBot>();
+        private CancellationTokenSource operation;
+        private bool connecting, destroyed;
+        private string endpoint;
 
         private void Start()
         {
-            EnsureEventSystem();
-            _canvasRoot = CreateCanvas();
-            Restart();
-        }
-
-        private void OnDestroy() => Teardown();
-
-        // ------------------------------------------------------------------
-        // 준비
-        // ------------------------------------------------------------------
-
-        private static void EnsureEventSystem()
-        {
-            if (FindAnyObjectByType<EventSystem>() != null) return;
-            var go = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
-            go.GetComponent<InputSystemUIInputModule>().AssignDefaultActions();
-        }
-
-        private RectTransform CreateCanvas()
-        {
+            if (FindAnyObjectByType<EventSystem>() == null)
+            {
+                var events = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));
+                events.transform.SetParent(transform, false);
+                events.GetComponent<InputSystemUIInputModule>().AssignDefaultActions();
+            }
             var go = new GameObject("TabletCanvas", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             go.layer = 5;
             go.transform.SetParent(transform, false);
@@ -65,114 +52,259 @@ namespace BlackWhale.UI.Dev
             var scaler = go.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1280, 720);
-            scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.MatchWidthOrHeight;
             scaler.matchWidthOrHeight = 0.5f;
-            return (RectTransform)go.transform;
+            canvasRoot = (RectTransform)go.transform;
+            BuildConnectionScreen();
         }
 
-        private void Teardown()
+        private void BuildConnectionScreen()
         {
-            if (_view != null) Destroy(_view.gameObject);
-            _controller?.Dispose();
-            foreach (var bot in _bots) bot.Controller.Dispose();
-            _bots.Clear();
-            _host?.Dispose();
-            _host = null;
-            _controller = null;
+            connectionPanel = UiKit.Panel(canvasRoot, "ConnectionScreen", Palette.Background, raycast: true).rectTransform;
+            UiKit.Stretch(connectionPanel);
+            var card = UiKit.Panel(connectionPanel, "ConnectionCard", Palette.Card, rounded: true).rectTransform;
+            UiKit.Place(card, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(640, 570));
+            Label(card, "BLACK WHALE", 30, -26, 50, Palette.Text);
+            Label(card, "함께 플레이할 방을 만들거나 방장 주소로 참가하세요.", 16, -84, 30, Palette.SubText);
+            nickname = Field(card, "Nickname", "이름", "플레이어", -140, 32);
+            address = Field(card, "HostAddress", "방장 주소 (참가할 때)", "127.0.0.1", -212, 253);
+            port = Field(card, "Port", "포트", "7777", -284, 5);
+            port.contentType = InputField.ContentType.IntegerNumber;
+            hostButton = UiKit.Button(card, "방 만들기", 18, Palette.Accent, Color.white, () => BeginConnection(true));
+            hostButton.name = "Host";
+            UiKit.Place((RectTransform)hostButton.transform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(-135, -370), new Vector2(250, 48));
+            joinButton = UiKit.Button(card, "참가", 18, Palette.AccentSoft, Palette.Accent, () => BeginConnection(false));
+            joinButton.name = "Join";
+            UiKit.Place((RectTransform)joinButton.transform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(135, -370), new Vector2(250, 48));
+            connectionStatus = Label(card, "방을 만든 뒤 대기실에서 접속 주소를 확인할 수 있습니다.\n혼자 테스트할 때는 빈자리를 BOT으로 채워 주세요.", 14, -432, 66, Palette.SubText);
+            cancelButton = UiKit.Button(card, "연결 취소", 13, Palette.Card, Palette.Text, Leave);
+            cancelButton.name = "CancelConnection";
+            UiKit.Place((RectTransform)cancelButton.transform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 22), new Vector2(180, 32));
+            cancelButton.gameObject.SetActive(false);
         }
 
-        private void Restart()
+        private static Text Label(RectTransform parent, string text, int size, float y, float height, Color color)
         {
-            Teardown();
+            var label = UiKit.Label(parent, text, size, color);
+            UiKit.Place(label.rectTransform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, y), new Vector2(560, height));
+            return label;
+        }
 
-            DevFixtures.Load(out var market, out _source);
-            var marketService = new MarketService(market);
-            _information = new DevInformationService(marketService);
-            _host = new LocalRoomHost(marketService, _information,
-                manualTimer ? TimerMode.ManualForFixture : TimerMode.Realtime, fixedSeatOrder: true);
+        private static InputField Field(RectTransform parent, string name, string label, string value, float y, int limit)
+        {
+            var caption = UiKit.Label(parent, label, 14, Palette.SubText, TextAnchor.MiddleLeft);
+            UiKit.Place(caption.rectTransform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, y), new Vector2(520, 24));
+            var field = UiKit.NumberInput(parent, "", 18);
+            field.name = name;
+            field.contentType = InputField.ContentType.Standard;
+            field.characterLimit = limit;
+            field.text = value;
+            ((Text)field.placeholder).text = label;
+            UiKit.Place((RectTransform)field.transform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, y - 26), new Vector2(520, 36));
+            return field;
+        }
 
-            // 먼저 입장한 사람이 P1. 내가 P2로 보고 싶으면 봇 하나를 먼저 들여보낸다.
-            int myIndex = Mathf.Clamp(viewAsPlayer.Length == 2 ? viewAsPlayer[1] - '1' : 0, 0, 3);
-            for (int i = 0; i < 4; i++)
+        private void SetConnecting(bool value)
+        {
+            connecting = value;
+            hostButton.interactable = joinButton.interactable = !value;
+            nickname.interactable = address.interactable = port.interactable = !value;
+            cancelButton.gameObject.SetActive(value);
+        }
+
+        private async void BeginConnection(bool host)
+        {
+            if (connecting || session != null) return;
+            if (!int.TryParse(port.text, out int number) || number < 1 || number > 65535)
+            { connectionStatus.text = "포트는 1~65535 사이의 숫자로 입력해 주세요."; return; }
+            if (string.IsNullOrWhiteSpace(nickname.text) || (!host && string.IsNullOrWhiteSpace(address.text)))
+            { connectionStatus.text = "이름과 방장 주소를 확인해 주세요."; return; }
+
+            SetConnecting(true);
+            connectionStatus.text = host ? "방을 만드는 중…" : "방에 연결하는 중…";
+            var current = operation = new CancellationTokenSource();
+            var go = new GameObject("NetworkSession");
+            go.transform.SetParent(transform, false);
+            var active = session = go.AddComponent<NetworkSession>();
+            try
             {
-                if (i == myIndex)
+                if (host)
                 {
-                    _myClient = _host.Join("나");
-                    _controller = new GameClientController(_myClient);
+                    DevFixtures.Load(out var market, out _);
+                    var service = new MarketService(market);
+                    await active.Host(service, new SharedInformationService(service), nickname.text.Trim(), number, allowLan: true);
+                    endpoint = "접속 주소: " + HostAddresses() + "  ·  포트 " + active.ListeningPort;
                 }
                 else
                 {
-                    _bots.Add(new DevBot(_host.Join("Bot " + (i + 1)), botThinkSeconds));
+                    await active.Connect(address.text.Trim(), nickname.text.Trim(), number);
+                    endpoint = "방장: " + address.text.Trim() + ":" + number;
+                }
+                current.Token.ThrowIfCancellationRequested();
+                controller = new GameClientController(active.Client);
+                await WaitForWelcome(active.Client, active, current.Token);
+                if (host && !active.IsHost) throw new InvalidOperationException("방장 입장에 실패했습니다. 다시 방을 만들어 주세요.");
+                lobby = new LobbyActions { FillBots = FillBots, RemoveBots = RemoveBots, Leave = Leave, Status = LobbyStatus(host) };
+                view = TabletView.Create(canvasRoot, controller, lobby);
+                connectionPanel.gameObject.SetActive(false);
+                SetConnecting(false);
+            }
+            catch (Exception ex)
+            {
+                if (!destroyed && operation == current)
+                {
+                    Teardown();
+                    connectionPanel.gameObject.SetActive(true);
+                    SetConnecting(false);
+                    connectionStatus.text = ConnectionError(ex);
                 }
             }
+        }
 
-            _view = TabletView.Create(_canvasRoot, _controller);
-            BuildDevPanel();
-            _host.Pump(); // 입장 메시지 전달
-            _view.ShowBanner("개발 모드 · A/B/C 실제 서비스 · " + _source);
+        private static async Task WaitForWelcome(TcpGameClient client, NetworkSession active, CancellationToken token)
+        {
+            string rejection = null;
+            Action<ServerMessage> onMessage = m =>
+            {
+                if (m.type == "JOIN_REJECTED") rejection = m.errorCode;
+                if (m.type == "DISCONNECTED" || m.type == "ROOM_ENDED") rejection = "서버와 연결이 끊겼습니다.";
+            };
+            client.MessageReceived += onMessage;
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            try
+            {
+                while (string.IsNullOrEmpty(client.PlayerId))
+                {
+                    token.ThrowIfCancellationRequested();
+                    active.Pump();
+                    client.Pump();
+                    if (rejection != null) throw new InvalidOperationException(rejection);
+                    if (DateTime.UtcNow >= deadline) throw new TimeoutException();
+                    await Task.Yield();
+                }
+                token.ThrowIfCancellationRequested();
+            }
+            finally { client.MessageReceived -= onMessage; }
+        }
+
+        private string LobbyStatus(bool host) => endpoint + (host
+            ? "\n사람이 입장한 뒤 BOT을 채워 주세요. BOT 내보내기로 자리를 비울 수 있습니다.\n채우기를 누르면 연결이 끊긴 참가자의 자리 예약이 해제됩니다."
+            : "\n준비를 누르고 방장이 게임을 시작할 때까지 기다려 주세요.");
+
+        private async void FillBots()
+        {
+            if (lobby == null || lobby.Busy || session?.IsHost != true || controller.Store.Public?.phase != Protocol.Lobby) return;
+            var active = session;
+            var current = operation;
+            lobby.Busy = true;
+            lobby.Status = "BOT을 입장시키는 중…";
+            view.Refresh();
+            DevBot pending = null;
+            try
+            {
+                // Explicitly filling seats releases disconnected lobby members' reconnect reservations.
+                active.ReleaseDisconnectedLobbySlots();
+                for (int i = 0; i < 3 && active.LobbyPlayerCount < 4; i++)
+                {
+                    var client = await TcpGameClient.Connect("127.0.0.1", active.ListeningPort, "BOT " + (bots.Count + 1), new UnityWireCodec(), cancellationToken: current.Token);
+                    pending = new DevBot(client, botThinkSeconds);
+                    await WaitForWelcome(client, active, current.Token);
+                    if (!active.RegisterLocalBot(client.PlayerId)) throw new InvalidOperationException("대기실에서만 BOT을 추가할 수 있습니다.");
+                    bots.Add(pending);
+                    pending = null;
+                }
+                lobby.Status = LobbyStatus(true);
+            }
+            catch (Exception ex)
+            {
+                if (!destroyed && operation == current)
+                    lobby.Status = LobbyStatus(true) + "\n" + ConnectionError(ex);
+            }
+            finally
+            {
+                if (pending != null)
+                {
+                    active.RemoveLobbyBot(pending.Controller.LocalPlayerId);
+                    pending.Controller.Dispose(); pending.Client.Dispose();
+                }
+                if (!destroyed && operation == current)
+                {
+                    lobby.Busy = false;
+                    view.Refresh();
+                }
+            }
+        }
+
+        private void RemoveBots()
+        {
+            if (lobby == null || lobby.Busy || session?.IsHost != true || controller.Store.Public?.phase != Protocol.Lobby) return;
+            foreach (var bot in bots)
+            {
+                session.RemoveLobbyBot(bot.Controller.LocalPlayerId);
+                bot.Controller.Dispose(); bot.Client.Dispose();
+            }
+            bots.Clear();
+            lobby.Status = LobbyStatus(true);
+            session.Pump();
+            view.Refresh();
         }
 
         private void Update()
         {
-            if (_host == null) return;
-            _host.Pump();
-            float now = Time.time;
-            foreach (var bot in _bots) bot.Update(now);
-
-            if (_devStatus != null)
+            foreach (var bot in bots)
             {
-                var s = _controller.Store.Public;
-                _devStatus.text = "나: " + _controller.LocalPlayerId + " · " + (s == null ? "-" : s.turn + "턴 " + s.phase)
-                                  + " · 타이머 " + (manualTimer ? "수동" : "실시간")
-                                  + (_myClient.Hold ? " · 응답 지연(" + _myClient.Waiting + "개 대기)" : "");
+                bot.Client.Pump();
+                bot.Update(Time.unscaledTime);
             }
         }
 
-        // ------------------------------------------------------------------
-        // 개발 도구 패널(왼쪽 아래 DEV 버튼)
-        // ------------------------------------------------------------------
-
-        private void BuildDevPanel()
+        private void Leave()
         {
-            var toggle = UiKit.Button(_view.Root, "DEV", 11, new Color(0.1f, 0.1f, 0.1f, 0.85f), Color.white, null);
-            UiKit.Place((RectTransform)toggle.transform, Vector2.zero, Vector2.zero, new Vector2(2, 2), new Vector2(30, 30));
+            Teardown();
+            if (destroyed) return;
+            connectionPanel.gameObject.SetActive(true);
+            SetConnecting(false);
+            connectionStatus.text = "방에서 나왔습니다. 새 방을 만들거나 다시 참가할 수 있습니다.";
+        }
 
-            _devPanel = UiKit.Panel(_view.Root, "DevPanel", new Color(0.08f, 0.09f, 0.12f, 0.95f), rounded: true, raycast: true).rectTransform;
-            UiKit.Place(_devPanel, Vector2.zero, Vector2.zero, new Vector2(36, 2), new Vector2(560, 112));
-            _devPanel.gameObject.SetActive(false);
-            toggle.onClick.AddListener(() => _devPanel.gameObject.SetActive(!_devPanel.gameObject.activeSelf));
+        private void Teardown()
+        {
+            operation?.Cancel(); operation = null;
+            if (view != null) { view.gameObject.SetActive(false); Destroy(view.gameObject); }
+            view = null;
+            controller?.Dispose(); controller = null;
+            foreach (var bot in bots) { bot.Controller.Dispose(); bot.Client.Dispose(); }
+            bots.Clear();
+            if (session != null) { session.Close(); Destroy(session.gameObject); }
+            session = null; lobby = null;
+        }
 
-            _devStatus = UiKit.Label(_devPanel, "", 12, new Color(0.8f, 0.85f, 0.9f), TextAnchor.UpperLeft);
-            UiKit.Stretch(_devStatus.rectTransform, 10, 6, 10, 0);
+        private void OnDestroy() { destroyed = true; Teardown(); }
 
-            string[] labels =
+        private static string HostAddresses()
+        {
+            try
             {
-                manualTimer ? "다음 단계(수동)" : "수동 타이머로 재시작", "응답 지연 켜기/끄기", "대기 응답 1개 받기", "마지막 결과 다시 받기",
-                "다음 구매: 코인 부족", "P1 ↔ P2 화면", "처음부터", "패널 닫기"
-            };
-            System.Action[] actions =
-            {
-                () =>
-                {
-                    if (manualTimer) _host.AdvanceManualPhase();
-                    else { manualTimer = true; Restart(); }
-                },
-                () => { _myClient.Hold = !_myClient.Hold; },
-                () => _myClient.DeliverOne(),
-                () => _myClient.RedeliverLastResult(),
-                () => _information.ForceNextBuyError = ErrorCodes.NotEnoughCoins,
-                () => { viewAsPlayer = viewAsPlayer == "P1" ? "P2" : "P1"; Restart(); },
-                Restart,
-                () => _devPanel.gameObject.SetActive(false)
-            };
-            for (int i = 0; i < labels.Length; i++)
-            {
-                int col = i % 4, row = i / 4;
-                var action = actions[i];
-                var b = UiKit.Button(_devPanel, labels[i], 11, new Color(0.22f, 0.25f, 0.32f), Color.white, () => action());
-                UiKit.Place((RectTransform)b.transform, new Vector2(0, 1), new Vector2(0, 1),
-                    new Vector2(10 + col * 136, -28 - row * 40), new Vector2(130, 34));
+                var addresses = NetworkInterface.GetAllNetworkInterfaces()
+                    .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                    .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+                    .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork)
+                    .Select(a => a.Address.ToString()).Where(a => !a.StartsWith("169.254.")).Distinct().ToArray();
+                return addresses.Length == 0 ? "127.0.0.1 (이 PC)" : string.Join(" / ", addresses);
             }
+            catch (NetworkInformationException) { return "이 PC의 IPv4 주소"; }
+        }
+
+        private static string ConnectionError(Exception ex)
+        {
+            if (ex is OperationCanceledException || ex is TimeoutException) return "연결 시간이 초과되었습니다. 방장 주소·포트와 네트워크 연결을 확인해 주세요.";
+            if (ex is SocketException socket)
+                return socket.SocketErrorCode == SocketError.AddressAlreadyInUse
+                    ? "이 포트는 사용 중입니다. 기존 방을 닫거나 다른 포트를 입력해 주세요."
+                    : "방에 연결하지 못했습니다. 방장 주소·포트와 방화벽 허용을 확인해 주세요.";
+            if (ex.Message == ErrorCodes.RoomFull) return "방이 가득 찼습니다. 방장이 BOT을 내보낸 뒤 다시 참가해 주세요.";
+            if (ex.Message == ErrorCodes.GameStarted || ex.Message == ErrorCodes.RoomEnded || ex.Message == ErrorCodes.InvalidName)
+                return ErrorMessages.ToKorean(ex.Message);
+            return "입장하지 못했습니다: " + ex.Message;
         }
     }
 }

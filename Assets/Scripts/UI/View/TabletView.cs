@@ -22,6 +22,7 @@ namespace BlackWhale.UI.View
         private const float BannerSeconds = 5f;
 
         private GameClientController _c;
+        private LobbyActions _lobby;
         private ClientStateStore Store => _c.Store;
 
         public RectTransform Root { get; private set; }
@@ -64,11 +65,12 @@ namespace BlackWhale.UI.View
         private int _lastBoardTurn = -1;
         private string _lastSelector = "";
 
-        public static TabletView Create(RectTransform parent, GameClientController controller)
+        public static TabletView Create(RectTransform parent, GameClientController controller, LobbyActions lobby = null)
         {
             var root = UiKit.Rect(parent, "TabletView");
             UiKit.Stretch(root);
             var view = root.gameObject.AddComponent<TabletView>();
+            view._lobby = lobby;
             view.Init(root, controller);
             return view;
         }
@@ -114,6 +116,12 @@ namespace BlackWhale.UI.View
             BuildRightColumn();
             BuildBanner();
             BuildOverlays();
+            if (_lobby?.Leave != null)
+            {
+                var leave = UiKit.Button(Root, "방 나가기", 12, Palette.Card, Palette.Text, _lobby.Leave);
+                leave.name = "LeaveRoom";
+                UiKit.Place((RectTransform)leave.transform, Vector2.zero, Vector2.zero, new Vector2(42, 2), new Vector2(100, 30));
+            }
         }
 
         private void BuildEdges()
@@ -179,7 +187,7 @@ namespace BlackWhale.UI.View
             var info = UiKit.Rect(_pager, "Page_Info");
             UiKit.Anchor(info, 0.5f, 0, 1, 1, 4, 0);
 
-            _investmentPage = new InvestmentPage(invest, _c);
+            _investmentPage = new InvestmentPage(invest, _c, _lobby);
             _infoPage = new InfoPurchasePage(info, _c);
 
             _pageHint = UiKit.Label(ScreenRect, "", 11, Palette.SubText, TextAnchor.LowerCenter);
@@ -282,7 +290,7 @@ namespace BlackWhale.UI.View
         // 갱신
         // ------------------------------------------------------------------
 
-        private void Refresh()
+        public void Refresh()
         {
             var s = Store.Public;
             DetectNotifications();

@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using BlackWhale.Flow;
 using BlackWhale.Shared;
@@ -6,12 +7,17 @@ using UnityEngine;
 
 namespace BlackWhale.Network
 {
-    // D's composition root supplies the B/C services. No fixture fallback exists in player builds.
+    // The game UI supplies the B/C services only on the host.
     public sealed class NetworkSession : MonoBehaviour
     {
         public TcpGameClient Client { get; private set; }
         private TcpGameServer server;
+        private GameRoom hostedRoom;
+        private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
         private bool closing, connecting;
+        public bool IsHost => server != null && Client?.PlayerId == "P1";
+        public int ListeningPort => server == null ? 0 : server.Port;
+        public int LobbyPlayerCount => hostedRoom?.Snapshot().players.Length ?? 0;
         public event Action<ServerMessage> MessageReceived;
 
         public async Task Host(IMarketService market, IInformationService information,
@@ -23,8 +29,9 @@ namespace BlackWhale.Network
             var codec = new UnityWireCodec();
             var room = new GameRoom(Guid.NewGuid().ToString("N"), market, information, clock, mode, fixedOrderForFixture);
             server = new TcpGameServer(room, codec, clock, port, allowLan ? System.Net.IPAddress.Any : System.Net.IPAddress.Loopback);
+            hostedRoom = room;
             try { await Connect("127.0.0.1", displayName, server.Port); }
-            catch { server?.Dispose(); server = null; throw; }
+            catch { server?.Dispose(); server = null; hostedRoom = null; throw; }
         }
         public async Task Connect(string host, string displayName, int port = 7777, string reconnectToken = null)
         {
@@ -32,21 +39,36 @@ namespace BlackWhale.Network
             connecting = true;
             try
             {
-                TcpGameClient connected = await TcpGameClient.Connect(host, port, displayName, new UnityWireCodec(), reconnectToken);
-                if (closing) { connected.Dispose(); return; }
-                Client = connected; Client.MessageReceived += OnMessage;
+                using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime.Token))
+                {
+                    timeout.CancelAfter(TimeSpan.FromSeconds(10));
+                    TcpGameClient connected = await TcpGameClient.Connect(host, port, displayName, new UnityWireCodec(), reconnectToken, timeout.Token);
+                    if (closing) { connected.Dispose(); throw new OperationCanceledException(); }
+                    Client = connected; Client.MessageReceived += OnMessage;
+                }
             }
             finally { connecting = false; }
         }
         public void DisconnectClient()
-        { Client?.Dispose(); Client = null; }
-        private void OnMessage(ServerMessage message) { MessageReceived?.Invoke(message); }
-        private void Update() { server?.Pump(); Client?.Pump(); }
-        private void OnDestroy()
         {
+            if (Client != null) { Client.MessageReceived -= OnMessage; Client.Dispose(); Client = null; }
+        }
+        // Host-process operations only. These are deliberately not network command types.
+        public bool RegisterLocalBot(string playerId) => IsHost && hostedRoom.RegisterLocalBot(playerId);
+        public bool RemoveLobbyBot(string playerId) => IsHost && hostedRoom.RemoveLobbyBot(playerId);
+        public void ReleaseDisconnectedLobbySlots() { if (IsHost) hostedRoom.ReleaseDisconnectedLobbySlots(); }
+        private void OnMessage(ServerMessage message) { MessageReceived?.Invoke(message); }
+        public void Pump() { server?.Pump(); Client?.Pump(); }
+        private void Update() => Pump();
+        public void Close()
+        {
+            if (closing) return;
             closing = true;
+            lifetime.Cancel();
             DisconnectClient();
             server?.Dispose(); server = null;
+            hostedRoom = null;
         }
+        private void OnDestroy() => Close();
     }
 }

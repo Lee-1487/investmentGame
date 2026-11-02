@@ -17,6 +17,7 @@ namespace BlackWhale.UI.View
     public sealed class InvestmentPage
     {
         private readonly GameClientController _c;
+        private readonly LobbyActions _lobby;
         private readonly Text _status;
         private readonly RectTransform _body;
 
@@ -30,9 +31,10 @@ namespace BlackWhale.UI.View
         private readonly Dictionary<string, LineChartGraphic> _orderCharts = new Dictionary<string, LineChartGraphic>();
         private readonly List<KeyValuePair<Interval, Text>> _holdLabels = new List<KeyValuePair<Interval, Text>>();
 
-        public InvestmentPage(RectTransform page, GameClientController controller)
+        public InvestmentPage(RectTransform page, GameClientController controller, LobbyActions lobby = null)
         {
             _c = controller;
+            _lobby = lobby;
 
             var title = UiKit.Label(page, "매수 창", 18, Palette.Text, TextAnchor.MiddleLeft, FontStyle.Bold);
             UiKit.Place(title.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(6, -2), new Vector2(200, 28));
@@ -98,7 +100,7 @@ namespace BlackWhale.UI.View
         {
             _status.text = "대기실 · 4명이 모두 준비하면 방장이 시작합니다";
             var card = UiKit.Panel(_body, "Lobby", Palette.Card, rounded: true);
-            UiKit.Stretch(card.rectTransform, 120, 20, 120, 20);
+            UiKit.Stretch(card.rectTransform, 28, 12, 28, 12);
             var root = card.rectTransform;
 
             var title = UiKit.Label(root, "<b>참가자</b>  <size=12>" + (s.players?.Length ?? 0) + " / 4명</size>", 18, Palette.Text, TextAnchor.UpperLeft);
@@ -113,9 +115,12 @@ namespace BlackWhale.UI.View
                 string text = p == null
                     ? "<color=#9CA3AF>빈 자리 · 접속 대기</color>"
                     : "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(p.playerId)) + ">■</color>  <b>" + p.playerId + "</b>  "
-                      + (p.displayName ?? "") + (p.playerId == _c.LocalPlayerId ? " (나)" : "") + (p.playerId == "P1" ? "  <size=11>방장</size>" : "")
+                      + (p.displayName ?? "").Replace("<", "‹").Replace(">", "›") + (p.isBot ? "  <size=11>BOT</size>" : "") + (p.playerId == _c.LocalPlayerId ? " (나)" : "") + (p.playerId == "P1" ? "  <size=11>방장</size>" : "")
                       + "      " + (!p.connected ? "<color=#DC2626>연결 끊김</color>" : p.ready ? "<color=#047857><b>준비 완료</b></color>" : "<color=#6B7280>준비 전</color>");
                 var label = UiKit.Label(row.transform, text, 15, Palette.Text, TextAnchor.MiddleLeft);
+                label.resizeTextForBestFit = true;
+                label.resizeTextMinSize = 10;
+                label.resizeTextMaxSize = 15;
                 UiKit.Stretch(label.rectTransform, 16, 0, 16, 0);
             }
 
@@ -124,15 +129,33 @@ namespace BlackWhale.UI.View
             var readyButton = UiKit.Button(root, readyPending ? "처리 중…" : ready ? "준비 취소" : "준비", 16,
                 ready ? Palette.Card : Palette.Accent, ready ? Palette.Text : Color.white, () => _c.SetReady(!ready));
             UiKit.Place((RectTransform)readyButton.transform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(_c.IsHost ? -100 : 0, 24), new Vector2(180, 46));
-            readyButton.interactable = !readyPending;
+            readyButton.name = "Ready";
+            readyButton.interactable = !readyPending && _lobby?.Busy != true;
 
             if (_c.IsHost)
             {
-                bool can = _c.AllPlayersReady && !_c.Store.HasPending(CommandTypes.StartGame);
+                bool can = _c.AllPlayersReady && !_c.Store.HasPending(CommandTypes.StartGame) && _lobby?.Busy != true;
                 var start = UiKit.Button(root, "게임 시작", 16, can ? Palette.Success : Palette.Disabled, can ? Color.white : Palette.DisabledText,
                     () => _c.StartGame());
                 UiKit.Place((RectTransform)start.transform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(100, 24), new Vector2(180, 46));
                 start.interactable = can;
+                start.name = "StartGame";
+                if (_lobby != null)
+                {
+                    var fill = UiKit.Button(root, "빈자리를 BOT으로 채우기", 13, Palette.AccentSoft, Palette.Accent, _lobby.FillBots);
+                    fill.name = "FillBots";
+                    UiKit.Place((RectTransform)fill.transform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(-100, 80), new Vector2(220, 34));
+                    fill.interactable = !_lobby.Busy && players.Count(p => p.connected) < 4;
+                    var remove = UiKit.Button(root, "BOT 모두 내보내기", 13, Palette.Card, Palette.Text, _lobby.RemoveBots);
+                    remove.name = "RemoveBots";
+                    UiKit.Place((RectTransform)remove.transform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(130, 80), new Vector2(200, 34));
+                    remove.interactable = !_lobby.Busy && players.Any(p => p.isBot);
+                }
+            }
+            if (_lobby != null)
+            {
+                var status = UiKit.Label(root, _lobby.Status, 12, Palette.SubText);
+                UiKit.Place(status.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 120), new Vector2(640, 54));
             }
         }
 

@@ -213,17 +213,22 @@ namespace BlackWhale.Network
         public string ReconnectToken { get; private set; }
         private TcpGameClient(TcpClient socket, IWireCodec codec)
         { this.codec = codec; peer = new Peer(socket); _ = ReadLoop(); }
-        public static async Task<TcpGameClient> Connect(string host, int port, string displayName, IWireCodec codec, string reconnectToken = null)
+        public static async Task<TcpGameClient> Connect(string host, int port, string displayName, IWireCodec codec, string reconnectToken = null,
+            CancellationToken cancellationToken = default(CancellationToken))
         {
             var socket = new TcpClient();
             try
             {
-                await socket.ConnectAsync(host, port).ConfigureAwait(false);
+                using (cancellationToken.Register(() => socket.Dispose()))
+                {
+                    await socket.ConnectAsync(host, port).ConfigureAwait(false);
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
                 var client = new TcpGameClient(socket, codec);
                 client.peer.Send(codec.EncodeClient(new ClientMessage { type = "JOIN", displayName = displayName, reconnectToken = reconnectToken }));
                 return client;
             }
-            catch { socket.Close(); throw; }
+            catch { socket.Close(); cancellationToken.ThrowIfCancellationRequested(); throw; }
         }
         private async Task ReadLoop()
         {

@@ -5,8 +5,11 @@
         "BlackWhale.Shared",
         "BlackWhale.Rules.Market",
         "BlackWhale.Flow",
+        "BlackWhale.Network",
+        "BlackWhale.Information",
         "BlackWhale.UI",
         "BlackWhale.UI.Dev",
+        "UnityEngine.UI",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],
