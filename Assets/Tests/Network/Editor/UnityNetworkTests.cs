@@ -30,12 +30,12 @@ namespace BlackWhale.Tests
             Assert.That(task.Result.Length, Is.EqualTo(8));
             TestContext.WriteLine(string.Join("\n", task.Result));
         }
-        [UnityTest] public IEnumerator RealCUsingUnityJson()
+        [UnityTest] public IEnumerator RealBCUsingUnityJson()
         {
             var task = RealInformationValidation.Run(Suite(), new UnityWireCodec());
             while (!task.IsCompleted) yield return null;
             if (task.IsFaulted) throw task.Exception;
-            Assert.That(task.Result.Length, Is.EqualTo(3));
+            Assert.That(task.Result.Length, Is.EqualTo(4));
             TestContext.WriteLine(string.Join("\n", task.Result));
         }
     }

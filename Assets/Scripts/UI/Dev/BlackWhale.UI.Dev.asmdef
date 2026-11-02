@@ -4,6 +4,7 @@
     "references": [
         "BlackWhale.Shared",
         "BlackWhale.Information",
+        "BlackWhale.Rules.Market",
         "BlackWhale.Flow",
         "BlackWhale.UI",
         "UnityEngine.UI",

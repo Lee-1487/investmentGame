@@ -3,6 +3,7 @@
     "rootNamespace": "BlackWhale.UI.Tests",
     "references": [
         "BlackWhale.Shared",
+        "BlackWhale.Rules.Market",
         "BlackWhale.Flow",
         "BlackWhale.UI",
         "BlackWhale.UI.Dev",

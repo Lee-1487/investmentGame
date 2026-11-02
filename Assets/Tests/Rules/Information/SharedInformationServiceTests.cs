@@ -87,5 +87,37 @@ namespace BlackWhale.Tests.Information
             Assert.That(result.Payload, Is.Null);
             Assert.That(service.BuildPlayerView(Context(), Own()).coins, Is.EqualTo(3));
         }
+
+        [Test]
+        public void PastInformationAndCoinsSurviveNextTurn_AndPastPurchasesAreReadOnly()
+        {
+            var market = new BlackWhale.Rules.MarketService(t => new BlackWhale.Rules.MarketData
+            {
+                turn = t,
+                companies = BlackWhale.Rules.InvestmentRules.CompanyIds.Select(id => new BlackWhale.Rules.CompanyMarketData
+                {
+                    companyId = id, publicBundleIndices = new[] { 0, 2 },
+                    dailyChangesBps = Enumerable.Range(0, 31).Select(day => day * 100 * t).ToArray()
+                }).ToArray()
+            });
+            IInformationService service = new SharedInformationService(market);
+            var ids = new[] { "P1", "P2" };
+            market.BeginTurn(Context(), ids);
+            service.GrantTurnCoins(Context(), ids);
+            service.BuyInformation(Context(), "AI", 1);
+            market.BeginTurn(Context(turn: 2), ids);
+            service.GrantTurnCoins(Context(turn: 2), ids);
+            service.BuyInformation(Context(turn: 2), "AI", 1);
+            var old = service.BuildPlayerView(Context(), market.GetOwnInvestmentState("P1", 1));
+            Assert.AreEqual(2, old.coins);
+            Assert.AreEqual(600, old.companies[0].visibleBundles.Single(b => b.bundleIndex == 1).dailyChangesBps[0]);
+            Assert.AreEqual(1200, service.BuildPlayerView(Context(turn: 2), market.GetOwnInvestmentState("P1")).companies[0].visibleBundles.Single(b => b.bundleIndex == 1).dailyChangesBps[0]);
+            Assert.AreEqual(4, service.BuildPlayerView(Context(turn: 2), market.GetOwnInvestmentState("P1")).coins);
+            Assert.AreEqual(ErrorCodes.StaleTurn, service.BuyInformation(Context(request: "new-old-buy"), "AI", 3).ErrorCode);
+            Assert.IsTrue(service.BuyInformation(Context(), "AI", 1).Success, "기존 요청의 재전송은 원응답만 반환");
+            service.GrantTurnCoins(Context(), ids); // delayed turn-start replay
+            Assert.AreEqual(4, service.BuildPlayerView(Context(turn: 2), market.GetOwnInvestmentState("P1")).coins);
+            Assert.AreEqual(2, service.BuildPlayerView(Context(player: "P2"), market.GetOwnInvestmentState("P2", 1)).companies[0].visibleBundles.Length);
+        }
     }
 }

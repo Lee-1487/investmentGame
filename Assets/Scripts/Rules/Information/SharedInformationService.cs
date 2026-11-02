@@ -12,6 +12,7 @@ namespace BlackWhale.Rules.Information
         private sealed class RoomState
         {
             public InformationService Service;
+            public int CurrentTurn;
             public readonly HashSet<string> Players = new HashSet<string>();
         }
 
@@ -31,9 +32,11 @@ namespace BlackWhale.Rules.Information
                     room = new RoomState { Service = new InformationService(new MarketReader(source), source.GetCompanyIds()) };
                     rooms.Add(context.RoomId, room);
                 }
+                if (context.Turn < room.CurrentTurn) return; // late turn-start replay must not change current coins
                 foreach (var id in playerIds)
                     if (room.Players.Add(id)) room.Service.AddPlayer(new PlayerInformationSeed(id, 0));
                 room.Service.GrantTurnCoins(context.Turn, playerIds);
+                room.CurrentTurn = context.Turn;
             }
         }
 
@@ -41,7 +44,8 @@ namespace BlackWhale.Rules.Information
         {
             lock (gate)
             {
-                var result = rooms[context.RoomId].Service.BuyInformation(context.PlayerId, context.Turn, context.Phase,
+                var room = rooms[context.RoomId];
+                var result = room.Service.BuyInformation(context.PlayerId, room.CurrentTurn, context.Phase,
                     new InformationRequest(context.RequestId, context.Turn, companyId, bundleIndex));
                 if (!result.Success) return new RuleResult(result.ErrorCode);
                 return new RuleResult(payload: new ResultPayload

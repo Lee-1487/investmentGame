@@ -17,6 +17,7 @@ namespace InvestmentGame.Rules.Information
         {
             // C가 최종 변경하는 현재 황금 코인 잔액이다.
             public int Coins;
+            public readonly Dictionary<int, int> CoinsByTurn = new Dictionary<int, int>();
             // 이미 코인을 지급한 턴을 기록해 같은 턴의 재호출을 멱등적으로 처리한다.
             public readonly HashSet<string> GrantedTurns = new HashSet<string>();
             // 구매 원장을 턴별로 분리해 이전 턴의 열람 권한이 새 시장으로 넘어가지 않게 한다.
@@ -97,6 +98,7 @@ namespace InvestmentGame.Rules.Information
                 var state = new PlayerState { Coins = seed.Coins };
                 // 복원된 지급 원장을 먼저 등록해 초기 로드 후 중복 지급을 막는다.
                 foreach (var turn in seed.AlreadyGrantedTurns ?? Array.Empty<int>()) state.GrantedTurns.Add(GrantKey(turn));
+                if (seed.AlreadyGrantedTurns.Count > 0) state.CoinsByTurn[seed.AlreadyGrantedTurns.Max()] = seed.Coins;
                 // 구매 원장은 턴별 HashSet으로 복원해 해당 턴의 공개 범위를 그대로 재현한다.
                 foreach (var purchased in seed.PurchasedBundles ?? Array.Empty<PurchasedInformationRecord>())
                 {
@@ -132,6 +134,7 @@ namespace InvestmentGame.Rules.Information
                     // rules-v2에 따라 6턴부터 5개, 그 전에는 3개를 지급한다.
                     if (granted) state.Coins += turn >= InformationConstants.LateGrantStartsAtTurn
                         ? InformationConstants.LateTurnCoinGrant : InformationConstants.EarlyTurnCoinGrant;
+                    if (granted) state.CoinsByTurn[turn] = state.Coins;
                     last = new CoinGrantResult(playerId, turn, state.Coins, granted);
                 }
                 return last;
@@ -187,6 +190,7 @@ namespace InvestmentGame.Rules.Information
                         state.PurchasedByTurn.Add(currentTurn, records);
                     }
                     state.Coins -= InformationConstants.InformationCostCoins;
+                    state.CoinsByTurn[currentTurn] = state.Coins;
                     records.Add(new BundleKey(request.CompanyId, request.BundleIndex));
                     // 구매자에게 필요한 묶음만 반환하고 전체 시장 원본은 반환하지 않는다.
                     response = InformationBuyResponse.Succeeded(bundle, state.Coins);
@@ -224,7 +228,8 @@ namespace InvestmentGame.Rules.Information
                     }
                     views.Add(new CompanyInformationView(companyId, bundles.OrderBy(x => x.BundleIndex).ToArray()));
                 }
-                return new PlayerInformationView(turn, state.Coins, views);
+                int coins = state.CoinsByTurn.TryGetValue(turn, out var recordedCoins) ? recordedCoins : state.Coins;
+                return new PlayerInformationView(turn, coins, views);
             }
         }
 

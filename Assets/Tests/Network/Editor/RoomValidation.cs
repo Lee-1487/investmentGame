@@ -68,6 +68,13 @@ namespace BlackWhale.Tests
         private T Read<T>(string path) { return json.Decode<T>(File.ReadAllText(Path.Combine(root, "개발 정리", path))); }
         public RoomHarness NewRoom(TimerMode mode = TimerMode.ManualForFixture, bool start = true)
         { return new RoomHarness(market, scoreboard, mode, start); }
+        public BlackWhale.Rules.MarketService NewRealMarket()
+        { return new BlackWhale.Rules.MarketService(Read<BlackWhale.Rules.MarketData>("임시 데이터 및 검증용/B_market_server.json")); }
+        public Investment[] FixtureInvestments(string playerId)
+        { return Read<InvestmentOrders>("임시 데이터 및 검증용/B_investment_orders.json").orders.Single(o => o.playerId == playerId).investments; }
+        public Scoreboard ExpectedScoreboard() { return scoreboard; }
+        [Serializable] public sealed class InvestmentOrder { public string playerId; public Investment[] investments; }
+        [Serializable] public sealed class InvestmentOrders { public InvestmentOrder[] orders; }
         public static void Check(bool ok, string message) { if (!ok) throw new InvalidOperationException(message); }
         public static Command Command(string type, string id, int turn = 1, CommandPayload payload = null)
         { return new Command { type = type, requestId = id, turn = turn, payload = payload }; }

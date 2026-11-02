@@ -28,6 +28,8 @@ namespace BlackWhale.Rules
         private readonly Dictionary<string, List<ReturnPoint>> history = new Dictionary<string, List<ReturnPoint>>();
         private readonly Dictionary<int, Scoreboard> settledBoards = new Dictionary<int, Scoreboard>();
         private readonly Dictionary<int, PlayerSettlement[]> settledPlayers = new Dictionary<int, PlayerSettlement[]>();
+        private readonly Dictionary<int, MarketBook> markets = new Dictionary<int, MarketBook>();
+        private readonly Dictionary<int, Dictionary<string, OwnInvestmentState>> ownHistory = new Dictionary<int, Dictionary<string, OwnInvestmentState>>();
 
         /// <summary>Fixture mode: the same fixed market (e.g. B_market_server.json) for its turn.</summary>
         public MarketService(MarketData fixedMarket, InvestmentRules rules = null)
@@ -37,7 +39,7 @@ namespace BlackWhale.Rules
         public MarketService(Func<int, MarketData> marketForTurn, InvestmentRules rules = null)
         {
             this.marketForTurn = marketForTurn ?? throw new ArgumentNullException(nameof(marketForTurn));
-            this.rules = rules ?? new InvestmentRules();
+            this.rules = (rules ?? new InvestmentRules()).Copy();
         }
 
         public int CurrentTurn { get { return turn; } }
@@ -48,24 +50,31 @@ namespace BlackWhale.Rules
 
         public ServerInformationBundle GetBundle(int requestedTurn, string companyId, int bundleIndex)
         {
-            if (market == null || requestedTurn != turn) throw new ArgumentOutOfRangeException(nameof(requestedTurn));
-            if (!market.HasCompany(companyId)) throw new ArgumentException("Unknown company: " + companyId);
+            if (!markets.TryGetValue(requestedTurn, out var book)) throw new ArgumentOutOfRangeException(nameof(requestedTurn));
+            if (!book.HasCompany(companyId)) throw new ArgumentException("Unknown company: " + companyId);
             if (bundleIndex < 0 || bundleIndex >= InvestmentRules.BundlesPerCompany) throw new ArgumentOutOfRangeException(nameof(bundleIndex));
             int startDay;
-            int[] values = market.Bundle(companyId, bundleIndex, out startDay);
+            int[] values = book.Bundle(companyId, bundleIndex, out startDay);
             return new ServerInformationBundle { CompanyId = companyId, BundleIndex = bundleIndex, StartDay = startDay,
-                IsPublic = market.IsPublic(companyId, bundleIndex), DailyChangesBps = values };
+                IsPublic = book.IsPublic(companyId, bundleIndex), DailyChangesBps = values };
         }
 
         // ---------------- Turn start ----------------
 
         public void BeginTurn(RequestContext context, string[] playerIds)
         {
-            if (context.Turn <= turn) return; // same turn again: no reset, no second comeback grant
+            if (context.Turn < 1 || context.Turn < turn) throw new ArgumentOutOfRangeException(nameof(context));
+            if (context.Turn == turn) return; // same turn again: no reset, no second comeback grant
+            if (playerIds == null || playerIds.Length == 0 || playerIds.Any(string.IsNullOrWhiteSpace) ||
+                playerIds.Distinct().Count() != playerIds.Length) throw new ArgumentException("Distinct player IDs required.", nameof(playerIds));
             var loaded = new MarketBook(marketForTurn(context.Turn), rules); // validate before mutating anything
+            if (loaded.Turn != context.Turn) throw new ArgumentException("Market turn does not match the requested turn.");
+
+            if (turn > 0) SaveOwnHistory();
 
             turn = context.Turn;
             market = loaded;
+            markets.Add(turn, loaded);
             players = (string[])playerIds.Clone();
             selected.Clear();
             orders.Clear();
@@ -92,6 +101,7 @@ namespace BlackWhale.Rules
             if (code != "") return new RuleResult(code);
             if (!market.HasCompany(companyId)) return new RuleResult(ErrorCodes.InvalidCompany);
             if (selected[context.PlayerId].Contains(companyId)) return new RuleResult(ErrorCodes.DuplicateCompany);
+            if (selected[context.PlayerId].Count >= 2) return new RuleResult(ErrorCodes.SelectionComplete);
             if (RemainingSeats(companyId) <= 0) return new RuleResult(ErrorCodes.CompanyFull);
 
             selected[context.PlayerId].Add(companyId);
@@ -133,6 +143,8 @@ namespace BlackWhale.Rules
 
         public void LockAllOrders(RequestContext context)
         {
+            if (market == null || context.Turn != turn || context.Phase != Protocol.Investment)
+                throw new InvalidOperationException("Orders can only be locked for the current investment phase.");
             if (allLocked) return;
             string missing = players.FirstOrDefault(p => !orders.ContainsKey(p));
             if (missing != null) throw new InvalidOperationException("Order missing for " + missing + "; A must submit the default order first.");
@@ -153,9 +165,27 @@ namespace BlackWhale.Rules
 
         public RevealedCompany[] GetRevealedMarket(RequestContext context)
         {
-            if (!allLocked) throw new InvalidOperationException("Market cannot be revealed before all orders are locked.");
-            return InvestmentRules.CompanyIds.Select(id => new RevealedCompany { companyId = id, dailyChangesBps = market.AllDays(id) }).ToArray();
+            if (!markets.TryGetValue(context.Turn, out var book)) throw new ArgumentOutOfRangeException(nameof(context));
+            if (context.Turn == turn ? !allLocked : !settledBoards.ContainsKey(context.Turn))
+                throw new InvalidOperationException("Market cannot be revealed before all orders are locked.");
+            return InvestmentRules.CompanyIds.Select(id => new RevealedCompany { companyId = id, dailyChangesBps = book.AllDays(id) }).ToArray();
         }
+
+        // Server-side history. Callers may project only the requesting player's state to clients.
+        public OwnInvestmentState GetOwnInvestmentState(string playerId, int requestedTurn)
+        {
+            if (requestedTurn == turn) return GetOwnInvestmentState(playerId);
+            if (!ownHistory.TryGetValue(requestedTurn, out var snapshot) || !snapshot.TryGetValue(playerId, out var own))
+                throw new ArgumentOutOfRangeException(nameof(requestedTurn));
+            return new OwnInvestmentState { TotalAssets = own.TotalAssets,
+                SelectedCompanies = (string[])own.SelectedCompanies.Clone(), Investments = Copy(own.Investments) };
+        }
+
+        public Scoreboard GetScoreboard(int requestedTurn)
+        { return settledBoards.TryGetValue(requestedTurn, out var board) ? CopyBoard(board) : null; }
+
+        private void SaveOwnHistory()
+        { ownHistory[turn] = players.ToDictionary(id => id, GetOwnInvestmentState); }
 
         // ---------------- Settlement ----------------
 
@@ -163,7 +193,7 @@ namespace BlackWhale.Rules
         public Scoreboard SettleTurn(RequestContext context)
         {
             Scoreboard done;
-            if (settledBoards.TryGetValue(context.Turn, out done)) return done;
+            if (settledBoards.TryGetValue(context.Turn, out done)) return CopyBoard(done);
             if (context.Turn != turn) throw new InvalidOperationException("Only the current turn can be settled.");
             if (!allLocked) throw new InvalidOperationException("Settlement before lock.");
 
@@ -180,14 +210,21 @@ namespace BlackWhale.Rules
             settledPlayers[turn] = results;
             Scoreboard board = BuildScoreboard();
             settledBoards[turn] = board;
-            return board;
+            SaveOwnHistory();
+            return CopyBoard(board);
         }
 
         /// <summary>Server-only detail (company profits) for logs/tests. Never broadcast.</summary>
         public PlayerSettlement[] GetSettlementDetail(int settledTurn)
         {
             PlayerSettlement[] r;
-            return settledPlayers.TryGetValue(settledTurn, out r) ? r : null;
+            return settledPlayers.TryGetValue(settledTurn, out r) ? r.Select(p => new PlayerSettlement
+            {
+                playerId = p.playerId, startingAssets = p.startingAssets, profit = p.profit,
+                endingAssets = p.endingAssets, turnReturnBps = p.turnReturnBps,
+                companyProfits = p.companyProfits.Select(c => new CompanyProfit { companyId = c.companyId,
+                    allocatedAssets = c.allocatedAssets, profit = c.profit, returnBps = c.returnBps }).ToList()
+            }).ToArray() : null;
         }
 
         public long GetAssets(string playerId) { return assets[playerId]; }
@@ -214,6 +251,16 @@ namespace BlackWhale.Rules
         }
 
         // ---------------- helpers ----------------
+
+        private static Scoreboard CopyBoard(Scoreboard board)
+        {
+            return new Scoreboard { turn = board.turn, phase = board.phase, rankingFinalForTurn = board.rankingFinalForTurn,
+                rows = board.rows.Select(r => new ScoreRow { rank = r.rank, playerId = r.playerId,
+                    totalAssets = r.totalAssets, turnReturnBps = r.turnReturnBps, cumulativeProfit = r.cumulativeProfit,
+                    cumulativeReturnBps = r.cumulativeReturnBps,
+                    returnHistory = r.returnHistory.Select(h => new ReturnPoint { turn = h.turn, returnBps = h.returnBps }).ToArray()
+                }).ToArray() };
+        }
 
         private string CheckContext(RequestContext context, string phase)
         {

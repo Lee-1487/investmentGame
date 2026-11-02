@@ -7,6 +7,7 @@ namespace BlackWhale.Shared
         public const string InvalidBundle = "INVALID_BUNDLE", InvalidCompany = "INVALID_COMPANY";
         public const string WrongPhase = "WRONG_PHASE", StaleTurn = "STALE_TURN";
         public const string CompanyFull = "COMPANY_FULL", DuplicateCompany = "DUPLICATE_COMPANY", NotYourTurn = "NOT_YOUR_TURN";
+        public const string SelectionComplete = "SELECTION_COMPLETE";
         public const string InvalidHoldingDays = "INVALID_HOLDING_DAYS", TooManyIntervals = "TOO_MANY_INTERVALS";
         public const string OverlappingIntervals = "OVERLAPPING_INTERVALS", InvalidRatio = "INVALID_RATIO", InvalidDay = "INVALID_DAY";
         public const string CompanyNotSelected = "COMPANY_NOT_SELECTED", MissingInterval = "MISSING_INTERVAL";
