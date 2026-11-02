@@ -205,7 +205,7 @@ namespace BlackWhale.UI.View
                 else
                 {
                     bool can = infoPhase && coins > 0;
-                    UiKit.SetButton(b, range + "\n" + (can ? "1코인 구매" : "미열람"), can,
+                    UiKit.SetButton(b, can ? range : range + "\n미열람", can,
                         can ? Palette.Accent : Palette.Disabled,
                         can ? Color.white : Palette.DisabledText);
                 }
