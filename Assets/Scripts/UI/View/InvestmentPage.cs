@@ -4,6 +4,7 @@
 // - 투자 결정: 비율(5:5/6:4/7:3)·순서·구간(정수 일, 5~10일, 최대 2개) 입력 후 주문 확정
 // - 시장 공개/결과: 확정 주문과 결과 표시
 // 타인의 투자 기업·금액·구간은 표시하지 않는다(남은 자리와 현재 차례만).
+using System.Collections.Generic;
 using System.Linq;
 using BlackWhale.Shared;
 using BlackWhale.UI.Presentation;
@@ -21,6 +22,13 @@ namespace BlackWhale.UI.View
 
         private InvestmentDraft _draft;
         private int _draftTurn = -1;
+
+        // 날짜 입력 중에는 화면 전체를 다시 그리지 않고 아래 요소만 바로 갱신한다
+        // (전체를 다시 그리면 입력 직후 '주문 확정' 첫 클릭이 사라질 수 있음).
+        private Text _orderMessage;
+        private Button _submitButton;
+        private readonly Dictionary<string, LineChartGraphic> _orderCharts = new Dictionary<string, LineChartGraphic>();
+        private readonly List<KeyValuePair<Interval, Text>> _holdLabels = new List<KeyValuePair<Interval, Text>>();
 
         public InvestmentPage(RectTransform page, GameClientController controller)
         {
@@ -208,6 +216,8 @@ namespace BlackWhale.UI.View
 
         private void BuildOrderForm()
         {
+            _orderCharts.Clear();
+            _holdLabels.Clear();
             EnsureDraft();
             if (_draft == null)
             {
@@ -241,7 +251,6 @@ namespace BlackWhale.UI.View
             BuildCompanyColumn(cols, 1, _draft.SecondCompanyId, _draft.SecondWeightBps);
 
             // 하단: 오류 + 확정
-            string error = _draft.Validate();
             bool pending = _c.Store.HasPending(CommandTypes.SubmitInvestment);
             var bottom = UiKit.Rect(_body, "SubmitRow");
             bottom.anchorMin = new Vector2(0, 0);
@@ -250,17 +259,13 @@ namespace BlackWhale.UI.View
             bottom.offsetMin = new Vector2(6, 4);
             bottom.offsetMax = new Vector2(-6, 48);
 
-            var msg = UiKit.Label(bottom, error.Length > 0 ? ErrorMessages.ToKorean(error)
-                    : "확정 후에는 바꿀 수 없습니다. 미확정 시 시간 초과되면 50:50 · 각 0→5일로 자동 확정됩니다.",
-                13, error.Length > 0 ? Palette.Up : Palette.SubText, TextAnchor.MiddleLeft);
-            UiKit.Stretch(msg.rectTransform, 0, 0, 200, 0);
+            _orderMessage = UiKit.Label(bottom, "", 13, Palette.SubText, TextAnchor.MiddleLeft);
+            UiKit.Stretch(_orderMessage.rectTransform, 0, 0, 200, 0);
 
-            var submit = UiKit.Button(bottom, pending ? "확정 중…" : "주문 확정", 16,
-                error.Length == 0 && !pending ? Palette.Accent : Palette.Disabled,
-                error.Length == 0 && !pending ? Color.white : Palette.DisabledText,
+            _submitButton = UiKit.Button(bottom, pending ? "확정 중…" : "주문 확정", 16, Palette.Disabled, Palette.DisabledText,
                 () => _c.SubmitInvestment(_draft.ToInvestments()));
-            UiKit.Place((RectTransform)submit.transform, new Vector2(1, 0.5f), new Vector2(1, 0.5f), Vector2.zero, new Vector2(180, 42));
-            submit.interactable = error.Length == 0 && !pending;
+            UiKit.Place((RectTransform)_submitButton.transform, new Vector2(1, 0.5f), new Vector2(1, 0.5f), Vector2.zero, new Vector2(180, 42));
+            UpdateOrderLive();
         }
 
         private void BuildCompanyColumn(RectTransform parent, int index, string companyId, int weightBps)
@@ -283,16 +288,8 @@ namespace BlackWhale.UI.View
             chartRt.offsetMin = new Vector2(14, -150);
             chartRt.offsetMax = new Vector2(-14, -38);
             var chart = chartRt.gameObject.AddComponent<LineChartGraphic>();
-            var company = _c.Store.View?.companies?.FirstOrDefault(c => c.companyId == companyId);
-            int cap = GraphSeriesBuilder.AxisLimitBps(companyId);
-            chart.SetRange(0, UiRules.MaxDay, -cap, cap);
-            foreach (var locked in GraphSeriesBuilder.LockedRanges(company))
-                chart.AddBand(locked.StartDay - 0.5f, locked.EndDay + 0.5f, Palette.Locked);
-            foreach (var iv in _draft.IntervalsOf(companyId))
-                chart.AddBand(iv.entryDay, iv.exitDay, new Color(0.15f, 0.39f, 0.92f, 0.18f));
-            chart.AddHLine(0, Palette.Grid);
-            foreach (var seg in GraphSeriesBuilder.Segments(company))
-                chart.AddSeries(seg.Select(p => new Vector2(p.Day, p.Bps)).ToList(), Palette.Text, 2f, 3f);
+            _orderCharts[companyId] = chart;
+            DrawOrderChart(chart, companyId);
             foreach (int day in new[] { 0, 10, 20, 30 })
             {
                 var tick = UiKit.Label(chartRt, day + "일", 9, Palette.SubText, TextAnchor.UpperCenter);
@@ -333,13 +330,13 @@ namespace BlackWhale.UI.View
             var label = UiKit.Label(row, "구간 " + (index + 1), 13, Palette.SubText, TextAnchor.MiddleLeft);
             UiKit.Place(label.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), Vector2.zero, new Vector2(48, 34));
 
-            Stepper(row, 50, "진입", iv.entryDay, () => ShiftEntry(iv, -1), () => ShiftEntry(iv, +1));
-            Stepper(row, 196, "청산", iv.exitDay, () => ShiftExit(iv, -1), () => ShiftExit(iv, +1));
+            DayInput(row, 56, "진입", () => iv.entryDay, v => iv.entryDay = v);
+            DayInput(row, 190, "청산", () => iv.exitDay, v => iv.exitDay = v);
 
-            int holding = iv.exitDay - iv.entryDay;
-            var hold = UiKit.Label(row, "보유 " + holding + "일", 13,
-                holding >= UiRules.MinHoldingDays && holding <= UiRules.MaxHoldingDays ? Palette.SubText : Palette.Up, TextAnchor.MiddleLeft);
-            UiKit.Place(hold.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(344, 0), new Vector2(70, 34));
+            var hold = UiKit.Label(row, "", 13, Palette.SubText, TextAnchor.MiddleLeft);
+            UiKit.Place(hold.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(330, 0), new Vector2(90, 34));
+            _holdLabels.Add(new KeyValuePair<Interval, Text>(iv, hold));
+            UpdateHoldLabel(iv, hold);
 
             var remove = UiKit.Button(row, "삭제", 12, Palette.Card, Palette.SubText, () =>
             {
@@ -349,32 +346,66 @@ namespace BlackWhale.UI.View
             UiKit.Place((RectTransform)remove.transform, new Vector2(1, 0.5f), new Vector2(1, 0.5f), Vector2.zero, new Vector2(48, 30));
         }
 
-        private void Stepper(RectTransform row, float x, string name, int value, System.Action minus, System.Action plus)
+        /// <summary>날짜 직접 입력 칸(0~30 정수). 입력할 때마다 초안에 반영하고 검사 결과만 바로 갱신한다.
+        /// 범위를 벗어난 값도 그대로 두고 오류 문구로 알려 준다(최종 판정은 서버).</summary>
+        private void DayInput(RectTransform row, float x, string name, System.Func<int> get, System.Action<int> set)
         {
             var label = UiKit.Label(row, name, 13, Palette.Text, TextAnchor.MiddleLeft);
             UiKit.Place(label.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(x, 0), new Vector2(34, 34));
-            var m = UiKit.Button(row, "◀", 12, Palette.Disabled, Palette.Text, () => { minus(); Refresh(); });
-            UiKit.Place((RectTransform)m.transform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(x + 34, 0), new Vector2(28, 30));
-            var v = UiKit.Label(row, "<b>" + value + "</b>일", 15, Palette.Text);
-            UiKit.Place(v.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(x + 62, 0), new Vector2(50, 34));
-            var p = UiKit.Button(row, "▶", 12, Palette.Disabled, Palette.Text, () => { plus(); Refresh(); });
-            UiKit.Place((RectTransform)p.transform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(x + 112, 0), new Vector2(28, 30));
+
+            var field = UiKit.NumberInput(row, get().ToString(), 15);
+            UiKit.Place((RectTransform)field.transform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(x + 36, 0), new Vector2(54, 30));
+            field.onValueChanged.AddListener(text =>
+            {
+                if (!int.TryParse(text, out var value)) return;
+                set(value);
+                UpdateOrderLive();
+            });
+            field.onEndEdit.AddListener(_ => field.text = get().ToString()); // 비우거나 잘못 입력하면 마지막 값으로 되돌림
+
+            var unit = UiKit.Label(row, "일", 13, Palette.SubText, TextAnchor.MiddleLeft);
+            UiKit.Place(unit.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(x + 94, 0), new Vector2(20, 34));
         }
 
-        /// <summary>진입일 이동: 보유일을 유지하되 청산일이 0~30, 보유 5~10일 안에 들도록 맞춘다.</summary>
-        private static void ShiftEntry(Interval iv, int delta)
+        private void UpdateOrderLive()
+        {
+            if (_draft == null || _orderMessage == null || _submitButton == null) return;
+            string error = _draft.Validate();
+            bool pending = _c.Store.HasPending(CommandTypes.SubmitInvestment);
+            bool can = error.Length == 0 && !pending;
+
+            _orderMessage.text = error.Length > 0 ? ErrorMessages.ToKorean(error)
+                : "날짜는 0~30일, 보유 5~10일. 확정 후에는 바꿀 수 없습니다. 시간 초과 시 50:50 · 각 0→5일로 자동 확정됩니다.";
+            _orderMessage.color = error.Length > 0 ? Palette.Up : Palette.SubText;
+            UiKit.SetButton(_submitButton, pending ? "확정 중…" : "주문 확정", can,
+                can ? Palette.Accent : Palette.Disabled, can ? Color.white : Palette.DisabledText);
+
+            foreach (var pair in _holdLabels) UpdateHoldLabel(pair.Key, pair.Value);
+            foreach (var pair in _orderCharts) DrawOrderChart(pair.Value, pair.Key);
+        }
+
+        private static void UpdateHoldLabel(Interval iv, Text hold)
         {
             int holding = iv.exitDay - iv.entryDay;
-            int entry = Mathf.Clamp(iv.entryDay + delta, UiRules.MinDay, UiRules.MaxDay - UiRules.MinHoldingDays);
-            iv.entryDay = entry;
-            iv.exitDay = Mathf.Clamp(entry + holding, entry + UiRules.MinHoldingDays,
-                Mathf.Min(entry + UiRules.MaxHoldingDays, UiRules.MaxDay));
+            bool ok = holding >= UiRules.MinHoldingDays && holding <= UiRules.MaxHoldingDays;
+            hold.text = "보유 " + holding + "일";
+            hold.color = ok ? Palette.SubText : Palette.Up;
         }
 
-        private static void ShiftExit(Interval iv, int delta)
+        private void DrawOrderChart(LineChartGraphic chart, string companyId)
         {
-            iv.exitDay = Mathf.Clamp(iv.exitDay + delta, iv.entryDay + UiRules.MinHoldingDays,
-                Mathf.Min(iv.entryDay + UiRules.MaxHoldingDays, UiRules.MaxDay));
+            var company = _c.Store.View?.companies?.FirstOrDefault(c => c.companyId == companyId);
+            int cap = GraphSeriesBuilder.AxisLimitBps(companyId);
+            chart.Clear();
+            chart.SetRange(0, UiRules.MaxDay, -cap, cap);
+            foreach (var locked in GraphSeriesBuilder.LockedRanges(company))
+                chart.AddBand(locked.StartDay - 0.5f, locked.EndDay + 0.5f, Palette.Locked);
+            foreach (var iv in _draft.IntervalsOf(companyId))
+                if (iv.exitDay > iv.entryDay)
+                    chart.AddBand(Mathf.Clamp(iv.entryDay, 0, UiRules.MaxDay), Mathf.Clamp(iv.exitDay, 0, UiRules.MaxDay), new Color(0.15f, 0.39f, 0.92f, 0.18f));
+            chart.AddHLine(0, Palette.Grid);
+            foreach (var seg in GraphSeriesBuilder.Segments(company))
+                chart.AddSeries(seg.Select(p => new Vector2(p.Day, p.Bps)).ToList(), Palette.Text, 2f, 3f);
         }
 
         // ------------------------------------------------------------------

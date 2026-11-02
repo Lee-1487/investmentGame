@@ -207,6 +207,33 @@ namespace BlackWhale.UI.View
             return button;
         }
 
+        /// <summary>정수만 받는 입력 칸(최대 2자리).</summary>
+        public static InputField NumberInput(Transform parent, string text, int fontSize)
+        {
+            // 바깥(테두리 색) 안에 흰 칸을 겹쳐 테두리처럼 보이게 한다
+            var bg = Panel(parent, "NumberInput", Palette.CardBorder, rounded: true, raycast: true);
+            var inner = Panel(bg.transform, "Inner", Color.white, rounded: true);
+            Stretch(inner.rectTransform, 1, 1, 1, 1);
+
+            var value = Label(inner.transform, "", fontSize, Palette.Text);
+            value.supportRichText = false; // InputField 요구사항
+            value.horizontalOverflow = HorizontalWrapMode.Overflow;
+            Stretch(value.rectTransform, 6, 2, 6, 2);
+
+            var placeholder = Label(inner.transform, "0~30", fontSize - 3, Palette.DisabledText);
+            Stretch(placeholder.rectTransform, 6, 2, 6, 2);
+
+            var field = bg.gameObject.AddComponent<InputField>();
+            field.targetGraphic = bg;
+            field.textComponent = value;
+            field.placeholder = placeholder;
+            field.contentType = InputField.ContentType.IntegerNumber;
+            field.lineType = InputField.LineType.SingleLine;
+            field.characterLimit = 2;
+            field.text = text;
+            return field;
+        }
+
         public static Text LabelOf(Button button) => button.GetComponentInChildren<Text>();
 
         public static void SetButton(Button button, string label, bool interactable, Color background, Color textColor)
