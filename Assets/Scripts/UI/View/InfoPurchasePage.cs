@@ -194,18 +194,18 @@ namespace BlackWhale.UI.View
                 if (GraphSeriesBuilder.TryGetSource(company, k, out var source))
                 {
                     bool purchased = source == BundleSources.Purchased;
-                    UiKit.SetButton(b, range + "\n" + (purchased ? "구매함" : "공개"), false,
+                    UiKit.SetButton(b, range, false,
                         purchased ? Palette.AccentSoft : Palette.Disabled,
                         purchased ? Palette.Accent : Palette.SubText);
                 }
                 else if (_c.Store.IsPurchasePending(_companyId, k))
                 {
-                    UiKit.SetButton(b, range + "\n구매 중…", false, Palette.AccentSoft, Palette.Accent);
+                    UiKit.SetButton(b, range, false, Palette.AccentSoft, Palette.Accent);
                 }
                 else
                 {
                     bool can = infoPhase && coins > 0;
-                    UiKit.SetButton(b, can ? range : range + "\n미열람", can,
+                    UiKit.SetButton(b, range, can,
                         can ? Palette.Accent : Palette.Disabled,
                         can ? Color.white : Palette.DisabledText);
                 }
