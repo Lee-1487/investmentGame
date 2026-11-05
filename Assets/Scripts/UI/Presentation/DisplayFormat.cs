@@ -22,6 +22,13 @@ namespace BlackWhale.UI.Presentation
         public static string SignedMoney(long amount)
             => (amount > 0 ? "+" : "") + Money(amount);
 
+        /// <summary>남은 시간 표시: 90 → "1:30", 4 → "0:04". 서버 마감에서 계산한 값을 보여 줄 뿐 진행하지 않는다.</summary>
+        public static string Clock(int seconds)
+        {
+            if (seconds < 0) seconds = 0;
+            return (seconds / 60).ToString(Inv) + ":" + (seconds % 60).ToString("00", Inv);
+        }
+
         public static string Weight(int weightBps) => (weightBps / 100).ToString(Inv) + "%";
     }
 }

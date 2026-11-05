@@ -188,6 +188,8 @@ namespace BlackWhale.UI.View
             UiKit.Anchor(info, 0.5f, 0, 1, 1, 4, 0);
 
             _investmentPage = new InvestmentPage(invest, _c, _lobby);
+            // 후보 확정 바의 남은 초: 서버 마감(현재 차례 4초)을 PhaseClock으로 추정한 값. 진행 판정은 서버.
+            _investmentPage.RemainingSeconds = () => _clock.RemainingSeconds(Store.Public, Time.realtimeSinceStartup);
             _infoPage = new InfoPurchasePage(info, _c);
 
             _pageHint = UiKit.Label(ScreenRect, "", 11, Palette.SubText, TextAnchor.LowerCenter);
@@ -374,11 +376,28 @@ namespace BlackWhale.UI.View
             ShowBanner("<color=#DC2626>" + ErrorMessages.ToKorean(error.ErrorCode) + "</color>");
         }
 
+        // 순위 칸 애니메이션용: 직전에 보여 준 순서와 총자산
+        private List<string> _shownOrder = new List<string>();
+        private readonly Dictionary<string, long> _shownAssets = new Dictionary<string, long>();
+
+        /// <summary>정산 결과로 순서가 바뀌면 각 칸이 이전 자리에서 새 자리로 미끄러지듯 이동하고,
+        /// 총자산은 이전 값에서 새 값으로 세어 올라간다(표시 효과만, 값은 서버 결과 그대로).</summary>
         private void RefreshRanks()
         {
             var rows = RankRows();
+            var order = rows.Select(r => r.PlayerId).ToList();
+            bool reordered = _shownOrder.Count > 0 && rows.Any(r => r.Rank > 0) && !order.SequenceEqual(_shownOrder);
             for (int i = 0; i < _slots.Count; i++)
-                _slots[i].Set(i < rows.Count ? rows[i] : null, _c.LocalPlayerId);
+            {
+                var row = i < rows.Count ? rows[i] : null;
+                int from = reordered && row != null ? _shownOrder.IndexOf(row.PlayerId) : -1;
+                long? prevAssets = null;
+                if (row?.Score != null && _shownAssets.TryGetValue(row.PlayerId, out var before)) prevAssets = before;
+                _slots[i].Set(row, _c.LocalPlayerId, from, prevAssets, i * 0.08f);
+            }
+            _shownOrder = order;
+            foreach (var r in rows)
+                if (r.Score != null) _shownAssets[r.PlayerId] = r.Score.totalAssets;
         }
 
         /// <summary>정산 결과가 있으면 순위대로, 없으면 참가자 순서대로.</summary>
@@ -428,6 +447,7 @@ namespace BlackWhale.UI.View
         {
             if (_c == null) return;
             UpdateTimer();
+            if (Store.Public?.phase == Protocol.Selection) _investmentPage.Tick();
             UpdateBanner();
 
             _pageT = Mathf.MoveTowards(_pageT, _pageTarget, Time.unscaledDeltaTime * 4f);
@@ -468,7 +488,7 @@ namespace BlackWhale.UI.View
             string what = s.phase == Protocol.Selection
                 ? (string.IsNullOrEmpty(s.currentPlayerId) ? "선택" : s.currentPlayerId + " 차례")
                 : PhaseNames.Korean(s.phase);
-            _timerText.text = "<size=12>" + what + "</size>\n<size=34><b>" + remain + "</b></size><size=13>초</size>\n<size=11>"
+            _timerText.text = "<size=12>" + what + "</size>\n<size=34><b>" + DisplayFormat.Clock(remain) + "</b></size>\n<size=11>"
                               + (remain == 0 ? "서버 진행 대기" : "남은 시간") + "</size>";
             _timerText.color = remain <= 5 && remain > 0 ? Palette.Up : Palette.Text;
 
@@ -662,36 +682,69 @@ namespace BlackWhale.UI.View
 
     internal sealed class RankSlot
     {
+        private readonly int _index;
         private readonly Image _border;
-        private readonly Text _text;
+        private readonly Text _text, _assets, _job;
         private readonly RectTransform _rt;
         private RankRow _row;
+        private string _delta = "";
+
+        public static Vector2 PositionOf(int index) => new Vector2(0, -64 - index * 96);
 
         public RankSlot(RectTransform column, int index, TabletView owner)
         {
+            _index = index;
             var bg = UiKit.Panel(column, "RankSlot" + (index + 1), Palette.Card, rounded: true, raycast: true);
             _rt = bg.rectTransform;
-            UiKit.Place(_rt, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, -64 - index * 96), new Vector2(84, 86));
+            UiKit.Place(_rt, new Vector2(0.5f, 1), new Vector2(0.5f, 1), PositionOf(index), new Vector2(84, 86));
             _border = UiKit.Panel(_rt, "Border", Palette.CardBorder, rounded: true);
             UiKit.Stretch(_border.rectTransform);
             var inner = UiKit.Panel(_border.transform, "Inner", Palette.Card, rounded: true);
             UiKit.Stretch(inner.rectTransform, 3, 3, 3, 3);
-            _text = UiKit.Label(inner.transform, "", 13, Palette.Text);
-            UiKit.Stretch(_text.rectTransform, 2, 2, 2, 2);
+            _text = UiKit.Label(inner.transform, "", 13, Palette.Text, TextAnchor.UpperCenter);
+            UiKit.Stretch(_text.rectTransform, 2, 5, 2, 30);
+            _assets = UiKit.Label(inner.transform, "", 11, Palette.Text, TextAnchor.MiddleCenter);
+            UiKit.Stretch(_assets.rectTransform, 2, 0, 2, 0);
+            _assets.rectTransform.anchorMax = new Vector2(1, 0);
+            _assets.rectTransform.offsetMin = new Vector2(2, 15);
+            _assets.rectTransform.offsetMax = new Vector2(-2, 30);
+            _job = UiKit.Label(inner.transform, "직업 미정", 10, Palette.SubText, TextAnchor.MiddleCenter);
+            UiKit.Stretch(_job.rectTransform, 2, 0, 2, 0);
+            _job.rectTransform.anchorMax = new Vector2(1, 0);
+            _job.rectTransform.offsetMin = new Vector2(2, 2);
+            _job.rectTransform.offsetMax = new Vector2(-2, 15);
 
             UiKit.Hover(bg.gameObject, () => owner.ShowPlayerPopup(_row, _rt), owner.HidePopup);
         }
 
-        public void Set(RankRow row, string localPlayerId)
+        /// <param name="fromIndex">이번에 순서가 바뀌었으면 이 플레이어가 있던 칸 번호, 아니면 -1</param>
+        /// <param name="prevAssets">직전에 보여 준 총자산(없으면 null → 세는 효과 없음)</param>
+        public void Set(RankRow row, string localPlayerId, int fromIndex = -1, long? prevAssets = null, float delay = 0f)
         {
+            bool samePlayer = _row != null && row != null && _row.PlayerId == row.PlayerId;
             _row = row;
             _rt.gameObject.SetActive(row != null);
             if (row == null) return;
+
+            if (fromIndex >= 0 && fromIndex != _index)
+            {
+                bool up = fromIndex > _index;
+                _delta = up ? " <color=#DC2626>▲" + (fromIndex - _index) + "</color>" : " <color=#2563EB>▼" + (_index - fromIndex) + "</color>";
+                if (up) _rt.SetAsLastSibling(); // 올라오는 칸이 위에 보이게
+                UiAnim.Slide(_rt, PositionOf(fromIndex), PositionOf(_index), UiAnim.SlideSeconds, delay);
+                if (up) UiAnim.Pulse(_rt, delay + UiAnim.SlideSeconds * 0.8f, 1.1f);
+            }
+            else if (fromIndex >= 0 || !samePlayer) _delta = "";
+
             _border.color = Palette.Player(row.PlayerId);
             string rank = row.Rank > 0 ? row.Rank + "등" : "-";
             string me = row.PlayerId == localPlayerId ? " (나)" : "";
             string conn = row.Connected ? "" : "\n<color=#DC2626>연결 끊김</color>";
-            _text.text = "<b>" + rank + "</b>\n" + row.PlayerId + me + "\n<size=11>직업 미정</size>" + conn;
+            _text.text = "<b>" + rank + "</b>" + _delta + "\n" + row.PlayerId + me + conn;
+
+            if (row.Score == null) { _assets.text = ""; return; }
+            long now = row.Score.totalAssets;
+            UiAnim.Count(_assets, prevAssets ?? now, now, v => DisplayFormat.Money(v), UiAnim.CountSeconds, delay);
         }
     }
 }

@@ -53,6 +53,8 @@ namespace BlackWhale.UI.State
 
         public string LocalPlayerId { get; private set; } = "";
         public PublicState Public { get; private set; }
+        /// <summary>기업 선택 차례 순서(관찰 기반). 화면 표시 전용.</summary>
+        public BlackWhale.UI.Presentation.SelectionOrderTracker SelectionOrder { get; } = new BlackWhale.UI.Presentation.SelectionOrderTracker();
         public PlayerView View { get; private set; }
         public Scoreboard Scoreboard { get; private set; }
         /// <summary>주문 잠금 후 A가 공개한 전체 시장(MARKET_REVEAL). 그 전에는 null.</summary>
@@ -157,6 +159,7 @@ namespace BlackWhale.UI.State
 
             BeginTurnIfNewer(state.turn);
             Public = DtoCopy.Copy(state);
+            SelectionOrder.Observe(Public); // 선택 차례 기록(몇 번째 = 누구)
             Raise();
             return ApplyOutcome.Applied;
         }
