@@ -16,6 +16,8 @@ namespace BlackWhale.UI.View
         private AuctionModel _m;
         private Text _validation, _score;
         private Button _confirm;
+        private Text _clock;
+        private bool _validInput = true;
 
         public Action<long> BidChanged;
         public Action Confirm;
@@ -34,10 +36,12 @@ namespace BlackWhale.UI.View
             if (m == null) return;
 
             ScreenKit.Title(_root, "<b>" + m.Turn + "턴 입찰</b>   <size=16>" + AuctionCatalog.Title(m.Kind) + "</size>");
-            ScreenKit.Chip(_root, m.Result != null ? "마감" : "남은 시간 " + DisplayFormat.Clock(m.SecondsLeft),
+            _validInput = true;
+            _clock = ScreenKit.Chip(_root, m.Result != null ? "마감" : "남은 시간 " + DisplayFormat.Clock(m.SecondsLeft),
                 m.Result != null ? Palette.Disabled : (m.SecondsLeft <= 5 ? Palette.Up : ScreenKit.Ink), m.Result != null ? Palette.SubText : Color.white,
-                new Vector2(1, 1), new Vector2(1, 1), new Vector2(-4, -4), 130, 28, 14);
-            var count = UiKit.Label(_root, "제출 " + m.SubmittedCount + "/" + m.PlayerCount + "명 <size=11>(금액은 비공개)</size>", 13, Palette.SubText, TextAnchor.MiddleRight);
+                new Vector2(1, 1), new Vector2(1, 1), new Vector2(-4, -4), 130, 28, 14).GetComponentInChildren<Text>();
+            var count = UiKit.Label(_root, m.Result != null ? "공개된 입찰 결과" : m.SubmittedCount < 0 ? (m.Submitted ? "내 입찰 제출됨 · 금액 비공개" : "내 입찰 미제출 · 금액 비공개")
+                : "제출 " + m.SubmittedCount + "/" + m.PlayerCount + "명 <size=11>(금액은 비공개)</size>", 13, Palette.SubText, TextAnchor.MiddleRight);
             UiKit.Place(count.rectTransform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-142, -4), new Vector2(260, 28));
 
             var left = UiKit.Rect(_root, "Prize");
@@ -74,7 +78,7 @@ namespace BlackWhale.UI.View
                 "<size=20><b>" + AuctionCatalog.Title(m.Kind) + "</b></size>\n\n" + what + "\n\n" +
                 "<size=13><color=#374151>" +
                 "· " + AuctionCatalog.Rule(m.Kind) + "\n" +
-                "· 입찰 범위: 0 ~ 턴 시작 자산의 10% (" + DisplayFormat.Money(m.MaxBid) + ")\n" +
+                (m.ShowBidLimit ? "· 입찰 범위: 0 ~ 턴 시작 자산의 10% (" + DisplayFormat.Money(m.MaxBid) + ")\n" : "") +
                 "· 한 번 확정하면 바꿀 수 없고, 마감 전에는 다른 사람 금액을 볼 수 없습니다.\n" +
                 "· 금액이 같으면 시작 자산이 낮은 사람이 앞섭니다.\n" +
                 "· 입찰 비용은 이번 턴 투자금에서 빠집니다.</color></size>",
@@ -96,6 +100,7 @@ namespace BlackWhale.UI.View
             // 금액 입력 + 빠른 버튼
             var row = ScreenKit.TopStrip(inner, "Amount", 50, 44, 18, 18);
             var field = ScreenKit.MoneyInput(row, m.Bid.ToString(), 20);
+            field.name = "BidAmount";
             UiKit.Place((RectTransform)field.transform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), Vector2.zero, new Vector2(200, 44));
             field.interactable = !m.Submitted;
             field.onValueChanged.AddListener(OnTyped);
@@ -180,18 +185,19 @@ namespace BlackWhale.UI.View
         private void OnTyped(string text)
         {
             if (_m == null || _m.Submitted) return;
-            long.TryParse(string.IsNullOrEmpty(text) ? "0" : text, out var bid);
+            _validInput = long.TryParse(string.IsNullOrEmpty(text) ? "0" : text, out var bid);
             Revalidate(bid);
-            BidChanged?.Invoke(bid);
+            if (_validInput) { _m.Bid = bid; BidChanged?.Invoke(bid); }
         }
 
         private void Revalidate(long bid)
         {
             if (_m == null) return;
-            string error = AuctionRules.Validate(bid, _m.TurnStartAssets);
+            string error = !_validInput ? "유효한 정수 금액을 입력하세요." : bid < 0 ? "0 이상으로 입력하세요."
+                : bid > _m.MaxBid ? "최대 " + DisplayFormat.Money(_m.MaxBid) + "까지 입찰할 수 있습니다." : "";
             if (_validation != null) _validation.text = error;
             if (_score != null)
-                _score.text = "입찰 점수 " + DisplayFormat.Money(AuctionRules.Score(bid, _m.UseFreePass) / 100)
+                _score.text = "입찰 점수 " + ((decimal)bid * (_m.UseFreePass ? 1.25m : 1m)).ToString("N0")
                               + (_m.UseFreePass ? " (입찰액 × 1.25)" : " (= 입찰액)") + " · 실제 비용은 입찰액 그대로";
             if (_confirm != null)
             {
@@ -201,19 +207,22 @@ namespace BlackWhale.UI.View
             }
         }
 
+        public void UpdateSeconds(int seconds)
+        { if (_clock != null && _m?.Result == null) _clock.text = "남은 시간 " + DisplayFormat.Clock(seconds); }
+
         private static void BuildResult(RectTransform area, AuctionModel m)
         {
             var frame = ScreenKit.Card(area, "ResultCard", out var inner);
             UiKit.Stretch(frame);
             var r = m.Result;
 
-            string myLine = "내 입찰: <b>" + (m.Submitted ? DisplayFormat.Money(m.Bid) : "미제출(0)") + "</b>";
+            string myLine = m.OwnBidKnown ? "내 입찰: <b>" + (m.Submitted ? DisplayFormat.Money(m.Bid) : "미제출(0)") + "</b>" : "이전 입찰 금액은 표시하지 않습니다.";
             if (m.Kind != AuctionKind.SeatPriority)
             {
                 string body = r.NoWinner
                     ? "<size=28><b>유찰</b></size>\n\n모두 0을 불러 아무도 받지 않았습니다. 비용도 없습니다."
                     : "<size=14><color=#6B7280>낙찰</color></size>\n<size=30><b>" + r.WinnerName + "</b></size>\n<size=18>"
-                      + DisplayFormat.Money(r.WinningBid) + " 지불</size>";
+                      + (r.AmountsPublic ? DisplayFormat.Money(r.WinningBid) + " 지불" : "낙찰 금액 비공개") + "</size>";
                 var text = UiKit.Label(inner, body + "\n\n<size=13>" + myLine + "</size>", 16, Palette.Text, TextAnchor.MiddleCenter);
                 UiKit.Stretch(text.rectTransform, 20, 20, 20, 20);
                 return;
@@ -236,7 +245,7 @@ namespace BlackWhale.UI.View
                 UiKit.Place(band.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(52, 0), new Vector2(4, 28));
                 var name = UiKit.Label(row, "<b>" + s.Name + "</b>" + (s.UsedFreePass ? "  <size=11><color=#CA8A04>프리패스 사용</color></size>" : ""), 15, Palette.Text, TextAnchor.MiddleLeft);
                 UiKit.Stretch(name.rectTransform, 64, 0, 160, 0);
-                var paid = UiKit.Label(row, DisplayFormat.Money(s.Paid) + " 지불", 14, Palette.Text, TextAnchor.MiddleRight);
+                var paid = UiKit.Label(row, r.AmountsPublic ? DisplayFormat.Money(s.Paid) + " 지불" : "금액 비공개", 14, Palette.Text, TextAnchor.MiddleRight);
                 UiKit.Stretch(paid.rectTransform, 0, 0, 12, 0);
                 y += 52;
             }

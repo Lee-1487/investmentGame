@@ -6,6 +6,8 @@ namespace BlackWhale.UI.View
     public sealed class LobbyActions
     {
         public Action FillBots, RemoveBots, Leave;
+        public Func<bool, bool> SetPaused;
+        public Func<BlackWhale.UI.Presentation.BotDifficulty, bool> SetDifficulty;
         public bool Busy;
         public string Status = "";
     }

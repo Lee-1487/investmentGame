@@ -1,10 +1,10 @@
 // 태블릿형 게임 화면(REQ-018). 배치는 팀 스케치 기준:
-//  - 위 가장자리: 아이템 상점이 위에서 내려옴(후속 기능, 확정 가격만 표시)
+//  - 위 가장자리: 서버 상태로 만든 D 아이템 상점 화면(구매는 준비 중)
 //  - 왼쪽 가장자리: 매수 창으로 넘김 / 오른쪽 가장자리: 정보 구매 창으로 넘김
-//  - 아래 가장자리: 보유 아이템(후속)
+//  - 아래 가장자리: 서버가 지급한 보유 아이템
 //  - 상단 중앙: 전광판 주요 알림(5초 표시 후 사라짐)
 //  - 왼쪽 열: 1~4등 칸. 마우스를 올리면 그 플레이어의 이번 턴 수익률·누적 손익·추이(주변 암전)
-//  - 오른쪽: 남은 시간 + 완료 버튼 / 오른쪽 아래: 본인 직업 카드(마우스: 전체 추이, 클릭: 고유 능력-후속)
+//  - 오른쪽: 남은 시간 + 완료 버튼 / 오른쪽 아래: 내 능력 상태 카드
 // 화면은 저장소(ClientStateStore) 값만 표시하고, 버튼은 GameClientController로 의도만 보낸다.
 using System.Collections.Generic;
 using System.Linq;
@@ -23,6 +23,8 @@ namespace BlackWhale.UI.View
 
         private GameClientController _c;
         private LobbyActions _lobby;
+        private ProgressionPanel _features;
+        private Text _abilityLabel;
         private ClientStateStore Store => _c.Store;
 
         public RectTransform Root { get; private set; }
@@ -50,13 +52,12 @@ namespace BlackWhale.UI.View
         private string _clockKey = "";
         private Text _timerText;
         private Button _doneButton;
+        private Button _pauseButton;
+        private RectTransform _pauseOverlay;
 
         // 오버레이
         private Image _dim;
         private RectTransform _popup;
-        private RectTransform _shop, _inventory;
-        private float _shopT, _shopTarget, _invT, _invTarget;
-        private Text _shopBody;
 
         // 알림 감지용 이전 값
         private string _lastPhaseKey = "";
@@ -116,7 +117,8 @@ namespace BlackWhale.UI.View
             BuildRightColumn();
             BuildBanner();
             BuildOverlays();
-            ProgressionPanel.Create(ScreenRect, _c);
+            _features = ProgressionPanel.Create(Root, _c, _lobby);
+            BuildPauseControls();
             if (_lobby?.Leave != null)
             {
                 var leave = UiKit.Button(Root, "방 나가기", 12, Palette.Card, Palette.Text, _lobby.Leave);
@@ -131,6 +133,26 @@ namespace BlackWhale.UI.View
             Edge("Edge_Bottom", 0, 0, 1, 0, Vector2.zero, new Vector2(0, EdgeSize), "보유 아이템 열기", ToggleInventory);
             Edge("Edge_Left", 0, 0, 0, 1, new Vector2(0, EdgeSize), new Vector2(EdgeSize, -EdgeSize), "매수 창으로", () => ShowPage(0));
             Edge("Edge_Right", 1, 0, 1, 1, new Vector2(-EdgeSize, EdgeSize), new Vector2(0, -EdgeSize), "정보 구매 창으로", () => ShowPage(1));
+        }
+
+        private void BuildPauseControls()
+        {
+            _pauseOverlay = UiKit.Panel(Root, "GamePausedOverlay", new Color(0.08f, 0.1f, 0.15f, .85f), raycast: true).rectTransform;
+            UiKit.Stretch(_pauseOverlay, 42, 40, 42, 40);
+            var box = UiKit.Panel(_pauseOverlay, "PauseMessage", Palette.Card, rounded: true).rectTransform;
+            UiKit.Place(box, new Vector2(.5f, .5f), new Vector2(.5f, .5f), Vector2.zero, new Vector2(480, 180));
+            var message = UiKit.Label(box, "<b>게임 일시정지</b>\n\n모든 참가자의 타이머와 게임 진행이 멈췄습니다.\n방장이 재개하면 이어서 진행합니다.", 17, Palette.Text);
+            UiKit.Stretch(message.rectTransform, 16, 12, 16, 60);
+            if (_c.IsHost && _lobby?.SetPaused != null)
+            {
+                var resume = UiKit.Button(box, "게임 재개", 15, Palette.Accent, Color.white, () => _lobby.SetPaused(false));
+                resume.name = "ResumeGame";
+                UiKit.Place((RectTransform)resume.transform, new Vector2(.5f, 0), new Vector2(.5f, 0), new Vector2(0, 14), new Vector2(160, 34));
+                _pauseButton = UiKit.Button(Root, "일시정지", 12, Palette.Card, Palette.Text, () => _lobby.SetPaused(!Store.Public.paused));
+                _pauseButton.name = "PauseGame";
+                UiKit.Place((RectTransform)_pauseButton.transform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(42, -3), new Vector2(100, 30));
+            }
+            _pauseOverlay.gameObject.SetActive(false);
         }
 
         private void Edge(string name, float aMinX, float aMinY, float aMaxX, float aMaxY,
@@ -191,7 +213,7 @@ namespace BlackWhale.UI.View
             _investmentPage = new InvestmentPage(invest, _c, _lobby);
             // 후보 확정 바의 남은 초: 서버 마감(현재 차례 4초)을 PhaseClock으로 추정한 값. 진행 판정은 서버.
             _investmentPage.RemainingSeconds = () => _clock.RemainingSeconds(Store.Public, Time.realtimeSinceStartup);
-            _infoPage = new InfoPurchasePage(info, _c);
+            _infoPage = new InfoPurchasePage(info, _c, ScreenRect);
 
             _pageHint = UiKit.Label(ScreenRect, "", 11, Palette.SubText, TextAnchor.LowerCenter);
             _pageHint.rectTransform.anchorMin = new Vector2(0, 0);
@@ -225,10 +247,10 @@ namespace BlackWhale.UI.View
             UiKit.Stretch(border.rectTransform);
             var inner = UiKit.Panel(border.transform, "Inner", Palette.Card, rounded: true);
             UiKit.Stretch(inner.rectTransform, 3, 3, 3, 3);
-            var t = UiKit.Label(inner.transform, "<b>본인의 직업</b>\n\n<size=12>" + _c.LocalPlayerId + "\n능력 미정</size>", 14, Palette.Text);
-            UiKit.Stretch(t.rectTransform, 4, 4, 4, 4);
+            _abilityLabel = UiKit.Label(inner.transform, "", 14, Palette.Text);
+            UiKit.Stretch(_abilityLabel.rectTransform, 4, 4, 4, 4);
             UiKit.Hover(job.gameObject, () => ShowAllPlayersPopup(job.rectTransform), HidePopup);
-            UiKit.Click(job.gameObject, () => ShowBanner("고유 능력은 후속 구현 예정입니다. (rules-v2 확정 효과로 추가)"));
+            UiKit.Click(job.gameObject, () => { HidePopup(); _features?.OpenAbility(); });
         }
 
         private void BuildBanner()
@@ -254,32 +276,6 @@ namespace BlackWhale.UI.View
 
         private void BuildOverlays()
         {
-            // 상점: 위에서 내려옴
-            _shop = UiKit.Panel(ScreenRect, "ShopDrop", Palette.Card, rounded: true, raycast: true).rectTransform;
-            _shop.anchorMin = new Vector2(0, 1);
-            _shop.anchorMax = new Vector2(1, 1);
-            _shop.pivot = new Vector2(0.5f, 0);
-            _shop.sizeDelta = new Vector2(-232, 250);
-            var shopTitle = UiKit.Label(_shop, "<b>아이템 상점</b>   <size=12>가격 = 턴 시작 자산 S × 비율 (0 방향 버림, 최소 1) · 턴당 1개 · 구매 기능은 후속 구현</size>",
-                15, Palette.Text, TextAnchor.UpperLeft);
-            UiKit.Stretch(shopTitle.rectTransform, 16, 12, 16, 0);
-            _shopBody = UiKit.Label(_shop, "", 14, Palette.Text, TextAnchor.UpperLeft);
-            UiKit.Stretch(_shopBody.rectTransform, 16, 42, 16, 40);
-            var closeShop = UiKit.Button(_shop, "닫기 ▲", 13, Palette.Disabled, Palette.Text, ToggleShop);
-            UiKit.Place((RectTransform)closeShop.transform, new Vector2(1, 0), new Vector2(1, 0), new Vector2(-12, 8), new Vector2(90, 28));
-
-            // 인벤토리: 아래에서 올라옴
-            _inventory = UiKit.Panel(ScreenRect, "InventoryDrop", Palette.Card, rounded: true, raycast: true).rectTransform;
-            _inventory.anchorMin = new Vector2(0, 0);
-            _inventory.anchorMax = new Vector2(1, 0);
-            _inventory.pivot = new Vector2(0.5f, 1);
-            _inventory.sizeDelta = new Vector2(-232, 150);
-            var invText = UiKit.Label(_inventory, "<b>보유 아이템</b> (최대 3개)\n\n<color=#6B7280>보유한 아이템이 없습니다. 아이템 사용은 후속 구현입니다.\n금융형은 투자 결정 단계, 정보·공격형은 정보 탐색 단계에서 사용합니다.</color>",
-                14, Palette.Text, TextAnchor.UpperLeft);
-            UiKit.Stretch(invText.rectTransform, 16, 12, 16, 12);
-            var closeInv = UiKit.Button(_inventory, "닫기 ▼", 13, Palette.Disabled, Palette.Text, ToggleInventory);
-            UiKit.Place((RectTransform)closeInv.transform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-12, -8), new Vector2(90, 28));
-
             // 암전 + 팝업
             _dim = UiKit.Panel(ScreenRect, "Dim", Palette.Dim);
             UiKit.Stretch(_dim.rectTransform);
@@ -297,16 +293,24 @@ namespace BlackWhale.UI.View
         {
             var s = Store.Public;
             DetectNotifications();
+            bool paused = s?.paused == true && string.IsNullOrEmpty(Store.EndReason) && s.phase != Protocol.Ended;
+            _pauseOverlay.gameObject.SetActive(paused);
+            if (_pauseButton != null)
+            {
+                bool can = s != null && s.phase != Protocol.Lobby && s.phase != Protocol.Ended && string.IsNullOrEmpty(Store.EndReason);
+                UiKit.SetButton(_pauseButton, paused ? "게임 재개" : "일시정지", can, paused ? Palette.AccentSoft : Palette.Card, Palette.Text);
+            }
 
             _turnLabel.text = s == null ? "" : s.turn + "턴\n<size=11>" + PhaseNames.Korean(s.phase) + "</size>";
             RefreshRanks();
             _investmentPage.Refresh();
             _infoPage.Refresh();
-            RefreshShop();
+            var ability = LiveScreenModels.AbilityId(Store.View?.ability?.selectedId);
+            _abilityLabel.text = "<b>내 고유능력</b>\n\n" + (AbilityCatalog.Get(ability)?.Name ?? "선택 대기") + "\n<size=11>클릭하여 상태 보기</size>";
 
             if (s != null)
             {
-                string key = s.turn + "|" + s.phase + "|" + s.selectionIndex + "|" + s.serverElapsedSeconds;
+                string key = s.turn + "|" + s.phase + "|" + s.selectionIndex + "|" + s.serverElapsedSeconds + "|" + s.paused;
                 if (key != _clockKey)
                 {
                     _clockKey = key;
@@ -323,8 +327,12 @@ namespace BlackWhale.UI.View
                 string phaseKey = s.turn + "|" + s.phase;
                 if (phaseKey != _lastPhaseKey)
                 {
+                    ClearBanners();
+                    _lastCoins = -1;
+                    _lastSelector = "";
                     _lastPhaseKey = phaseKey;
                     if (s.phase == Protocol.Lobby) ShowBanner("대기실에 입장했습니다. 준비를 누르세요.");
+                    else if (s.phase == Protocol.Ended && !string.IsNullOrEmpty(Store.EndReason)) ShowBanner(ErrorMessages.ToKorean(Store.EndReason));
                     else if (s.phase != Protocol.Ended) ShowBanner("<b>" + s.turn + "턴 · " + PhaseNames.Korean(s.phase) + "</b> 단계가 시작되었습니다.");
                     if (s.phase == Protocol.Info || s.phase == Protocol.Reveal) ShowPage(1);
                     if (s.phase == Protocol.Lobby || s.phase == Protocol.Selection || s.phase == Protocol.Investment || s.phase == Protocol.Result) ShowPage(0);
@@ -332,6 +340,7 @@ namespace BlackWhale.UI.View
 
                 if (s.phase == Protocol.Selection && s.currentPlayerId != _lastSelector)
                 {
+                    ClearBanners();
                     _lastSelector = s.currentPlayerId;
                     if (s.currentPlayerId == _c.LocalPlayerId) ShowBanner("<color=#DC2626><b>내 차례입니다.</b></color> 기업을 선택하세요.");
                 }
@@ -340,21 +349,23 @@ namespace BlackWhale.UI.View
             var v = Store.View;
             if (v != null)
             {
-                if (_lastCoins >= 0 && v.coins < _lastCoins) ShowBanner("정보를 구매했습니다. 남은 코인 " + v.coins + "개");
+                if (_lastCoins >= 0 && v.coins < _lastCoins && s?.phase == Protocol.Info && v.turn == s.turn && v.phase == Protocol.Info)
+                    ShowBanner("정보를 구매했습니다. 남은 코인 " + v.coins + "개");
                 _lastCoins = v.coins;
             }
 
             if (Store.EndReason != _lastEndReason)
             {
                 _lastEndReason = Store.EndReason;
-                if (!string.IsNullOrEmpty(_lastEndReason)) ShowBanner(ErrorMessages.ToKorean(_lastEndReason));
+                if (!string.IsNullOrEmpty(_lastEndReason)) { ClearBanners(); ShowBanner(ErrorMessages.ToKorean(_lastEndReason)); }
             }
 
-            if (Store.OrderLocked && !_lastLocked) ShowBanner("주문이 확정되었습니다.");
+            if (Store.OrderLocked && !_lastLocked && (s?.phase == Protocol.Investment || s?.phase == Protocol.Reveal)) ShowBanner("주문이 확정되었습니다.");
             _lastLocked = Store.OrderLocked;
 
             var board = Store.Scoreboard;
-            if (board != null && board.turn != _lastBoardTurn && board.rows != null && board.rows.Length > 0)
+            if (board != null && board.turn != _lastBoardTurn && board.rows != null && board.rows.Length > 0
+                && board.turn == s?.turn && (s.phase == Protocol.Result || s.phase == Protocol.Ended))
             {
                 _lastBoardTurn = board.turn;
                 var top = board.rows.OrderBy(r => r.rank).First();
@@ -367,9 +378,9 @@ namespace BlackWhale.UI.View
 
         private void OnAutomatic(string resultType)
         {
-            if (resultType == CommandTypes.ResultOf(CommandTypes.SelectCompany))
+            if (resultType == CommandTypes.ResultOf(CommandTypes.SelectCompany) && Store.Public?.phase == Protocol.Selection)
                 ShowBanner("<color=#B45309>시간이 초과되어 기업이 자동 선택되었습니다.</color>");
-            else if (resultType == CommandTypes.ResultOf(CommandTypes.SubmitInvestment))
+            else if (resultType == CommandTypes.ResultOf(CommandTypes.SubmitInvestment) && (Store.Public?.phase == Protocol.Investment || Store.Public?.phase == Protocol.Reveal))
                 ShowBanner("<color=#B45309>시간이 초과되어 기본 주문(50:50 · 각 0→5일)으로 확정되었습니다.</color>");
         }
 
@@ -415,32 +426,6 @@ namespace BlackWhale.UI.View
             return players.Select(p => new RankRow { PlayerId = p.playerId, Rank = 0, Connected = p.connected }).ToList();
         }
 
-        private void RefreshShop()
-        {
-            long s = Store.View?.assets ?? 0;
-            (string name, string kind, int bps, string effect)[] items =
-            {
-                ("증폭기", "금융", 300, "선택한 본인 기업의 전체 구간 손익률 ×2"),
-                ("하락 파쇄기", "금융", 400, "선택한 본인 기업의 손익률 부호 반전"),
-                ("방패", "금융", 200, "-3~+3%면 +5%, -3% 미만이면 손실 절반"),
-                ("대폭발 탐지기", "금융", 500, "지정 구간 변화폭 15% 이상이면 +50%p"),
-                ("블랙박스 분석권", "정보", 200, "선택 기업의 미열람 1묶음 공개"),
-                ("정보 왜곡", "공격", 200, "대상의 유료 묶음 1개를 10초간 가림"),
-                ("정보 훔치기", "공격", 300, "대상의 유료 묶음 중 내 미열람 1개 복사"),
-                ("수익률 감소", "공격", 400, "상위 2명 중 1명, 정산 시 투자금 10% 차감"),
-            };
-            var sb = new System.Text.StringBuilder();
-            foreach (var it in items)
-            {
-                long price = s <= 0 ? 0 : System.Math.Max(1, s * it.bps / 10000);
-                sb.Append("<b>").Append(it.name).Append("</b> <size=11>[").Append(it.kind).Append("]</size>  ")
-                  .Append(it.bps / 100).Append("%")
-                  .Append(s > 0 ? " (현재 " + DisplayFormat.Money(price) + ")" : " (구매 불가)")
-                  .Append("  <color=#6B7280><size=12>").Append(it.effect).Append("</size></color>\n");
-            }
-            _shopBody.text = sb.ToString();
-        }
-
         // ------------------------------------------------------------------
         // 매 프레임: 타이머·전광판·슬라이드
         // ------------------------------------------------------------------
@@ -460,13 +445,7 @@ namespace BlackWhale.UI.View
                 ? "오른쪽 가장자리를 누르면 정보 구매 창으로 넘어갑니다"
                 : "왼쪽 가장자리를 누르면 매수 창으로 넘어갑니다";
 
-            _shopT = Mathf.MoveTowards(_shopT, _shopTarget, Time.unscaledDeltaTime * 5f);
-            _shop.anchoredPosition = new Vector2(0, -Mathf.SmoothStep(0, 1, _shopT) * 262f);
-            _shop.gameObject.SetActive(_shopT > 0.001f);
 
-            _invT = Mathf.MoveTowards(_invT, _invTarget, Time.unscaledDeltaTime * 5f);
-            _inventory.anchoredPosition = new Vector2(0, Mathf.SmoothStep(0, 1, _invT) * 162f);
-            _inventory.gameObject.SetActive(_invT > 0.001f);
         }
 
         private void UpdateTimer()
@@ -483,6 +462,14 @@ namespace BlackWhale.UI.View
                 _timerText.text = "<size=12>" + PhaseNames.Korean(s.phase) + "</size>\n<size=26><b>-</b></size>\n<size=11>시간 제한 없음</size>";
                 _timerText.color = Palette.Text;
                 UiKit.SetButton(_doneButton, "완료", false, Palette.Disabled, Palette.DisabledText);
+                return;
+            }
+
+            if (s.paused)
+            {
+                _timerText.text = "일시정지\n<size=34><b>" + DisplayFormat.Clock(_clock.RemainingSeconds(s, Time.realtimeSinceStartup)) + "</b></size>\n<size=11>방장의 재개 대기</size>";
+                _timerText.color = Palette.Text;
+                UiKit.SetButton(_doneButton, "일시정지 중", false, Palette.Disabled, Palette.DisabledText);
                 return;
             }
 
@@ -531,19 +518,27 @@ namespace BlackWhale.UI.View
             _bannerQueue.Enqueue(message);
         }
 
+        private void ClearBanners()
+        {
+            _bannerQueue.Clear(); _bannerLeft = 0f;
+            _bannerText.text = ""; _bannerGroup.alpha = 0f;
+        }
+
         /// <summary>0 = 매수 창, 1 = 정보 구매 창.</summary>
-        public void ShowPage(int index) => _pageTarget = Mathf.Clamp01(index);
+        public void ShowPage(int index)
+        {
+            _pageTarget = Mathf.Clamp01(index);
+            if (_pageTarget < .5f) _infoPage?.Collapse();
+        }
 
         private void ToggleShop()
         {
-            _shopTarget = _shopTarget > 0.5f ? 0f : 1f;
-            if (_shopTarget > 0.5f) _invTarget = 0f;
+            HidePopup(); _features?.OpenShop();
         }
 
         private void ToggleInventory()
         {
-            _invTarget = _invTarget > 0.5f ? 0f : 1f;
-            if (_invTarget > 0.5f) _shopTarget = 0f;
+            HidePopup(); _features?.OpenInventory();
         }
 
         private void OnDoneClicked()
@@ -582,7 +577,7 @@ namespace BlackWhale.UI.View
             PositionNextTo(popup, anchor, rightSide: false);
             var board = Store.Scoreboard;
 
-            var title = UiKit.Label(popup, "<b>플레이어별 수익률 추이</b>   <size=12>클릭: 고유 능력 사용(후속)</size>", 14, Palette.Text, TextAnchor.UpperLeft);
+            var title = UiKit.Label(popup, "<b>플레이어별 수익률 추이</b>   <size=12>클릭: 내 고유능력 상태 보기</size>", 14, Palette.Text, TextAnchor.UpperLeft);
             UiKit.Stretch(title.rectTransform, 14, 10, 14, 10);
 
             if (board?.rows == null || board.rows.Length == 0)

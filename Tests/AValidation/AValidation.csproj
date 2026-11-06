@@ -14,6 +14,12 @@
     <Compile Include="../../Assets/Scripts/Flow/*.cs" />
     <Compile Include="../../Assets/Scripts/Bots/*.cs" />
     <Compile Include="../../Assets/Scripts/UI/State/*.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Presentation/FeatureCatalog.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Presentation/FeatureRules.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Presentation/ScreenModels.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Presentation/DisplayFormat.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Presentation/InvestmentDraft.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Presentation/OrderInputValidator.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/SelectionOrder.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/UiRules.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/PhaseClock.cs" />

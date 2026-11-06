@@ -39,7 +39,7 @@ namespace BlackWhale.UI.Presentation
         public int RemainingSeconds(PublicState s, double localNowSeconds)
         {
             if (!HasDeadline(s) || !_synced) return 0;
-            double remain = DeadlineOf(s) - EstimatedServerSeconds(localNowSeconds);
+            double remain = DeadlineOf(s) - (s.paused ? s.serverElapsedSeconds : EstimatedServerSeconds(localNowSeconds));
             return remain <= 0 ? 0 : (int)Math.Ceiling(remain - 1e-6);
         }
     }

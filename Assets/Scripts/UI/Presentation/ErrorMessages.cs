@@ -41,6 +41,7 @@ namespace BlackWhale.UI.Presentation
                 case ErrorCodes.NotAllReady: return "4명이 모두 준비해야 시작할 수 있습니다.";
                 case ErrorCodes.DeadlineExceeded: return "제한 시간이 지나 요청이 처리되지 않았습니다.";
                 case ErrorCodes.OrderLocked: return "이미 주문이 확정되었습니다.";
+                case ErrorCodes.GamePaused: return "게임이 일시정지되었습니다. 방장이 재개하면 진행할 수 있습니다.";
                 case "HOST_DISCONNECTED": return "방장의 연결이 끊겨 게임이 종료되었습니다.";
                 case "GAME_COMPLETE": return "게임이 끝났습니다.";
                 case null:

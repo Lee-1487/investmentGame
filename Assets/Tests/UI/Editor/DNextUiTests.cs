@@ -421,7 +421,7 @@ namespace BlackWhale.UI.Tests
             var market = F.Load<MarketData>("B_market_server.json");
             var marketService = new MarketService(market);
             var info = new DevInformationService(marketService);
-            _host = new LocalRoomHost(marketService, info, TimerMode.ManualForFixture, fixedSeatOrder: true);
+            _host = new LocalRoomHost(marketService, info, TimerMode.ManualForFixture, fixedSeatOrder: true, settings: GameSettings.Fixture);
             for (int i = 1; i <= 4; i++) _c.Add(new GameClientController(_host.Join("Player " + i)));
             _host.Pump();
             foreach (var c in _c) c.SetReady(true);
@@ -438,7 +438,7 @@ namespace BlackWhale.UI.Tests
         {
             foreach (var c in _c) c.Dispose();
             _c.Clear();
-            _host.Dispose();
+            _host?.Dispose();
         }
 
         private static void Sync(SelectionCandidate cand, GameClientController c)

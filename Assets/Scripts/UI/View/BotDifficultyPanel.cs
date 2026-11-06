@@ -57,7 +57,7 @@ namespace BlackWhale.UI.View
 
             string note = !inLobby ? "게임이 시작되면 난이도를 바꿀 수 없습니다."
                 : !isHost ? "방장만 바꿀 수 있습니다. 현재 설정: " + BotDifficultyInfo.Name(selected)
-                : "새로 추가하는 BOT부터 이 난이도로 들어옵니다. 어떤 난이도도 숨은 시세를 보지 않고, 자기 코인으로 산 정보만 씁니다.";
+                : "현재 방의 모든 BOT과 새로 추가할 BOT에 적용됩니다. 어떤 난이도도 숨은 시세를 보지 않고, 자기에게 공개된 정보만 씁니다.";
             var foot = UiKit.Label(_root, note, 13, Palette.SubText, TextAnchor.MiddleLeft);
             UiKit.Place(foot.rectTransform, new Vector2(0, 0), new Vector2(0, 0), new Vector2(8, 20), new Vector2(1000, 40));
         }

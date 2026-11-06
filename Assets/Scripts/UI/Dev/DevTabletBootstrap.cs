@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using BlackWhale.Network;
 using BlackWhale.Bots;
+using BotDifficulty = BlackWhale.Bots.BotDifficulty;
 using BlackWhale.Rules;
 using BlackWhale.Rules.Information;
 using BlackWhale.Shared;
@@ -140,8 +141,7 @@ namespace BlackWhale.UI.Dev
             {
                 if (host)
                 {
-                    var provider = new SeededMarketProvider(BitConverter.ToInt32(Guid.NewGuid().ToByteArray(), 0));
-                    var service = new MarketService(provider.Get);
+                    var service = MarketService.CreateRandom(RandomMarketGenerator.NewSeed());
                     await active.Host(service, new SharedInformationService(service), nickname.text.Trim(), number, allowLan: true);
                     endpoint = "접속 주소: " + HostAddresses() + "  ·  포트 " + active.ListeningPort;
                 }
@@ -154,7 +154,9 @@ namespace BlackWhale.UI.Dev
                 controller = new GameClientController(active.Client);
                 await WaitForWelcome(active.Client, active, current.Token);
                 if (host && !active.IsHost) throw new InvalidOperationException("방장 입장에 실패했습니다. 다시 방을 만들어 주세요.");
-                lobby = new LobbyActions { FillBots = FillBots, RemoveBots = RemoveBots, Leave = Leave, Status = LobbyStatus(host) };
+                lobby = new LobbyActions { FillBots = FillBots, RemoveBots = RemoveBots, Leave = Leave, Status = LobbyStatus(host),
+                    SetDifficulty = value => Enum.TryParse(value.ToString(), out BotDifficulty selected) && SetBotDifficulty(selected),
+                    SetPaused = active.SetGamePaused };
                 view = TabletView.Create(canvasRoot, controller, lobby);
                 connectionPanel.gameObject.SetActive(false);
                 SetConnecting(false);
