@@ -17,6 +17,7 @@ namespace BlackWhale.Shared
         public const string InvalidName = "INVALID_NAME", InvalidReconnectToken = "INVALID_RECONNECT_TOKEN";
         public const string HostOnly = "HOST_ONLY", NotAllReady = "NOT_ALL_READY", DeadlineExceeded = "DEADLINE_EXCEEDED";
         public const string OrderLocked = "ORDER_LOCKED";
+        public const string GamePaused = "GAME_PAUSED";
         public const string InvalidAbility = "INVALID_ABILITY", AbilityLocked = "ABILITY_LOCKED";
         public const string InvalidBid = "INVALID_BID", BidLocked = "BID_LOCKED";
         public const string InvalidItem = "INVALID_ITEM", NotEnoughAssets = "NOT_ENOUGH_ASSETS";

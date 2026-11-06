@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using BlackWhale.Bots;
+using BotDifficulty = BlackWhale.Bots.BotDifficulty;
 using BlackWhale.Shared;
 using BlackWhale.UI.Presentation;
 using BlackWhale.UI.State;
@@ -46,6 +47,7 @@ namespace BlackWhale.UI.Dev
         {
             var s = controller.Store.Public;
             if (s == null || !string.IsNullOrEmpty(controller.Store.EndReason)) return;
+            if (s.paused) { since = now; return; }
             if (!ReferenceEquals(syncedState, s)) { syncedState = s; clock.Sync(s.serverElapsedSeconds, now); }
             if (s.phase == Protocol.Lobby && Enum.TryParse(s.botDifficulty, out BotDifficulty selected) && selected != difficulty) SetDifficulty(selected);
             if (currentTurn != s.turn) { currentTurn = s.turn; purchases = failures = orderAttempts = 0; attempted.Clear(); }

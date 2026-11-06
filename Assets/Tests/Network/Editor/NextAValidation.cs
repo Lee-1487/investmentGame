@@ -29,7 +29,7 @@ namespace BlackWhale.Tests
             private int counter;
             public Harness(GameSettings settings = null, bool manual = false)
             {
-                Market = new MarketService(new SeededMarketProvider(321).Get); Info = new SharedInformationService(Market);
+                Market = MarketService.CreateRandom(321); Info = new SharedInformationService(Market);
                 Room = new GameRoom("NEXT", Market, Info, Clock, manual ? TimerMode.ManualForFixture : TimerMode.Realtime, true, settings);
                 for (int i = 1; i <= 4; i++)
                 { Room.Join("c" + i, "Player " + i); Send(i, "SET_READY", new CommandPayload { ready = true }); }
@@ -48,6 +48,7 @@ namespace BlackWhale.Tests
             Action<string, Action> run = (name, test) => { test(); passed.Add(name); };
             run("T01-T03/90-second-receipt-boundaries-and-replay", Timing);
             run("T03/early-completion-and-full-160-second-timeline", Timeline);
+            run("pause/frozen-deadlines-command-guard-resume-and-repeat", Pause);
             run("B02-B03-B05-B07/private-known-endpoints-seeded-order-validation", Strategies);
             run("B04/lobby-difficulty-frozen-after-start", Difficulty);
             run("B01-B06/pending-failure-replay-deadline-and-order-races", BotFailures);
@@ -59,6 +60,8 @@ namespace BlackWhale.Tests
             run("N03/final-ranking-assets-coins-best-return-initial-order", FinalRanking);
             run("N02-R02/market-turn-isolation-and-return-copy", MarketGeneration);
             run("N11/private-history-query-keeps-live-state-and-works-after-end", History);
+            run("D/live-screens-private-dto-mapping-and-server-final-result", LiveScreens);
+            run("D/private-trade-plans-ranking-validation-order-copy-and-turn-reset", TradePlans);
             run("N04-N07/wire-integers-and-deep-copies", () => Wire(codec));
             foreach (int botCount in new[] { 3, 2, 0 })
             {
@@ -66,6 +69,115 @@ namespace BlackWhale.Tests
                 passed.Add("N01-R03/TCP-10-turns-scripted-humans-" + (4 - botCount) + "-bots-" + botCount);
             }
             return passed.ToArray();
+        }
+        private static void LiveScreens()
+        {
+            var state = new PublicState { turn = 0, phase = Protocol.AbilitySelection };
+            var view = new PlayerView { turn = 0, ability = new AbilityState {
+                candidates = new[] { "SYNDICATE", "INFORMATION_BROKER", "CORPORATE_RAIDER" }, selectedId = "" },
+                inventory = new[] { "INFORMATION_STEAL", "FREE_PASS" } };
+            var ability = BlackWhale.UI.Presentation.LiveScreenModels.Ability(state, view, "INFOBROKER", true, 0);
+            Check(ability.Candidates.SequenceEqual(new[] { "OPERATOR", "INFOBROKER", "RAIDER" }) && ability.Pending && !ability.Confirmed && !ability.TimeLimited,
+                "candidate mapping preserves pending and unlimited deadline");
+            Check(BlackWhale.UI.Presentation.LiveScreenModels.ServerAbilityId(ability.Selected) == "INFORMATION_BROKER" && view.ability.selectedId == "",
+                "draft sends server id without optimistic server mutation");
+            view.ability.selectedId = "INFORMATION_BROKER"; view.ability.freeInformationCredits = 1;
+            Check(BlackWhale.UI.Presentation.LiveScreenModels.Ability(state, view, "RAIDER", false, 0).Selected == "INFOBROKER", "confirmed server selection dominates draft");
+            state.turn = 9; state.phase = Protocol.Auction; view.turn = 9; view.assets = 10000;
+            view.auction = new AuctionState { maximumBid = 987, confirmed = true, bidAmount = 321, useFreePass = true, seatPreferences = new[] { "D", "C", "B", "A" } };
+            var auction = BlackWhale.UI.Presentation.LiveScreenModels.Auction(state, view, null, false, 12);
+            Check(auction.MaxBid == 987 && auction.Submitted && auction.Bid == 321 && auction.HasFreePass && auction.UseFreePass && auction.SubmittedCount == -1,
+                "server maximum and private bid only, no fabricated other submission count");
+            auction.SeatPreference[0] = "tampered";
+            Check(view.auction.seatPreferences[0] == "D", "screen cannot mutate private server DTO");
+            var inventory = BlackWhale.UI.Presentation.LiveScreenModels.Inventory(view, state.phase, 1);
+            Check(inventory.Items.SequenceEqual(new[] { "STEAL", "FREEPASS" }) && !inventory.UsageEnabled && inventory.SelectedSlot == 1,
+                "server inventory maps to actual item cards with unsupported actions disabled");
+            Check(!BlackWhale.UI.Presentation.LiveScreenModels.Shop(view, state.phase).Enabled, "unsupported shop cannot pretend to purchase");
+            state.turn = 10;
+            state.events = new[] { new PublicEvent { turn = 9, kind = "AUCTION_SEAT", playerId = "P2", detail = "B" },
+                new PublicEvent { turn = 9, kind = "AUCTION_SEAT", playerId = "P1", detail = "A" } };
+            var recovered = BlackWhale.UI.Presentation.LiveScreenModels.LastAuction(state, new PlayerView { turn = 10 });
+            Check(recovered.Turn == 9 && !recovered.OwnBidKnown && !recovered.Result.AmountsPublic && !recovered.ShowBidLimit
+                && recovered.Result.Seats.Select(s => s.Seat).SequenceEqual(new[] { "A", "B" }), "reconnected result uses public seats without inventing private amounts");
+            var board = new Scoreboard { turn = 10, gameComplete = true, winnerPlayerId = "P2", rows = new[] {
+                new ScoreRow { playerId = "P1", rank = 1, totalAssets = 10000 }, new ScoreRow { playerId = "P2", rank = 1, totalAssets = 10000 } } };
+            state.phase = Protocol.Result;
+            var final = BlackWhale.UI.Presentation.LiveScreenModels.Board(board, state, "P1");
+            Check(final.Final && final.WinnerId == "P2", "server final result preserved even before ENDED, without inferring tied winner");
+        }
+
+        private static void Pause()
+        {
+            var h = new Harness(); h.Start();
+            h.Clock.Seconds = 12; h.Room.Tick();
+            var before = h.Room.Snapshot();
+            Check(h.Room.SetPaused(true) && !h.Room.SetPaused(true), "pause is idempotent");
+            h.Clock.Seconds = 612; h.Room.Tick();
+            var frozen = h.Room.Snapshot();
+            Check(frozen.paused && frozen.phase == before.phase && frozen.serverElapsedSeconds == 12
+                && frozen.phaseEndsAtServerSeconds == before.phaseEndsAtServerSeconds, "wall time cannot advance a paused room");
+            var command = RoomValidation.Command("COMPLETE_PHASE", "paused-complete", 1);
+            Check(h.Room.ProcessCommand("c1", command).errorCode == ErrorCodes.GamePaused, "server refuses state mutations while paused");
+            var uiClock = new BlackWhale.UI.Presentation.PhaseClock(); uiClock.Sync(frozen.serverElapsedSeconds, 1);
+            Check(uiClock.RemainingSeconds(frozen, 10000) == 78, "client countdown stays frozen without repeated snapshots");
+            var wireCopy = DtoCopy.Copy(frozen);
+            Check(wireCopy.paused, "pause survives client snapshot copy");
+            using (var client = new BotClient())
+            using (var controller = new GameClientController(client))
+            {
+                var bot = new DevBot(client, 0);
+                client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = frozen });
+                client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = new PlayerView { turn = 1, recipientPlayerId = "P1", coins = 3 } });
+                Check(controller.BuyInformation("AI", 0) == CommandStatus.BlockedLocally && controller.LastLocalBlockCode == ErrorCodes.GamePaused
+                    && !controller.CanFinishPhase(), "client blocks purchases and completion during pause");
+                int count = client.Sent.Count;
+                bot.Update(10000);
+                Check(client.Sent.Count == count, "paused bot sends no command");
+                bot.Dispose();
+            }
+            Check(h.Room.SetPaused(false) && h.Room.Snapshot().serverElapsedSeconds == 12, "resume excludes paused wall time");
+            Check(h.Room.ProcessCommand("c1", command).success, "paused request can be retried after resume");
+            h.Clock.Seconds = 689.999; h.Room.Tick();
+            Check(h.Room.Snapshot().phase == Protocol.Info, "deadline is preserved after resume");
+            h.Clock.Seconds = 690; h.Room.Tick();
+            Check(h.Room.Snapshot().phase == Protocol.Selection, "exact deadline advances after resumed remaining time");
+            h.Clock.Seconds = 691; h.Room.SetPaused(true);
+            h.Clock.Seconds = 1691; h.Room.Tick();
+            Check(h.Room.Snapshot().selectionIndex == 0 && h.Room.Snapshot().serverElapsedSeconds == 91, "selection clock also freezes");
+            h.Room.SetPaused(false); h.Clock.Seconds = 1694; h.Room.Tick();
+            Check(h.Room.Snapshot().selectionIndex == 1, "selection resumes at its original four-second boundary");
+            h.Room.SetPaused(true); h.Room.Shutdown();
+            Check(!h.Room.Snapshot().paused && h.Room.Snapshot().phase == Protocol.Ended, "host can end a paused room");
+        }
+        private static void TradePlans()
+        {
+            var client = new BotClient(); using var controller = new GameClientController(client);
+            client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+            client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = new PublicState { turn = 1, phase = Protocol.Info } });
+            var plans = controller.Store.TradePlans;
+            Check(plans.SetRank("AI", 1) && plans.SetRank("SPACE", 2) && plans.SetRank("SPACE", 1), "ranks can be assigned and swapped");
+            Check(plans.Get("AI").Rank == 2 && plans.Get("SPACE").Rank == 1 && plans.Get("SPACE").Favorite, "unique personal priorities");
+            Check(plans.TryAddInterval("AI", 0, 5) == "" && plans.TryAddInterval("AI", 5, 10) == "", "touching valid planned intervals");
+            Check(plans.TryAddInterval("AI", 10, 15) == ErrorCodes.TooManyIntervals && plans.Get("AI").Intervals.Length == 2, "failed extra interval leaves plans unchanged");
+            Check(plans.TryAddInterval("SPACE", 26, 31) != "" && plans.TryAddInterval("SPACE", 10, 15) == "", "day and holding rules enforced before saving");
+            Check(plans.TryAddInterval("SPACE", 14, 20) == ErrorCodes.OverlappingIntervals && plans.Get("SPACE").Intervals.Length == 1, "overlap cannot alter saved plan");
+            var copy = plans.Get("AI"); copy.Intervals[0].entryDay = 20;
+            Check(plans.Get("AI").Intervals[0].entryDay == 0, "returned plans are independent copies");
+            var draft = BlackWhale.UI.Presentation.InvestmentDraft.FromSelections(new[] { "AI", "SPACE" }, plans);
+            Check(draft.Validate() == "" && draft.FirstIntervals.Count == 2 && draft.SecondIntervals[0].entryDay == 10, "only selected companies are imported into the order draft");
+            draft.FirstIntervals[0].entryDay = 1;
+            Check(plans.Get("AI").Intervals[0].entryDay == 0 && client.Sent.Count == 0, "editing notes or draft never sends commands or mutates saved plan");
+            var view = new PlayerView { turn = 1, ownInvestments = new[] { new Investment { companyId = "AI", intervals = new[] { new Interval { entryDay = 12, exitDay = 17 } } } } };
+            Check(plans.ChartIntervals(view, 1, "AI", true)[0].entryDay == 12 && plans.ChartIntervals(view, 1, "SPACE", true).Length == 0,
+                "locked charts show actual orders, not tentative or unselected-company plans");
+            var other = new ClientStateStore(); other.SetPublicState(new PublicState { turn = 1, phase = Protocol.Info });
+            Check(other.TradePlans.Get("AI").Intervals.Length == 0 && other.TradePlans.Get("AI").Rank == 0, "client plans are private");
+            client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = new PublicState { turn = 1, phase = Protocol.Selection } });
+            Check(plans.Get("AI").Intervals.Length == 2, "phase transition retains this turn's plans");
+            client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = new PublicState { turn = 2, phase = Protocol.Info } });
+            Check(plans.Turn == 2 && plans.Get("AI").Intervals.Length == 0 && plans.Get("AI").Rank == 0, "new market turn clears old plans");
         }
         private static void Timing()
         {
@@ -400,7 +512,7 @@ namespace BlackWhale.Tests
         }
         private static async Task TcpTenTurns(IWireCodec codec, int botCount)
         {
-            var clock = new TestClock(); var market = new MarketService(new SeededMarketProvider(651).Get);
+            var clock = new TestClock(); var market = MarketService.CreateRandom(651);
             var info = new SharedInformationService(market);
             var room = new GameRoom("tcp-next-" + botCount, market, info, clock, fixedOrderForFixture: true);
             var server = new TcpGameServer(room, codec, clock, 0, IPAddress.Loopback);
@@ -459,8 +571,16 @@ namespace BlackWhale.Tests
                 return;
             }
             if (view == null || view.turn != state.turn) return;
-            if (state.phase == Protocol.AbilitySelection && string.IsNullOrEmpty(view.ability?.selectedId) && !c.Store.HasPending("SELECT_ABILITY")) c.SelectAbility(view.ability.candidates[0]);
-            if (state.phase == Protocol.Auction && !view.auction.confirmed && !c.Store.HasPending("SUBMIT_BID")) c.SubmitBid(0);
+            if (state.phase == Protocol.AbilitySelection && string.IsNullOrEmpty(view.ability?.selectedId) && !c.Store.HasPending("SELECT_ABILITY"))
+            {
+                var screen = BlackWhale.UI.Presentation.LiveScreenModels.Ability(state, view, "", false, 0);
+                c.SelectAbility(BlackWhale.UI.Presentation.LiveScreenModels.ServerAbilityId(screen.Candidates[0]));
+            }
+            if (state.phase == Protocol.Auction && !view.auction.confirmed && !c.Store.HasPending("SUBMIT_BID"))
+            {
+                var screen = BlackWhale.UI.Presentation.LiveScreenModels.Auction(state, view, null, false, 15);
+                c.SubmitBid(screen.Bid, screen.SeatPreference, screen.UseFreePass);
+            }
             if (c.CanFinishPhase() && state.phase != Protocol.AbilitySelection) c.FinishPhase();
             if (c.IsMyTurnToSelect() && !c.Store.HasPending("SELECT_COMPANY"))
             { string id = state.companySeats.Select(s => s.companyId).FirstOrDefault(c.CanSelect); if (id != null) c.SelectCompany(id); }

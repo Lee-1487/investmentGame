@@ -15,6 +15,7 @@ namespace BlackWhale.Network
         private GameRoom hostedRoom;
         private readonly CancellationTokenSource lifetime = new CancellationTokenSource();
         private bool closing, connecting;
+        private bool gamePaused, editorPaused;
         public bool IsHost => server != null && Client?.PlayerId == "P1";
         public int ListeningPort => server == null ? 0 : server.Port;
         public int LobbyPlayerCount => hostedRoom?.Snapshot().players.Length ?? 0;
@@ -58,6 +59,25 @@ namespace BlackWhale.Network
         public bool SetBotDifficulty(string difficulty) => IsHost && hostedRoom.SetBotDifficulty(difficulty);
         public bool RemoveLobbyBot(string playerId) => IsHost && hostedRoom.RemoveLobbyBot(playerId);
         public void ReleaseDisconnectedLobbySlots() { if (IsHost) hostedRoom.ReleaseDisconnectedLobbySlots(); }
+        public bool SetGamePaused(bool paused)
+        {
+            if (!IsHost || hostedRoom.Snapshot().phase == Protocol.Lobby || hostedRoom.Snapshot().phase == Protocol.Ended) return false;
+            gamePaused = paused;
+            server.SetPaused(gamePaused || editorPaused);
+            Client?.Pump();
+            return true;
+        }
+#if UNITY_EDITOR
+        private void OnEnable() => UnityEditor.EditorApplication.pauseStateChanged += OnEditorPauseChanged;
+        private void OnDisable() => UnityEditor.EditorApplication.pauseStateChanged -= OnEditorPauseChanged;
+        private void OnEditorPauseChanged(UnityEditor.PauseState state)
+        {
+            if (!IsHost) return;
+            editorPaused = state == UnityEditor.PauseState.Paused;
+            server.SetPaused(gamePaused || editorPaused);
+            Client?.Pump();
+        }
+#endif
         private void OnMessage(ServerMessage message) { MessageReceived?.Invoke(message); }
         public void Pump() { server?.Pump(); Client?.Pump(); }
         private void Update() => Pump();

@@ -35,7 +35,7 @@ namespace BlackWhale.UI.View
             for (int i = 0; i < cats.Length; i++)
             {
                 bool done = m.UsedThisTurn.Contains(cats[i]);
-                ScreenKit.Chip(used, ItemCatalog.CategoryName(cats[i]) + (done ? " 사용함" : " 가능"),
+                ScreenKit.Chip(used, ItemCatalog.CategoryName(cats[i]) + (!m.UsageEnabled ? " 준비 중" : done ? " 사용함" : " 가능"),
                     done ? Palette.Disabled : ScreenKit.CategoryColor(cats[i]), done ? Palette.DisabledText : Color.white,
                     new Vector2(0, 0.5f), new Vector2(0, 0.5f), new Vector2(i * 110, 0), 104, 22);
             }
@@ -143,8 +143,8 @@ namespace BlackWhale.UI.View
                 y += 64;
             }
 
-            bool ready = block == UseBlock.None && (item.Target == ItemTarget.None || targets.Exists(o => o.Key == m.SelectedTarget && o.Enabled));
-            string why = block != UseBlock.None ? ItemUseRules.Explain(block, item)
+            bool ready = m.UsageEnabled && block == UseBlock.None && (item.Target == ItemTarget.None || targets.Exists(o => o.Key == m.SelectedTarget && o.Enabled));
+            string why = !m.UsageEnabled ? m.UnavailableReason : block != UseBlock.None ? ItemUseRules.Explain(block, item)
                 : !ready ? "대상을 고르세요."
                 : "확정하면 아이템이 사라집니다. 효과가 없거나 방어돼도 돌려받지 않습니다.";
             var msg = UiKit.Label(inner, (block != UseBlock.None ? "<color=#DC2626>" + why + "</color>" : why)

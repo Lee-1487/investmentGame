@@ -197,6 +197,7 @@ namespace BlackWhale.UI.View
         {
             var s = _c.Store.Public;
             if (s == null) { _candidate.Clear(); return; }
+            if (s.paused) return;
             _candidate.Sync(s.turn, s.phase, s.selectionIndex, _c.IsMyTurnToSelect());
         }
 
@@ -343,8 +344,10 @@ namespace BlackWhale.UI.View
             var logo = CompanyBadge.Create(root, id, 52, dimmed: slots.Empty == 0 && !own);
             UiKit.Place(logo, new Vector2(0, 1), new Vector2(0, 1), new Vector2(12, -12), new Vector2(52, 52));
 
-            var name = UiKit.Label(root, "<b>" + entry.DisplayName + "</b>\n<size=11>" + entry.Id + " · " + entry.Sector + " · " + entry.Volatility + "</size>",
+            var name = UiKit.Label(root, "<b>" + entry.DisplayName + "</b>\n<size=10>" + entry.Id + " · " + entry.Volatility + "</size>"
+                + "\n<size=11><color=#2563EB>" + _c.Store.TradePlans.Summary(id) + "</color></size>",
                 16, slots.Empty == 0 && !own ? Palette.DisabledText : Palette.Text, TextAnchor.UpperLeft);
+            name.name = "SelectionPlan_" + id;
             UiKit.Place(name.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(72, -12), new Vector2(200, 52));
 
             var info = UiKit.Label(root, "열람 정보 " + known + "/6", 11, Palette.SubText, TextAnchor.UpperRight);
@@ -470,13 +473,13 @@ namespace BlackWhale.UI.View
             if (same) return;
 
             // 턴·선택 기업이 바뀌면 이전 초안과 진입일 후보를 버린다(잘못된 기업/턴의 후보가 남지 않게).
-            _draft = InvestmentDraft.FromSelections(sel);
+            _draft = InvestmentDraft.FromSelections(sel, _c.Store.TradePlans);
             _draftTurn = turn;
             _picker.Reset(_draft);
         }
 
         private bool OrderEditable
-            => _c.Store.Public?.phase == Protocol.Investment && !_c.Store.OrderLocked
+            => _c.Store.Public?.phase == Protocol.Investment && !_c.Store.Public.paused && !_c.Store.OrderLocked
                && !_c.Store.HasPending(CommandTypes.SubmitInvestment);
 
         private void BuildOrderForm()
@@ -553,7 +556,8 @@ namespace BlackWhale.UI.View
             var logo = CompanyBadge.Create(root, companyId, 26);
             UiKit.Place(logo, new Vector2(0, 1), new Vector2(0, 1), new Vector2(10, -6), new Vector2(26, 26));
             var header = UiKit.Label(root, (index + 1) + ". <b>" + entry.DisplayName + "</b> <size=11>" + entry.Id + "</size>   <color=#2563EB><b>"
-                + DisplayFormat.Weight(weightBps) + "</b></color>   <size=11>" + entry.Volatility + "</size>", 16, Palette.Text, TextAnchor.MiddleLeft);
+                + DisplayFormat.Weight(weightBps) + "</b></color>   <size=11>" + (_c.Store.TradePlans.Get(companyId).Favorite ? "★ 찜 · " : "")
+                + (_c.Store.TradePlans.Get(companyId).Rank > 0 ? _c.Store.TradePlans.Get(companyId).Rank + "순위" : entry.Volatility) + "</size>", 16, Palette.Text, TextAnchor.MiddleLeft);
             UiKit.Place(header.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(42, -4), new Vector2(380, 30));
 
             // 일봉 그래프 = 날짜 클릭 영역(값이 없는 날짜도 클릭 가능)
@@ -744,7 +748,7 @@ namespace BlackWhale.UI.View
             if (chart == null || _draft == null) return;
             var company = _c.Store.View?.companies?.FirstOrDefault(c => c.companyId == companyId);
             chart.SetData(DailyBarModel.Build(company), GraphSeriesBuilder.AxisLimitBps(companyId));
-            chart.SetBands(_draft.IntervalsOf(companyId).Select(iv => new Vector2Int(iv.entryDay, iv.exitDay)));
+            chart.SetTradeIntervals(_draft.IntervalsOf(companyId));
             chart.SetCandidate(_picker.CandidateOf(companyId));
             chart.SetAllowed(OrderEditable ? _picker.AllowedRange(companyId) : null);
         }

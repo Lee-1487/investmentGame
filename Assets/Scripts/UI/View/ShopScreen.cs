@@ -73,7 +73,7 @@ namespace BlackWhale.UI.View
             UiKit.Stretch(text.rectTransform, 12, 42, 12, 66);
 
             var block = ShopRules.CanBuy(item, m.TurnStartAssets, m.Money, m.BoughtThisTurn, m.Inventory.Count);
-            bool can = block == ShopBlock.None;
+            bool can = m.Enabled && block == ShopBlock.None;
             var buy = UiKit.Button(inner, price > 0 ? DisplayFormat.Money(price) + " 구매" : "구매 불가", 14,
                 can ? color : Palette.Disabled, can ? Color.white : Palette.DisabledText, () => Buy?.Invoke(item.Id));
             buy.name = "Buy_" + item.Id;
@@ -86,7 +86,7 @@ namespace BlackWhale.UI.View
             rt.offsetMax = new Vector2(-12, 46);
             if (!can)
             {
-                var reason = UiKit.Label(inner, ShopRules.Explain(block), 11, Palette.Up, TextAnchor.LowerCenter);
+                var reason = UiKit.Label(inner, m.Enabled ? ShopRules.Explain(block) : m.UnavailableReason, 11, Palette.Up, TextAnchor.LowerCenter);
                 UiKit.Stretch(reason.rectTransform, 8, 0, 8, 48);
                 reason.rectTransform.anchorMax = new Vector2(1, 0);
                 reason.rectTransform.offsetMax = new Vector2(-8, 64);

@@ -262,7 +262,7 @@ namespace BlackWhale.UI.View
             for (int i = 0; i < ranked.Count; i++)
             {
                 var p = ranked[i];
-                bool winner = p.Rank == 1;
+                bool winner = string.IsNullOrEmpty(m.WinnerId) ? p.Rank == 1 : p.Id == m.WinnerId;
                 float height = winner ? 1f : Mathf.Max(0.62f, 0.9f - 0.1f * i);
                 var col = UiKit.Rect(podium, "Place_" + p.Id);
                 UiKit.Anchor(col, i / (float)n, 0, (i + 1) / (float)n, height, 6, 0);

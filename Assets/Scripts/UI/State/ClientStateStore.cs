@@ -38,6 +38,8 @@ namespace BlackWhale.UI.State
 
     public sealed class ClientStateStore
     {
+        public BlackWhale.UI.Presentation.TradePlanBook TradePlans { get; } = new BlackWhale.UI.Presentation.TradePlanBook();
+        public ClientStateStore() { TradePlans.Changed += Raise; }
         private sealed class PendingRequest
         {
             public string Type;
@@ -299,6 +301,7 @@ namespace BlackWhale.UI.State
         private void BeginTurnIfNewer(int turn)
         {
             if (turn <= CurrentTurn) return;
+            TradePlans.BeginTurn(turn);
             _pending.Clear();
             _ownSelections.Clear();
             OrderLockedByResult = false;

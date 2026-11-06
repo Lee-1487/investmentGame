@@ -60,6 +60,8 @@ namespace BlackWhale.Flow
         private int turn, selectionIndex;
         private double origin, phaseEnd, pickEnd;
         private bool ordersLocked;
+        private bool paused;
+        private double pausedAt, pausedSeconds;
         private static readonly string[] DefaultCompanies = { "BANK", "FOOD", "AUTO", "AI", "SPACE", "BIO" };
 
         public GameRoom(string roomId, IMarketService market, IInformationService information,
@@ -78,7 +80,26 @@ namespace BlackWhale.Flow
             if (this.settings.EnableProgressionFeatures && (progression == null || !(market is IMarketProgression)))
                 throw new ArgumentException("Production games require B/C progression services; use GameSettings.Fixture for fixture services.");
         }
-        private double Now { get { return clock.Seconds - origin; } }
+        private double Now { get { return (paused ? pausedAt : clock.Seconds) - origin - pausedSeconds; } }
+        // Host-process control, deliberately absent from the network command protocol.
+        public bool SetPaused(bool value)
+        {
+            lock (gate)
+            {
+                if (phase == Protocol.Lobby || phase == Protocol.Ended || paused == value) return false;
+                double current = clock.Seconds;
+                if (value)
+                {
+                    if (mode == TimerMode.Realtime) AdvanceTo(current - origin - pausedSeconds);
+                    if (phase == Protocol.Ended) return false;
+                    pausedAt = current;
+                }
+                else pausedSeconds += current - pausedAt;
+                paused = value;
+                PublishState();
+                return true;
+            }
+        }
         private RequestContext Context(string player = "", string request = "")
         { return new RequestContext(roomId, turn, phase, player, request); }
         private string CurrentPlayer { get { return phase == Protocol.Selection && selectionIndex < 8 ? order[selectionIndex] : ""; } }
@@ -219,12 +240,13 @@ namespace BlackWhale.Flow
                 if (cache.TryGetValue(key, out previous))
                     return Reply(member.Id, previous.Fingerprint == fingerprint ? Copy(previous.Result)
                         : CommandResult.Fail(command, "REQUEST_ID_CONFLICT"));
+                if (paused) return Reply(member.Id, CommandResult.Fail(command, ErrorCodes.GamePaused));
                 string quotaKey = member.Id + ":" + turn;
                 int count;
                 counts.TryGetValue(quotaKey, out count);
                 if (count >= 256) return Reply(member.Id, CommandResult.Fail(command, "RATE_LIMITED"));
                 counts[quotaKey] = count + 1;
-                double received = receivedAtServerSeconds - origin;
+                double received = receivedAtServerSeconds - origin - pausedSeconds;
                 bool expired = phase != Protocol.Lobby && phase != Protocol.Ended && phaseEnd > 0 &&
                     received >= (phase == Protocol.Selection ? pickEnd : phaseEnd);
                 if (mode == TimerMode.Realtime) AdvanceTo(received);
@@ -268,7 +290,7 @@ namespace BlackWhale.Flow
                 if (member.Id != "P1") return CommandResult.Fail(command, "HOST_ONLY");
                 if (members.Count != 4 || members.Any(m => m.Connection == null || !m.Ready))
                     return CommandResult.Fail(command, "NOT_ALL_READY");
-                origin = clock.Seconds;
+                origin = clock.Seconds; pausedSeconds = 0;
                 initialOrder = members.OrderBy(m => m.Id, StringComparer.Ordinal).Select(m => m.Id).ToArray();
                 if (!fixedOrder)
                 {
@@ -384,7 +406,7 @@ namespace BlackWhale.Flow
             else { pickEnd = Math.Min(now + 4, phaseEnd); PublishState(); }
         }
         public void Tick()
-        { lock (gate) if (mode == TimerMode.Realtime) AdvanceTo(Now); }
+        { lock (gate) if (!paused && mode == TimerMode.Realtime) AdvanceTo(Now); }
         private void AdvanceTo(double now)
         {
             while (phase != Protocol.Lobby && phase != Protocol.Ended && phaseEnd > 0 &&
@@ -400,6 +422,7 @@ namespace BlackWhale.Flow
             lock (gate)
             {
                 if (mode != TimerMode.ManualForFixture) throw new InvalidOperationException("Not in manual fixture mode.");
+                if (paused) return;
                 if (phase == Protocol.Selection) AutoSelect(Now);
                 else if (phase != Protocol.Lobby && phase != Protocol.Ended) NextPhase(Now);
             }
@@ -483,6 +506,7 @@ namespace BlackWhale.Flow
         }
         private void End(string reason)
         {
+            if (paused) { pausedSeconds += clock.Seconds - pausedAt; paused = false; }
             phase = Protocol.Ended;
             phaseEnd = pickEnd = 0;
             Broadcast(new ServerMessage { type = "ROOM_ENDED", errorCode = reason });
@@ -491,7 +515,7 @@ namespace BlackWhale.Flow
         public PublicState Snapshot()
         {
             lock (gate) return new PublicState { roomId = roomId, turn = turn, phase = phase,
-                selectionIndex = selectionIndex, currentPlayerId = CurrentPlayer,
+                selectionIndex = selectionIndex, currentPlayerId = CurrentPlayer, paused = paused,
                 serverElapsedSeconds = phase != Protocol.Lobby ? Now : 0, phaseEndsAtServerSeconds = phaseEnd,
                 selectionDeadlineAtServerSeconds = pickEnd,
                 initialPlayerOrder = (string[])initialOrder.Clone(), seatPlayerIds = order.Take(4).ToArray(),

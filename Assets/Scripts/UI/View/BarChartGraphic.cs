@@ -6,6 +6,8 @@
 // - 날짜 좌표는 DayAxis(31등분)를 쓰며, 같은 규칙으로 클릭 날짜를 계산한다(ChartPointerLayer).
 // - 선택 구간·진입일 후보·미리보기·마우스 위치 강조도 날짜 기준으로 그린다(값이 없는 날짜도 가능).
 using System.Collections.Generic;
+using System.Linq;
+using BlackWhale.Shared;
 using BlackWhale.UI.Presentation;
 using UnityEngine;
 using UnityEngine.EventSystems;
@@ -41,6 +43,8 @@ namespace BlackWhale.UI.View
         private bool _previewOk;
         private int? _hover;
         private Vector2Int? _allowed;
+        private RectTransform _tradeMarkerRoot;
+        private string _tradeMarkerKey;
 
         protected override void Awake()
         {
@@ -63,6 +67,30 @@ namespace BlackWhale.UI.View
             _bands.Clear();
             if (bands != null) _bands.AddRange(bands);
             SetVerticesDirty();
+        }
+
+        public void SetTradeIntervals(IEnumerable<Interval> intervals, bool planned = false)
+        {
+            var ranges = (intervals ?? new Interval[0]).Where(i => i != null).ToArray();
+            SetBands(ranges.Select(i => new Vector2Int(i.entryDay, i.exitDay)));
+            string key = planned + ":" + string.Join(";", ranges.Select(i => i.entryDay + "," + i.exitDay));
+            if (key == _tradeMarkerKey) return;
+            _tradeMarkerKey = key;
+            if (_tradeMarkerRoot == null)
+            { _tradeMarkerRoot = UiKit.Rect(transform, "TradeMarkers"); UiKit.Stretch(_tradeMarkerRoot); }
+            UiKit.Clear(_tradeMarkerRoot);
+            for (int i = 0; i < ranges.Length; i++)
+            {
+                TradeMarker("EntryMarker_" + i, "진입 " + ranges[i].entryDay, ranges[i].entryDay, i, Palette.Success);
+                TradeMarker("ExitMarker_" + i, "청산 " + ranges[i].exitDay, ranges[i].exitDay, i, Palette.Accent);
+            }
+        }
+        private void TradeMarker(string name, string text, int day, int row, Color color)
+        {
+            var label = UiKit.Label(_tradeMarkerRoot, text, 9, color, TextAnchor.UpperCenter, FontStyle.Bold);
+            label.name = name;
+            UiKit.Place(label.rectTransform, new Vector2((day + .5f) / DayAxis.Count, 1), new Vector2(.5f, 1),
+                new Vector2(0, -row * 13), new Vector2(56, 13));
         }
 
         public void SetCandidate(int? day)

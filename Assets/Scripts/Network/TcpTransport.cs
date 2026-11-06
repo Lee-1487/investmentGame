@@ -188,6 +188,18 @@ namespace BlackWhale.Network
                 if (connection != null && peers.TryGetValue(connection, out peer)) peer.Send(codec.EncodeServer(delivery.Message));
             }
         }
+        public bool SetPaused(bool paused)
+        {
+            lock (ingress)
+            {
+                if (disposed) return false;
+                // Drain pre-pause inputs before freezing, and reject paused inputs before resuming.
+                Pump();
+                bool changed = room.SetPaused(paused);
+                Flush();
+                return changed;
+            }
+        }
         public void Dispose()
         {
             lock (ingress)

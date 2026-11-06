@@ -70,6 +70,7 @@ namespace BlackWhale.UI.State
         public CommandStatus SelectAbility(string abilityId)
         {
             if (Store.Public == null) return CommandStatus.NoState;
+            if (Store.Public.paused) return Block(ErrorCodes.GamePaused);
             if (Store.Public.phase != Protocol.AbilitySelection) return Block(ErrorCodes.WrongPhase);
             if (Store.HasPending(CommandTypes.SelectAbility)) return CommandStatus.AlreadyPending;
             Send(CommandTypes.SelectAbility, new CommandPayload { abilityId = abilityId }); return CommandStatus.Sent;
@@ -77,6 +78,7 @@ namespace BlackWhale.UI.State
         public CommandStatus SubmitBid(long amount, string[] seatPreferences = null, bool useFreePass = false)
         {
             if (Store.Public == null) return CommandStatus.NoState;
+            if (Store.Public.paused) return Block(ErrorCodes.GamePaused);
             if (Store.Public.phase != Protocol.Auction) return Block(ErrorCodes.WrongPhase);
             if (Store.HasPending(CommandTypes.SubmitBid)) return CommandStatus.AlreadyPending;
             Send(CommandTypes.SubmitBid, new CommandPayload { bidAmount = amount, seatPreferences = (string[])seatPreferences?.Clone(), useFreePass = useFreePass });
@@ -97,6 +99,7 @@ namespace BlackWhale.UI.State
         public CommandStatus BuyInformation(string companyId, int bundleIndex)
         {
             if (Store.View == null) return CommandStatus.NoState;
+            if (Store.Public?.paused == true) return Block(ErrorCodes.GamePaused);
             if (Store.IsPurchasePending(companyId, bundleIndex)) return CommandStatus.AlreadyPending;
             if (IsVisible(companyId, bundleIndex)) return Block(ErrorCodes.AlreadyVisible);
 
@@ -108,6 +111,7 @@ namespace BlackWhale.UI.State
         public CommandStatus SelectCompany(string companyId)
         {
             if (Store.Public == null) return CommandStatus.NoState;
+            if (Store.Public.paused) return Block(ErrorCodes.GamePaused);
             if (Store.HasPending(CommandTypes.SelectCompany)) return CommandStatus.AlreadyPending;
             if (!IsMyTurnToSelect()) return Block(ErrorCodes.NotYourTurn);
 
@@ -118,6 +122,7 @@ namespace BlackWhale.UI.State
         public CommandStatus SubmitInvestment(Investment[] investments)
         {
             if (Store.View == null) return CommandStatus.NoState;
+            if (Store.Public?.paused == true) return Block(ErrorCodes.GamePaused);
             if (Store.HasPending(CommandTypes.SubmitInvestment)) return CommandStatus.AlreadyPending;
             if (Store.OrderLocked) return Block(ErrorCodes.OrderLocked);
 
@@ -130,6 +135,7 @@ namespace BlackWhale.UI.State
         {
             var s = Store.Public;
             if (s == null) return CommandStatus.NoState;
+            if (s.paused) return Block(ErrorCodes.GamePaused);
             if (!CanFinishPhase()) return Block(ErrorCodes.WrongPhase);
             var requestId = Send(CommandTypes.CompletePhase, new CommandPayload());
             Store.MarkPhaseCompleted(requestId, s.turn, s.phase);
@@ -143,7 +149,7 @@ namespace BlackWhale.UI.State
         public bool CanFinishPhase()
         {
             var s = Store.Public;
-            if (s == null || IsDoneForCurrentPhase) return false;
+            if (s == null || s.paused || IsDoneForCurrentPhase) return false;
             return s.phase == Protocol.Info || s.phase == Protocol.Reveal || s.phase == Protocol.Result ||
                 (s.phase == Protocol.AbilitySelection && IsHost);
         }
@@ -155,7 +161,7 @@ namespace BlackWhale.UI.State
         public bool IsMyTurnToSelect()
         {
             var s = Store.Public;
-            return s != null && s.phase == Protocol.Selection && s.currentPlayerId == LocalPlayerId
+            return s != null && !s.paused && s.phase == Protocol.Selection && s.currentPlayerId == LocalPlayerId
                    && !string.IsNullOrEmpty(LocalPlayerId);
         }
 

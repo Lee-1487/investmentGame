@@ -15,6 +15,8 @@ namespace BlackWhale.UI.View
         private static readonly Color VioletSoft = new Color32(0xED, 0xE9, 0xFE, 0xFF);
 
         private readonly RectTransform _root;
+        private Text _clock;
+        private bool _timeLimited;
 
         public Action<string> Picked;
         public Action Confirm;
@@ -27,9 +29,11 @@ namespace BlackWhale.UI.View
             if (m == null) return;
 
             ScreenKit.Title(_root, "<b>고유능력 선택</b>   <size=14><color=#6B7280>후보 3개 중 1개 · 게임 내내 유지</color></size>");
+            _clock = null;
+            _timeLimited = m.TimeLimited;
             if (!m.Confirmed)
-                ScreenKit.Chip(_root, "남은 시간 " + DisplayFormat.Clock(m.SecondsLeft), m.SecondsLeft <= 5 ? Palette.Up : ScreenKit.Ink, Color.white,
-                    new Vector2(1, 1), new Vector2(1, 1), new Vector2(-4, -4), 130, 28, 14);
+                _clock = ScreenKit.Chip(_root, m.TimeLimited ? "남은 시간 " + DisplayFormat.Clock(m.SecondsLeft) : "시간 제한 없음", ScreenKit.Ink, Color.white,
+                    new Vector2(1, 1), new Vector2(1, 1), new Vector2(-4, -4), 130, 28, 14).GetComponentInChildren<Text>();
 
             var cards = UiKit.Rect(_root, "Candidates");
             UiKit.Stretch(cards, 0, 48, 0, status != null ? 150 : 72);
@@ -49,7 +53,8 @@ namespace BlackWhale.UI.View
 
                 var hit = UiKit.Button(inner, "", 12, Color.clear, Palette.Text, () => Picked?.Invoke(def.Id));
                 UiKit.Stretch((RectTransform)hit.transform);
-                hit.interactable = !m.Confirmed;
+                hit.name = "ChooseAbility_" + LiveScreenModels.ServerAbilityId(def.Id);
+                hit.interactable = !m.Confirmed && !m.Pending;
                 var colors = hit.colors;
                 colors.disabledColor = Color.clear;
                 colors.highlightedColor = new Color(0.96f, 0.96f, 0.98f, 1f);
@@ -62,7 +67,7 @@ namespace BlackWhale.UI.View
 
                 string state = m.Confirmed ? (selected ? "<color=#2563EB><b>확정</b></color>" : "")
                     : selected ? "<color=#B45309><b>선택됨</b></color>"
-                    : i == 0 ? "<size=11><color=#6B7280>시간 초과 시 자동 선택</color></size>" : "";
+                    : i == 0 && m.TimeLimited ? "<size=11><color=#6B7280>시간 초과 시 자동 선택</color></size>" : "";
                 var text = UiKit.Label(inner,
                     "<size=24><b>" + def.Name + "</b></size>\n<size=14><color=#7C3AED>" + def.Short + "</color></size>\n\n" + def.Effect + "\n\n" + state,
                     14, dimmed ? Palette.DisabledText : Palette.Text, TextAnchor.UpperCenter);
@@ -74,17 +79,25 @@ namespace BlackWhale.UI.View
                 var confirm = UiKit.Button(_root, "능력 확정", 16, Palette.Accent, Color.white, () => Confirm?.Invoke());
                 confirm.name = "ConfirmAbility";
                 UiKit.Place((RectTransform)confirm.transform, new Vector2(1, 0), new Vector2(1, 0), new Vector2(-8, 10), new Vector2(220, 46));
-                bool can = !string.IsNullOrEmpty(m.Selected) && m.Candidates.Contains(m.Selected);
-                UiKit.SetButton(confirm, "능력 확정", can, can ? Palette.Accent : Palette.Disabled, can ? Color.white : Palette.DisabledText);
+                bool can = !m.Pending && !string.IsNullOrEmpty(m.Selected) && m.Candidates.Contains(m.Selected);
+                UiKit.SetButton(confirm, m.Pending ? "확정 요청 중…" : "능력 확정", can, can ? Palette.Accent : Palette.Disabled, can ? Color.white : Palette.DisabledText);
 
                 var hint = UiKit.Label(_root, can ? "확정하면 이번 게임 동안 바꿀 수 없습니다. 다른 카드를 누르면 후보가 바뀝니다."
-                        : "카드를 눌러 후보를 고르세요. 고르지 않으면 첫 번째 후보(" + (AbilityCatalog.Get(m.DefaultPick)?.Name ?? "") + ")가 자동 선택됩니다.",
+                        : "카드를 눌러 후보를 고르세요. " + (m.TimeLimited ? "시간 초과 시 첫 후보가 자동 선택됩니다." : "전원 선택 또는 방장의 진행을 기다립니다."),
                     13, Palette.SubText, TextAnchor.MiddleLeft);
                 UiKit.Place(hint.rectTransform, new Vector2(0, 0), new Vector2(0, 0), new Vector2(8, 18), new Vector2(760, 30));
             }
 
+            if (!string.IsNullOrEmpty(m.Notice))
+            {
+                var notice = UiKit.Label(_root, m.Notice, 11, Palette.SubText, TextAnchor.LowerLeft);
+                UiKit.Place(notice.rectTransform, Vector2.zero, Vector2.zero, new Vector2(8, 0), new Vector2(960, 20));
+            }
             if (status != null) BuildStatus(status);
         }
+
+        public void UpdateSeconds(int seconds)
+        { if (_clock != null && _timeLimited) _clock.text = "남은 시간 " + DisplayFormat.Clock(seconds); }
 
         /// <summary>게임 중 내 능력 상태(정치인 재사용 턴 등). 서버 상태를 그대로 문구로 보인다.</summary>
         private void BuildStatus(AbilityStatusModel s)

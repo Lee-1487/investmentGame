@@ -69,6 +69,7 @@ namespace BlackWhale.Shared
     {
         public string schemaVersion = "1.0", roomId, phase, currentPlayerId = "";
         public int turn, selectionIndex;
+        public bool paused;
         public double serverElapsedSeconds, phaseEndsAtServerSeconds, selectionDeadlineAtServerSeconds;
         public Player[] players;
         public CompanySeat[] companySeats;
