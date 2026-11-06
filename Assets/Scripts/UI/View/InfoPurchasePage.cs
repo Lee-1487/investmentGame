@@ -78,7 +78,9 @@ namespace BlackWhale.UI.View
         private readonly string _companyId;
         private readonly GameClientController _c;
         private readonly Text _seats;
-        private readonly LineChartGraphic _chart;
+        private readonly BarChartGraphic _chart;
+        private readonly Text _tip;
+        private DayBar[] _bars = new DayBar[0];
         private readonly Text _axisTop, _axisBottom;
         private readonly Button[] _bundleButtons = new Button[UiRules.BundleCount];
 
@@ -93,9 +95,13 @@ namespace BlackWhale.UI.View
             UiKit.Stretch(inner.rectTransform, 1, 1, 1, 1);
             var root = inner.rectTransform;
 
-            var name = UiKit.Label(root, "<b>" + companyId + "</b>  <size=11>" + CompanyInfo.Volatility(companyId) + "</size>",
-                16, Palette.Text, TextAnchor.UpperLeft);
-            UiKit.Stretch(name.rectTransform, 10, 6, 10, 0);
+            // NEXT-D03 기업 이미지(없으면 배지)와 표시명. 통신 ID는 그대로.
+            var entry = CompanyCatalog.Get(companyId);
+            var logo = CompanyBadge.Create(root, companyId, 24);
+            UiKit.Place(logo, new Vector2(0, 1), new Vector2(0, 1), new Vector2(8, -5), new Vector2(24, 24));
+            var name = UiKit.Label(root, "<b>" + entry.DisplayName + "</b> <size=10>" + entry.Id + " · " + entry.Volatility + "</size>",
+                14, Palette.Text, TextAnchor.UpperLeft);
+            UiKit.Stretch(name.rectTransform, 38, 8, 10, 0);
 
             _seats = UiKit.Label(root, "", 12, Palette.SubText, TextAnchor.UpperRight);
             UiKit.Stretch(_seats.rectTransform, 10, 8, 10, 0);
@@ -103,7 +109,12 @@ namespace BlackWhale.UI.View
             // 그래프 영역
             var chartRt = UiKit.Rect(root, "Chart");
             UiKit.Stretch(chartRt, 40, 30, 10, 58);
-            _chart = chartRt.gameObject.AddComponent<LineChartGraphic>();
+            _chart = chartRt.gameObject.AddComponent<BarChartGraphic>();
+            var pointer = chartRt.gameObject.AddComponent<ChartPointerLayer>(); // 마우스 위치 날짜의 값 툴팁
+            pointer.Hovered = OnHover;
+
+            _tip = UiKit.Label(root, "", 10, Palette.Text, TextAnchor.MiddleRight);
+            UiKit.Place(_tip.rectTransform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-8, -24), new Vector2(220, 14));
 
             _axisTop = UiKit.Label(root, "", 10, Palette.SubText, TextAnchor.UpperRight);
             UiKit.Place(_axisTop.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(0, -28), new Vector2(38, 14));
@@ -114,7 +125,7 @@ namespace BlackWhale.UI.View
             foreach (int day in new[] { 0, 10, 20, 30 })
             {
                 var tick = UiKit.Label(chartRt, day + "일", 9, Palette.SubText, TextAnchor.UpperCenter);
-                UiKit.Place(tick.rectTransform, new Vector2(day / 30f, 0), new Vector2(0.5f, 1), new Vector2(0, -1), new Vector2(40, 14));
+                UiKit.Place(tick.rectTransform, new Vector2((day + 0.5f) / DayAxis.Count, 0), new Vector2(0.5f, 1), new Vector2(0, -1), new Vector2(40, 14));
             }
 
             // 묶음 버튼 6개
@@ -140,9 +151,8 @@ namespace BlackWhale.UI.View
 
         public void Refresh()
         {
-            int seats = _c.RemainingSeats(_companyId);
-            _seats.text = _c.Store.Public == null ? "" : "남은 자리 " + seats + "/" + UiRules.CompaniesPerOrder;
-            if (_c.Store.OwnSelections.Contains(_companyId)) _seats.text = "<color=#2563EB><b>내 선택</b></color>  " + _seats.text;
+            // 남은 자리 수는 정보 구매 창에 표시하지 않는다(자리 선택 화면에서만 보임). 내가 고른 기업 표시만 남김.
+            _seats.text = _c.Store.OwnSelections.Contains(_companyId) ? "<color=#2563EB><b>내 선택</b></color>" : "";
 
             var company = _c.Store.View?.companies?.FirstOrDefault(x => x.companyId == _companyId);
             var revealed = _c.Store.Revealed != null && _c.Store.RevealedTurn == _c.Store.CurrentTurn
@@ -154,32 +164,17 @@ namespace BlackWhale.UI.View
 
         private void DrawChart(VisibleCompany company, RevealedCompany revealed)
         {
-            int cap = GraphSeriesBuilder.AxisLimitBps(_companyId);
-            _chart.Clear();
-            _chart.SetRange(0, UiRules.MaxDay, -cap, cap);
+            int cap = GraphSeriesBuilder.AxisLimitBps(_companyId); // 공개 설정값. 비공개 원본을 보지 않는다.
             _axisTop.text = DisplayFormat.Percent(cap);
             _axisBottom.text = DisplayFormat.Percent(-cap);
+            // 시장 공개(주문 잠금) 이후에만 31일 전체, 그 전에는 열람한 날짜만.
+            _bars = DailyBarModel.Build(company, revealed);
+            _chart.SetData(_bars, cap);
+        }
 
-            if (revealed == null)
-                foreach (var locked in GraphSeriesBuilder.LockedRanges(company))
-                    _chart.AddBand(locked.StartDay - 0.5f, locked.EndDay + 0.5f, Palette.Locked);
-            _chart.AddHLine(0, Palette.Grid, 1f);
-
-            // 시장 공개(주문 잠금) 이후에만 A가 보내 주는 전체 값. 공개 전에는 그리지 않는다.
-            if (revealed != null)
-            {
-                var full = GraphSeriesBuilder.RevealedSeries(revealed).Select(p => new Vector2(p.Day, p.Bps)).ToList();
-                _chart.AddSeries(full, new Color(0.45f, 0.5f, 0.6f, 0.9f), 1.5f);
-            }
-            _chart.AddVLine(10, new Color(0.9f, 0.9f, 0.92f), 1f);
-            _chart.AddVLine(20, new Color(0.9f, 0.9f, 0.92f), 1f);
-
-            foreach (var seg in GraphSeriesBuilder.Segments(company))
-            {
-                var pts = seg.Select(p => new Vector2(p.Day, p.Bps)).ToList();
-                var last = seg[seg.Count - 1].Bps;
-                _chart.AddSeries(pts, last >= 0 ? Palette.Up : Palette.Down, 2f, 3f);
-            }
+        private void OnHover(int? day)
+        {
+            _tip.text = day.HasValue && day.Value < _bars.Length ? DailyBarModel.Tooltip(_bars[day.Value]) : "";
         }
 
         private void RefreshButtons(VisibleCompany company)
