@@ -116,6 +116,7 @@ namespace BlackWhale.UI.View
             BuildRightColumn();
             BuildBanner();
             BuildOverlays();
+            ProgressionPanel.Create(ScreenRect, _c);
             if (_lobby?.Leave != null)
             {
                 var leave = UiKit.Button(Root, "방 나가기", 12, Palette.Card, Palette.Text, _lobby.Leave);
@@ -355,7 +356,8 @@ namespace BlackWhale.UI.View
             {
                 _lastBoardTurn = board.turn;
                 var top = board.rows.OrderBy(r => r.rank).First();
-                ShowBanner(board.turn + "턴 정산 완료 · 1위 " + top.playerId + " (" + DisplayFormat.Percent(top.turnReturnBps) + ")");
+                ShowBanner(board.gameComplete ? "10턴 최종 승자 · " + board.winnerPlayerId :
+                    board.turn + "턴 정산 완료 · 1위 " + top.playerId + " (" + DisplayFormat.Percent(top.turnReturnBps) + ")");
             }
         }
 

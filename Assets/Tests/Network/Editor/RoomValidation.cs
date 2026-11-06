@@ -36,7 +36,7 @@ namespace BlackWhale.Tests
         {
             Market = new FixtureMarketService(fixture, scoreboard);
             Information = new FixtureInformationService(Market);
-            Room = new GameRoom("DEV-ROOM-001", Market, Information, Clock, mode, true);
+            Room = new GameRoom("DEV-ROOM-001", Market, Information, Clock, mode, true, GameSettings.Fixture);
             if (!start) return;
             for (int i = 1; i <= 4; i++)
             {

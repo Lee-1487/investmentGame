@@ -14,6 +14,14 @@ namespace BlackWhale.Tests
     }
     public sealed class UnityNetworkTests
     {
+        [UnityTest] public IEnumerator NextATimingBotsAndTenTurns()
+        {
+            var task = NextAValidation.Run(new UnityWireCodec());
+            while (!task.IsCompleted) yield return null;
+            if (task.IsFaulted) throw task.Exception;
+            Assert.That(task.Result.Length, Is.GreaterThanOrEqualTo(13));
+            TestContext.WriteLine(string.Join("\n", task.Result));
+        }
         private RoomValidation Suite()
         { return new RoomValidation(Path.GetDirectoryName(Application.dataPath), new UnityTestJson()); }
         [Test] public void RoleAFixturesAndFlow()

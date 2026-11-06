@@ -508,6 +508,7 @@ namespace BlackWhale.UI.View
                 case Protocol.Lobby: return "대기실";
                 case Protocol.Ended: return "종료";
                 case "AUCTION": return "입찰";
+                case Protocol.AbilitySelection: return "능력 선택";
                 case Protocol.Info: return "정보 탐색";
                 case Protocol.Selection: return "기업 선택";
                 case Protocol.Investment: return "투자 결정";

@@ -21,7 +21,7 @@ namespace BlackWhale.Network
             private void Need(char value) { if (!Take(value)) Fail(); }
             private static void Fail() { throw new FormatException("Invalid request JSON or integer field."); }
             private static bool Integer(string field)
-            { return field == "turn" || field == "bundleIndex" || field == "weightBps" || field == "entryDay" || field == "exitDay"; }
+            { return field == "turn" || field == "historyTurn" || field == "bundleIndex" || field == "weightBps" || field == "entryDay" || field == "exitDay" || field == "bidAmount"; }
             private void Value(string field, int depth)
             {
                 White(); if (depth > 32 || index >= text.Length) Fail();
@@ -30,8 +30,10 @@ namespace BlackWhale.Network
                 {
                     int start = index;
                     Number();
-                    int value;
-                    if (!int.TryParse(text.Substring(start, index - start), NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out value)) Fail();
+                    string number = text.Substring(start, index - start);
+                    if (field == "bidAmount")
+                    { if (!long.TryParse(number, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out _)) Fail(); }
+                    else if (!int.TryParse(number, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out _)) Fail();
                     return;
                 }
                 if (token == '{')

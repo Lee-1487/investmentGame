@@ -12,11 +12,17 @@
     <Compile Include="../../Assets/Scripts/Rules/Information/*.cs" />
     <Compile Include="../../Assets/Scripts/Rules/Market/*.cs" />
     <Compile Include="../../Assets/Scripts/Flow/*.cs" />
+    <Compile Include="../../Assets/Scripts/Bots/*.cs" />
+    <Compile Include="../../Assets/Scripts/UI/State/*.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Presentation/UiRules.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Presentation/PhaseClock.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Dev/DevBot.cs" />
     <Compile Include="../../Assets/Scripts/Network/TcpTransport.cs" />
     <Compile Include="../../Assets/Scripts/Network/RequestJsonValidator.cs" />
     <Compile Include="../../Assets/Tests/Network/Editor/FixtureServices.cs" />
     <Compile Include="../../Assets/Tests/Network/Editor/RoomValidation.cs" />
     <Compile Include="../../Assets/Tests/Network/Editor/TransportValidation.cs" />
     <Compile Include="../../Assets/Tests/Network/Editor/RealInformationValidation.cs" />
+    <Compile Include="../../Assets/Tests/Network/Editor/NextAValidation.cs" />
   </ItemGroup>
 </Project>

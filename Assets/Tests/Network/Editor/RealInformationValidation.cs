@@ -18,7 +18,7 @@ namespace BlackWhale.Tests
             var fixture = suite.NewRoom(start: false);
             var market = suite.NewRealMarket();
             var room = new GameRoom("REAL-BC", market, new SharedInformationService(market),
-                fixture.Clock, TimerMode.ManualForFixture, true);
+                fixture.Clock, TimerMode.ManualForFixture, true, GameSettings.Fixture);
             var clients = new List<TcpGameClient>();
             var logs = new List<List<ServerMessage>>();
             var server = new TcpGameServer(room, codec, fixture.Clock, 0, IPAddress.Loopback);

@@ -34,7 +34,7 @@ namespace BlackWhale.UI.Presentation
 
         /// <summary>대기실·종료처럼 시간이 없는 단계면 false.</summary>
         public static bool HasDeadline(PublicState s)
-            => s != null && s.turn > 0 && s.phase != Protocol.Lobby && s.phase != Protocol.Ended && DeadlineOf(s) > 0;
+            => s != null && s.phase != Protocol.Lobby && s.phase != Protocol.Ended && DeadlineOf(s) > 0;
 
         public int RemainingSeconds(PublicState s, double localNowSeconds)
         {

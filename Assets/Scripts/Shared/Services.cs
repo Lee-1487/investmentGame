@@ -63,6 +63,34 @@ namespace BlackWhale.Shared
         PlayerView BuildPlayerView(RequestContext context, OwnInvestmentState ownState);
     }
     public interface IServerClock { double Seconds { get; } }
+    public interface IMarketHistory
+    {
+        OwnInvestmentState GetOwnInvestmentState(string playerId, int requestedTurn);
+        Scoreboard GetScoreboard(int requestedTurn);
+    }
+    // B owns the cost ledger and final asset/performance comparison.
+    public interface IMarketProgression
+    {
+        long GetTurnStartAssets(string playerId);
+        RuleResult CommitCost(RequestContext context, long amount);
+        Scoreboard FinalizeGame(RequestContext context, string[] initialOrder, int[] finalCoins);
+    }
+    // C owns ability/auction/reward state. A only controls when these operations run.
+    public interface IProgressionService
+    {
+        void PrepareGame(string roomId, string[] initialOrder);
+        RuleResult SelectAbility(RequestContext context, string abilityId);
+        bool AllAbilitiesSelected(string roomId);
+        void CompleteAbilitySelection(string roomId);
+        void BeginTurn(RequestContext context);
+        RuleResult SubmitBid(RequestContext context, CommandPayload payload);
+        bool AllBidsConfirmed(RequestContext context);
+        string[] CloseAuction(RequestContext context);
+        void RewardTurn(RequestContext context, Scoreboard board);
+        void PopulateView(RequestContext context, PlayerView view);
+        PublicEvent[] GetPublicEvents(string roomId);
+        int GetCoins(string roomId, string playerId);
+    }
     public interface IWireCodec
     {
         string EncodeClient(ClientMessage message);

@@ -56,7 +56,7 @@ namespace BlackWhale.Tests
                     var clock = new MonotonicClock();
                     var marketService = new MarketService(market);
                     var room = new GameRoom("A-LAB", marketService, new SharedInformationService(marketService),
-                        clock, realtime ? TimerMode.Realtime : TimerMode.ManualForFixture, true);
+                        clock, realtime ? TimerMode.Realtime : TimerMode.ManualForFixture, true, GameSettings.Fixture);
                     server = new TcpGameServer(room, new UnityWireCodec(), clock, number, System.Net.IPAddress.Any);
                 }
                 var client = await TcpGameClient.Connect(host ? "127.0.0.1" : address, number, displayName, new UnityWireCodec());

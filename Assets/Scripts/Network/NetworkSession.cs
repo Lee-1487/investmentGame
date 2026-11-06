@@ -22,12 +22,12 @@ namespace BlackWhale.Network
 
         public async Task Host(IMarketService market, IInformationService information,
             string displayName, int port = 7777, bool allowLan = false,
-            TimerMode mode = TimerMode.Realtime, bool fixedOrderForFixture = false)
+            TimerMode mode = TimerMode.Realtime, bool fixedOrderForFixture = false, GameSettings settings = null)
         {
             if (server != null || Client != null || connecting) throw new InvalidOperationException("Session is already active.");
             var clock = new MonotonicClock();
             var codec = new UnityWireCodec();
-            var room = new GameRoom(Guid.NewGuid().ToString("N"), market, information, clock, mode, fixedOrderForFixture);
+            var room = new GameRoom(Guid.NewGuid().ToString("N"), market, information, clock, mode, fixedOrderForFixture, settings);
             server = new TcpGameServer(room, codec, clock, port, allowLan ? System.Net.IPAddress.Any : System.Net.IPAddress.Loopback);
             hostedRoom = room;
             try { await Connect("127.0.0.1", displayName, server.Port); }
@@ -55,6 +55,7 @@ namespace BlackWhale.Network
         }
         // Host-process operations only. These are deliberately not network command types.
         public bool RegisterLocalBot(string playerId) => IsHost && hostedRoom.RegisterLocalBot(playerId);
+        public bool SetBotDifficulty(string difficulty) => IsHost && hostedRoom.SetBotDifficulty(difficulty);
         public bool RemoveLobbyBot(string playerId) => IsHost && hostedRoom.RemoveLobbyBot(playerId);
         public void ReleaseDisconnectedLobbySlots() { if (IsHost) hostedRoom.ReleaseDisconnectedLobbySlots(); }
         private void OnMessage(ServerMessage message) { MessageReceived?.Invoke(message); }

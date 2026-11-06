@@ -70,12 +70,18 @@ namespace BlackWhale.UI.Tests
             Click(guest, "Ready");
             yield return Until(() => C(host).AllPlayersReady, "all players ready");
             Click(host, "StartGame");
+            yield return Until(() => C(host).Store.Public.phase == Protocol.AbilitySelection && C(host).Store.View?.ability?.candidates?.Length == 3,
+                "three ability candidates before first turn");
+            Click(host, "DefaultAbilities");
             yield return Until(() => C(guest).Store.View?.turn == 1 && C(host).Store.Public.phase == Protocol.Info, "start synchronized");
             Assert.IsFalse(host.GetComponentsInChildren<Button>().Any(b => b.name == "RemoveBots"), "cannot remove bots mid-game");
-            C(guest).BuyInformation("AI", 1);
-            yield return Until(() => C(guest).Store.View.coins == 2, "private C purchase result");
-            Assert.IsTrue(C(guest).IsVisible("AI", 1));
-            Assert.IsFalse(C(host).IsVisible("AI", 1));
+            int bundle = Enumerable.Range(0, 6).First(b => !C(guest).IsVisible("AI", b));
+            int guestBefore = C(guest).Store.View.coins;
+            bool free = C(guest).Store.View.ability.freeInformationCredits > 0;
+            C(guest).BuyInformation("AI", bundle);
+            yield return Until(() => C(guest).IsVisible("AI", bundle), "private C purchase result");
+            Assert.AreEqual(guestBefore - (free ? 0 : 1), C(guest).Store.View.coins);
+            Assert.IsFalse(C(host).IsVisible("AI", bundle));
             Assert.AreEqual(3, C(host).Store.View.coins);
 
             var deadline = Time.realtimeSinceStartup + 40;

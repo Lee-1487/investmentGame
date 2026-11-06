@@ -47,7 +47,8 @@ namespace BlackWhale.UI.State
                 assets = s.assets,
                 selectedCompanies = (string[])s.selectedCompanies?.Clone(),
                 ownInvestments = Copy(s.ownInvestments),
-                companies = s.companies?.Select(Copy).ToArray()
+                companies = s.companies?.Select(Copy).ToArray(),
+                ability = Copy(s.ability), auction = Copy(s.auction), inventory = (string[])s.inventory?.Clone()
             };
 
         public static CompanySeat Copy(CompanySeat s)
@@ -69,7 +70,9 @@ namespace BlackWhale.UI.State
                 phaseEndsAtServerSeconds = s.phaseEndsAtServerSeconds,
                 selectionDeadlineAtServerSeconds = s.selectionDeadlineAtServerSeconds,
                 players = s.players?.Select(Copy).ToArray(),
-                companySeats = s.companySeats?.Select(Copy).ToArray()
+                companySeats = s.companySeats?.Select(Copy).ToArray(),
+                initialPlayerOrder = (string[])s.initialPlayerOrder?.Clone(), seatPlayerIds = (string[])s.seatPlayerIds?.Clone(),
+                botDifficulty = s.botDifficulty, events = s.events?.Select(Copy).ToArray()
             };
 
         public static ReturnPoint Copy(ReturnPoint s)
@@ -94,10 +97,21 @@ namespace BlackWhale.UI.State
                 phase = s.phase,
                 turn = s.turn,
                 rankingFinalForTurn = s.rankingFinalForTurn,
+                gameComplete = s.gameComplete, winnerPlayerId = s.winnerPlayerId,
                 rows = s.rows?.Select(Copy).ToArray()
             };
 
         public static RevealedCompany Copy(RevealedCompany s)
             => s == null ? null : new RevealedCompany { companyId = s.companyId, dailyChangesBps = (int[])s.dailyChangesBps?.Clone() };
+        public static AbilityState Copy(AbilityState s) => s == null ? null : new AbilityState {
+            candidates = (string[])s.candidates?.Clone(), selectedId = s.selectedId,
+            reusableAtTurn = s.reusableAtTurn, freeInformationCredits = s.freeInformationCredits };
+        public static AuctionState Copy(AuctionState s) => s == null ? null : new AuctionState {
+            maximumBid = s.maximumBid, bidAmount = s.bidAmount, confirmed = s.confirmed, useFreePass = s.useFreePass,
+            seatPreferences = (string[])s.seatPreferences?.Clone() };
+        public static PublicEvent Copy(PublicEvent s) => s == null ? null : new PublicEvent {
+            eventId = s.eventId, turn = s.turn, kind = s.kind, playerId = s.playerId, targetPlayerId = s.targetPlayerId, detail = s.detail };
+        public static HistorySnapshot Copy(HistorySnapshot s) => s == null ? null : new HistorySnapshot {
+            turn = s.turn, playerView = Copy(s.playerView), scoreboard = Copy(s.scoreboard) };
     }
 }

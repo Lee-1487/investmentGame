@@ -8,6 +8,7 @@ namespace BlackWhale.Shared
         public const string RulesVersion = "rules-v2";
         public const string Info = "INFO", Selection = "SELECTION", Investment = "INVESTMENT";
         public const string Reveal = "MARKET_REVEAL", Result = "RESULT", Lobby = "LOBBY", Ended = "ENDED";
+        public const string AbilitySelection = "ABILITY_SELECTION", Auction = "AUCTION";
     }
 
     // Field names and integer units intentionally match the frozen fixture format.
@@ -22,8 +23,13 @@ namespace BlackWhale.Shared
     {
         public string companyId;
         public int bundleIndex;
+        public int historyTurn;
         public Investment[] investments;
         public bool ready;
+        public string abilityId;
+        public long bidAmount;
+        public bool useFreePass;
+        public string[] seatPreferences;
     }
     [Serializable] public sealed class Command
     {
@@ -38,6 +44,7 @@ namespace BlackWhale.Shared
         public int[] dailyChangesBps;
         public bool locked, automatic;
         public Investment[] investments;
+        public string source;
     }
     [Serializable] public sealed class CommandResult
     {
@@ -65,6 +72,9 @@ namespace BlackWhale.Shared
         public double serverElapsedSeconds, phaseEndsAtServerSeconds, selectionDeadlineAtServerSeconds;
         public Player[] players;
         public CompanySeat[] companySeats;
+        public string[] initialPlayerOrder, seatPlayerIds;
+        public string botDifficulty;
+        public PublicEvent[] events;
     }
     [Serializable] public sealed class VisibleBundle
     {
@@ -85,6 +95,9 @@ namespace BlackWhale.Shared
         public string[] selectedCompanies;
         public Investment[] ownInvestments;
         public VisibleCompany[] companies;
+        public AbilityState ability;
+        public AuctionState auction;
+        public string[] inventory;
     }
     [Serializable] public sealed class ReturnPoint { public int turn, returnBps; }
     [Serializable] public sealed class ScoreRow
@@ -100,8 +113,34 @@ namespace BlackWhale.Shared
         public int turn;
         public bool rankingFinalForTurn = true;
         public ScoreRow[] rows;
+        public bool gameComplete;
+        public string winnerPlayerId;
+    }
+    [Serializable] public sealed class AbilityState
+    {
+        public string[] candidates;
+        public string selectedId;
+        public int reusableAtTurn, freeInformationCredits;
+    }
+    [Serializable] public sealed class AuctionState
+    {
+        public long maximumBid, bidAmount;
+        public bool confirmed, useFreePass;
+        public string[] seatPreferences;
+    }
+    // Deliberately excludes bid amounts, private coins, orders and information values.
+    [Serializable] public sealed class PublicEvent
+    {
+        public int turn;
+        public string eventId, kind, playerId, targetPlayerId, detail;
     }
     [Serializable] public sealed class RevealedCompany { public string companyId; public int[] dailyChangesBps; }
+    [Serializable] public sealed class HistorySnapshot
+    {
+        public int turn;
+        public PlayerView playerView;
+        public Scoreboard scoreboard;
+    }
     [Serializable] public sealed class Session
     {
         public string playerId, reconnectToken;
@@ -115,6 +154,7 @@ namespace BlackWhale.Shared
         public PlayerView playerView;
         public Scoreboard scoreboard;
         public RevealedCompany[] revealedMarket;
+        public HistorySnapshot history;
     }
     [Serializable] public sealed class ClientMessage
     {

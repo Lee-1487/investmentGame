@@ -33,13 +33,17 @@ internal static class Program
             string[] core = suite.RunAll();
             string[] network = await TransportValidation.Run(suite, codec);
             string[] realBC = await RealInformationValidation.Run(suite, codec);
+            string[] nextA = await NextAValidation.Run(codec);
             foreach (string check in core.Concat(network).Concat(realBC)) Console.WriteLine("PASS " + check);
+            foreach (string check in nextA) Console.WriteLine("PASS " + check);
             string output = Path.Combine(root, "Logs", "AValidation-results.json");
             Directory.CreateDirectory(Path.GetDirectoryName(output));
             File.WriteAllText(output, JsonSerializer.Serialize(new { runtime = ".NET 10", serviceMode = "A_FIXTURE_MOCKS_AND_REAL_BC",
-                core, network, realBC, notVerified = new[] { "Four physical PCs", "Unity player UI", "Auctions and multi-turn progression" } },
+                core, network, realBC, nextA, botCommandEvidence = NextAValidation.BotCommandEvidence,
+                notVerified = new[] { "Four physical PCs", "Unity player UI", "Full B/C item and ability effects (N08-N10)" } },
                 new JsonSerializerOptions { WriteIndented = true }));
-            Console.WriteLine("PASS " + (core.Length + network.Length + realBC.Length) + " checks. Evidence: " + output);
+            File.Copy(output, Path.Combine(root, "Logs", "Next-A-results.json"), true);
+            Console.WriteLine("PASS " + (core.Length + network.Length + realBC.Length + nextA.Length) + " checks. Evidence: " + output);
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }

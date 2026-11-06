@@ -25,6 +25,7 @@ namespace BlackWhale.UI.State
         public const string BuyInformation = "BUY_INFORMATION";
         public const string SelectCompany = "SELECT_COMPANY";
         public const string SubmitInvestment = "SUBMIT_INVESTMENT";
+        public const string SelectAbility = "SELECT_ABILITY", SubmitBid = "SUBMIT_BID";
 
         /// <summary>GameRoom 규칙: 결과 type = 요청 type + "_RESULT".</summary>
         public static string ResultOf(string commandType) => commandType + "_RESULT";
