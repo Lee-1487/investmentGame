@@ -55,6 +55,8 @@ namespace BlackWhale.UI.State
         public PublicState Public { get; private set; }
         public PlayerView View { get; private set; }
         public Scoreboard Scoreboard { get; private set; }
+        // Read-only browsing data never replaces the current turn's trading state.
+        public HistorySnapshot History { get; private set; }
         /// <summary>주문 잠금 후 A가 공개한 전체 시장(MARKET_REVEAL). 그 전에는 null.</summary>
         public RevealedCompany[] Revealed { get; private set; }
         public int RevealedTurn { get; private set; }
@@ -122,6 +124,11 @@ namespace BlackWhale.UI.State
             if (message == null) return ApplyOutcome.Ignored;
             switch (message.type)
             {
+                case "HISTORY_VIEW":
+                    var history = message.history;
+                    if (history?.playerView == null || history.turn > CurrentTurn || history.playerView.recipientPlayerId != LocalPlayerId)
+                        return ApplyOutcome.Ignored;
+                    History = DtoCopy.Copy(history); Raise(); return ApplyOutcome.Applied;
                 case ServerMessageTypes.Welcome:
                     LocalPlayerId = message.session?.playerId ?? "";
                     Raise();
@@ -217,7 +224,7 @@ namespace BlackWhale.UI.State
                 {
                     bundleIndex = p.bundleIndex,
                     startDay = p.startDay,
-                    source = BundleSources.Purchased,
+                    source = string.IsNullOrEmpty(p.source) ? BundleSources.Purchased : p.source,
                     dailyChangesBps = (int[])p.dailyChangesBps?.Clone()
                 });
             }

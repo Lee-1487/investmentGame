@@ -2,6 +2,7 @@
     "name": "BlackWhale.UI.Dev",
     "rootNamespace": "BlackWhale.UI.Dev",
     "references": [
+        "BlackWhale.Bots",
         "BlackWhale.Shared",
         "BlackWhale.Information",
         "BlackWhale.Rules.Market",

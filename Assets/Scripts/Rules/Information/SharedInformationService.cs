@@ -7,7 +7,7 @@ using InvestmentGame.Rules.Information;
 namespace BlackWhale.Rules.Information
 {
     // A and D use Shared DTOs. C's domain models remain inside this server adapter.
-    public sealed class SharedInformationService : IInformationService
+    public sealed partial class SharedInformationService : IInformationService, IProgressionService
     {
         private sealed class RoomState
         {
@@ -45,14 +45,21 @@ namespace BlackWhale.Rules.Information
             lock (gate)
             {
                 var room = rooms[context.RoomId];
+                var feature = FeaturePlayer(context.RoomId, context.PlayerId);
+                bool free = feature != null && feature.FreeCredits > 0;
+                int beforeCoins = room.Service.GetCoins(context.PlayerId);
                 var result = room.Service.BuyInformation(context.PlayerId, room.CurrentTurn, context.Phase,
-                    new InformationRequest(context.RequestId, context.Turn, companyId, bundleIndex));
+                    new InformationRequest(context.RequestId, context.Turn, companyId, bundleIndex), free);
                 if (!result.Success) return new RuleResult(result.ErrorCode);
+                // The domain cache can replay a previous response. Consume a credit only once.
+                string purchaseKey = context.Turn + ":" + context.RequestId;
+                if (free && result.RemainingCoins == beforeCoins && feature.FreePurchases.Add(purchaseKey)) feature.FreeCredits--;
                 return new RuleResult(payload: new ResultPayload
                 {
                     companyId = result.CompanyId, bundleIndex = result.BundleIndex,
                     startDay = result.StartDay, remainingCoins = result.RemainingCoins,
-                    dailyChangesBps = result.DailyChangesBps.ToArray()
+                    dailyChangesBps = result.DailyChangesBps.ToArray(),
+                    source = feature != null && feature.FreePurchases.Contains(purchaseKey) ? "ABILITY" : "PURCHASED"
                 });
             }
         }

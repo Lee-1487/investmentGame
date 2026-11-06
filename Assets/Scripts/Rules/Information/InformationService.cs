@@ -24,6 +24,8 @@ namespace InvestmentGame.Rules.Information
             public readonly Dictionary<int, HashSet<BundleKey>> PurchasedByTurn = new Dictionary<int, HashSet<BundleKey>>();
             // 턴/requestId별 결과를 보관해 다음 턴의 같은 ID와 구분한다.
             public readonly Dictionary<string, CachedRequest> Requests = new Dictionary<string, CachedRequest>();
+            public readonly Dictionary<string, string> Sources = new Dictionary<string, string>();
+            public readonly HashSet<string> Rewards = new HashSet<string>();
         }
 
         /// <summary>요청 ID와 요청 내용 지문, 당시 결과를 함께 보관하는 재전송 캐시 항목이다.</summary>
@@ -156,7 +158,8 @@ namespace InvestmentGame.Rules.Information
         /// 정보 구매를 검증하고 성공 시 코인 차감과 구매 원장을 하나의 잠금 안에서 확정한다.
         /// 검증 실패나 시장 조회 실패에서는 어떤 상태도 변경하지 않는다.
         /// </summary>
-        public InformationBuyResponse BuyInformation(string playerId, int currentTurn, string phase, InformationRequest request)
+        public InformationBuyResponse BuyInformation(string playerId, int currentTurn, string phase, InformationRequest request,
+            bool free = false)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));
             lock (sync)
@@ -179,7 +182,7 @@ namespace InvestmentGame.Rules.Information
                 else if (!companyIds.Contains(request.CompanyId)) response = InformationBuyResponse.Failed("INVALID_COMPANY", state.Coins);
                 else if (request.BundleIndex < 0 || request.BundleIndex >= InformationConstants.BundleCount) response = InformationBuyResponse.Failed("INVALID_BUNDLE", state.Coins);
                 else if (IsVisible(currentTurn, state, request.CompanyId, request.BundleIndex)) response = InformationBuyResponse.Failed("ALREADY_VISIBLE", state.Coins);
-                else if (state.Coins < InformationConstants.InformationCostCoins) response = InformationBuyResponse.Failed("NOT_ENOUGH_COINS", state.Coins);
+                else if (!free && state.Coins < InformationConstants.InformationCostCoins) response = InformationBuyResponse.Failed("NOT_ENOUGH_COINS", state.Coins);
                 else if (!market.TryGetBundle(currentTurn, request.CompanyId, request.BundleIndex, out var bundle)) response = InformationBuyResponse.Failed("MARKET_UNAVAILABLE", state.Coins);
                 else
                 {
@@ -189,9 +192,10 @@ namespace InvestmentGame.Rules.Information
                         records = new HashSet<BundleKey>();
                         state.PurchasedByTurn.Add(currentTurn, records);
                     }
-                    state.Coins -= InformationConstants.InformationCostCoins;
+                    if (!free) state.Coins -= InformationConstants.InformationCostCoins;
                     state.CoinsByTurn[currentTurn] = state.Coins;
                     records.Add(new BundleKey(request.CompanyId, request.BundleIndex));
+                    state.Sources[currentTurn + ":" + request.CompanyId + ":" + request.BundleIndex] = free ? "ABILITY" : "PURCHASED";
                     // 구매자에게 필요한 묶음만 반환하고 전체 시장 원본은 반환하지 않는다.
                     response = InformationBuyResponse.Succeeded(bundle, state.Coins);
                 }
@@ -224,7 +228,9 @@ namespace InvestmentGame.Rules.Information
                     }
                     foreach (var record in purchased.Where(x => x.CompanyId == companyId).OrderBy(x => x.BundleIndex))
                     {
-                        if (TryCopyBundle(turn, record.CompanyId, record.BundleIndex, out var bundle)) bundles.Add(new VisibleInformationBundle(bundle, "PURCHASED"));
+                        if (TryCopyBundle(turn, record.CompanyId, record.BundleIndex, out var bundle))
+                            bundles.Add(new VisibleInformationBundle(bundle, state.Sources.TryGetValue(turn + ":" + record.CompanyId + ":" + record.BundleIndex,
+                                out var source) ? source : "PURCHASED"));
                     }
                     views.Add(new CompanyInformationView(companyId, bundles.OrderBy(x => x.BundleIndex).ToArray()));
                 }
@@ -249,6 +255,16 @@ namespace InvestmentGame.Rules.Information
         /// 공개 묶음 또는 같은 턴에 본인이 구매한 묶음이면 이미 보이는 정보로 판정한다.
         /// 이 검사가 있어 공개 정보를 구매하거나 같은 묶음을 중복 차감하지 않는다.
         /// </summary>
+        public void RewardCoins(string playerId, int turn, string key, int amount)
+        {
+            if (amount < 0) throw new ArgumentOutOfRangeException(nameof(amount));
+            lock (sync)
+            {
+                var state = GetPlayer(playerId);
+                if (!state.Rewards.Add(turn + ":" + key)) return;
+                state.Coins += amount; state.CoinsByTurn[turn] = state.Coins;
+            }
+        }
         private bool IsVisible(int turn, PlayerState state, string companyId, int bundleIndex)
         {
             if (market.GetPublicBundleIndices(turn, companyId).Contains(bundleIndex)) return true;

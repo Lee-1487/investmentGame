@@ -10,7 +10,7 @@ namespace BlackWhale.Rules
     /// investment orders, assets, settlement and scoreboard. A (GameRoom) calls this; it never
     /// talks to the network or UI. Every rejected call leaves all state unchanged.
     /// </summary>
-    public sealed class MarketService : IMarketService
+    public sealed class MarketService : IMarketService, IMarketProgression, IMarketHistory
     {
         private readonly InvestmentRules rules;
         private readonly Func<int, MarketData> marketForTurn;
@@ -30,6 +30,9 @@ namespace BlackWhale.Rules
         private readonly Dictionary<int, PlayerSettlement[]> settledPlayers = new Dictionary<int, PlayerSettlement[]>();
         private readonly Dictionary<int, MarketBook> markets = new Dictionary<int, MarketBook>();
         private readonly Dictionary<int, Dictionary<string, OwnInvestmentState>> ownHistory = new Dictionary<int, Dictionary<string, OwnInvestmentState>>();
+        private readonly Dictionary<string, long> costs = new Dictionary<string, long>();
+        private readonly Dictionary<string, long> costRequests = new Dictionary<string, long>();
+        private readonly Dictionary<string, int> bestTurnReturn = new Dictionary<string, int>();
 
         /// <summary>Fixture mode: the same fixed market (e.g. B_market_server.json) for its turn.</summary>
         public MarketService(MarketData fixedMarket, InvestmentRules rules = null)
@@ -79,6 +82,7 @@ namespace BlackWhale.Rules
             selected.Clear();
             orders.Clear();
             allLocked = false;
+            costs.Clear();
             foreach (string id in players)
             {
                 if (!assets.ContainsKey(id))
@@ -89,6 +93,7 @@ namespace BlackWhale.Rules
                 }
                 else if (assets[id] <= 0) assets[id] = rules.comebackGrant; // 0 assets: not eliminated, 1,000 support
                 turnStartAssets[id] = assets[id];
+                costs[id] = 0;
                 selected[id] = new List<string>();
             }
         }
@@ -157,7 +162,7 @@ namespace BlackWhale.Rules
             long total;
             return new OwnInvestmentState
             {
-                TotalAssets = assets.TryGetValue(playerId, out total) ? total : rules.initialAssets,
+                TotalAssets = assets.TryGetValue(playerId, out total) ? total - (settledBoards.ContainsKey(turn) ? 0 : costs[playerId]) : rules.initialAssets,
                 SelectedCompanies = GetSelectedCompanies(playerId),
                 Investments = orders.TryGetValue(playerId, out own) ? Copy(own) : new Investment[0]
             };
@@ -199,12 +204,13 @@ namespace BlackWhale.Rules
 
             // Compute everything first, then apply, so a failure never leaves half-updated assets.
             PlayerSettlement[] results = players.Select(id =>
-                Settlement.SettlePlayer(id, turnStartAssets[id], 0, orders[id], market, rules)).ToArray();
+                Settlement.SettlePlayer(id, turnStartAssets[id], costs[id], orders[id], market, rules)).ToArray();
 
             foreach (PlayerSettlement r in results)
             {
                 assets[r.playerId] = r.endingAssets;
                 lastTurnReturn[r.playerId] = r.turnReturnBps;
+                bestTurnReturn[r.playerId] = bestTurnReturn.TryGetValue(r.playerId, out var best) ? Math.Max(best, r.turnReturnBps) : r.turnReturnBps;
                 history[r.playerId].Add(new ReturnPoint { turn = turn, returnBps = Settlement.ReturnBps(rules.initialAssets, r.endingAssets) });
             }
             settledPlayers[turn] = results;
@@ -228,6 +234,37 @@ namespace BlackWhale.Rules
         }
 
         public long GetAssets(string playerId) { return assets[playerId]; }
+        public long GetTurnStartAssets(string playerId) => turnStartAssets[playerId];
+        public RuleResult CommitCost(RequestContext context, long amount)
+        {
+            string key = context.RoomId + ":" + context.Turn + ":" + context.PlayerId + ":" + context.RequestId;
+            if (costRequests.TryGetValue(key, out var previous))
+                return new RuleResult(previous == amount ? "" : "REQUEST_ID_CONFLICT");
+            if (context.Turn != turn) return new RuleResult("STALE_TURN");
+            if (context.Phase != Protocol.Auction && context.Phase != Protocol.Info && context.Phase != Protocol.Investment)
+                return new RuleResult("WRONG_PHASE");
+            if (string.IsNullOrEmpty(context.RequestId) || !costs.ContainsKey(context.PlayerId) || amount < 0)
+                return new RuleResult("INVALID_REQUEST");
+            if (allLocked || orders.ContainsKey(context.PlayerId)) return new RuleResult("ORDER_LOCKED");
+            if (amount > turnStartAssets[context.PlayerId] - costs[context.PlayerId]) return new RuleResult("NOT_ENOUGH_ASSETS");
+            costs[context.PlayerId] += amount; costRequests.Add(key, amount);
+            return new RuleResult();
+        }
+        public Scoreboard FinalizeGame(RequestContext context, string[] initialOrder, int[] finalCoins)
+        {
+            if (!settledBoards.TryGetValue(context.Turn, out var board)) throw new InvalidOperationException("Settle before final ranking.");
+            if (initialOrder == null || finalCoins == null || initialOrder.Length != players.Length ||
+                finalCoins.Length != initialOrder.Length || !initialOrder.OrderBy(x => x).SequenceEqual(players.OrderBy(x => x)))
+                throw new ArgumentException("Final snapshot must contain each player once.");
+            if (!board.gameComplete)
+            {
+                var ranked = initialOrder.Select((id, i) => new { Id = id, Index = i, Coins = finalCoins[i] })
+                    .OrderByDescending(p => assets[p.Id]).ThenByDescending(p => p.Coins)
+                    .ThenByDescending(p => bestTurnReturn[p.Id]).ThenBy(p => p.Index).ToArray();
+                board.gameComplete = true; board.winnerPlayerId = ranked[0].Id;
+            }
+            return CopyBoard(board);
+        }
 
         private Scoreboard BuildScoreboard()
         {
@@ -255,6 +292,7 @@ namespace BlackWhale.Rules
         private static Scoreboard CopyBoard(Scoreboard board)
         {
             return new Scoreboard { turn = board.turn, phase = board.phase, rankingFinalForTurn = board.rankingFinalForTurn,
+                gameComplete = board.gameComplete, winnerPlayerId = board.winnerPlayerId,
                 rows = board.rows.Select(r => new ScoreRow { rank = r.rank, playerId = r.playerId,
                     totalAssets = r.totalAssets, turnReturnBps = r.turnReturnBps, cumulativeProfit = r.cumulativeProfit,
                     cumulativeReturnBps = r.cumulativeReturnBps,

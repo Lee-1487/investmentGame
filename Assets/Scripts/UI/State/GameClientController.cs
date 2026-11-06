@@ -60,6 +60,28 @@ namespace BlackWhale.UI.State
         }
 
         public bool IsHost => LocalPlayerId == "P1";
+        public CommandStatus GetHistory(int turn)
+        {
+            if (Store.Public == null) return CommandStatus.NoState;
+            if (turn < 1 || turn > Store.CurrentTurn) return Block("HISTORY_UNAVAILABLE");
+            if (Store.HasPending("GET_HISTORY")) return CommandStatus.AlreadyPending;
+            Send("GET_HISTORY", new CommandPayload { historyTurn = turn }); return CommandStatus.Sent;
+        }
+        public CommandStatus SelectAbility(string abilityId)
+        {
+            if (Store.Public == null) return CommandStatus.NoState;
+            if (Store.Public.phase != Protocol.AbilitySelection) return Block(ErrorCodes.WrongPhase);
+            if (Store.HasPending(CommandTypes.SelectAbility)) return CommandStatus.AlreadyPending;
+            Send(CommandTypes.SelectAbility, new CommandPayload { abilityId = abilityId }); return CommandStatus.Sent;
+        }
+        public CommandStatus SubmitBid(long amount, string[] seatPreferences = null, bool useFreePass = false)
+        {
+            if (Store.Public == null) return CommandStatus.NoState;
+            if (Store.Public.phase != Protocol.Auction) return Block(ErrorCodes.WrongPhase);
+            if (Store.HasPending(CommandTypes.SubmitBid)) return CommandStatus.AlreadyPending;
+            Send(CommandTypes.SubmitBid, new CommandPayload { bidAmount = amount, seatPreferences = (string[])seatPreferences?.Clone(), useFreePass = useFreePass });
+            return CommandStatus.Sent;
+        }
 
         public bool AllPlayersReady
             => Store.Public?.players != null && Store.Public.players.Length == 4
@@ -122,7 +144,8 @@ namespace BlackWhale.UI.State
         {
             var s = Store.Public;
             if (s == null || IsDoneForCurrentPhase) return false;
-            return s.phase == Protocol.Info || s.phase == Protocol.Reveal || s.phase == Protocol.Result;
+            return s.phase == Protocol.Info || s.phase == Protocol.Reveal || s.phase == Protocol.Result ||
+                (s.phase == Protocol.AbilitySelection && IsHost);
         }
 
         // ------------------------------------------------------------------

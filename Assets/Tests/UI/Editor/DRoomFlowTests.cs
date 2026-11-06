@@ -28,7 +28,7 @@ namespace BlackWhale.UI.Tests
             var market = F.Load<MarketData>("B_market_server.json");
             var marketService = new MarketService(market);
             _info = new DevInformationService(marketService);
-            _host = new LocalRoomHost(marketService, _info, TimerMode.ManualForFixture, fixedSeatOrder: true);
+            _host = new LocalRoomHost(marketService, _info, TimerMode.ManualForFixture, fixedSeatOrder: true, settings: GameSettings.Fixture);
             for (int i = 1; i <= 4; i++)
             {
                 var client = _host.Join("Player " + i);
@@ -228,7 +228,7 @@ namespace BlackWhale.UI.Tests
         public void LobbySeatReplacement_ClearsOldTokenAndRequests_OnlyBeforeGameStarts()
         {
             var market = new MarketService(F.Load<MarketData>("B_market_server.json"));
-            using (var host = new LocalRoomHost(market, new DevInformationService(market), TimerMode.ManualForFixture))
+            using (var host = new LocalRoomHost(market, new DevInformationService(market), TimerMode.ManualForFixture, settings: GameSettings.Fixture))
             {
                 var room = host.Room;
                 room.Join("host", "Host"); room.Join("old", "Bot"); room.Join("guest", "Guest");

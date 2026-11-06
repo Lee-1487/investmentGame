@@ -1,78 +1,104 @@
-// [개발 전용] 다른 참가자 대신 움직이는 간단한 봇. 사람과 똑같이 GameClientController로 명령을 보낸다.
-// 대기실 준비 → (P1이면) 시작 → 정보 단계 완료 → 자기 차례에 기업 선택 → 주문 제출 → 공개·결과 완료.
-using System.Linq;
+using System;
+using System.Collections.Generic;
+using BlackWhale.Bots;
 using BlackWhale.Shared;
 using BlackWhale.UI.Presentation;
 using BlackWhale.UI.State;
 
 namespace BlackWhale.UI.Dev
 {
+    // Host-owned lifetime, but only the same private/public messages as a human client.
     public sealed class DevBot
     {
-        private readonly GameClientController _c;
-        private readonly float _thinkSeconds;
-        private string _stateKey = "";
-        private float _since;
-
+        private readonly GameClientController controller;
+        private readonly float thinkSeconds;
+        private readonly int seed;
+        private InformationBotStrategy strategy;
+        private BotDifficulty difficulty;
+        private readonly PhaseClock clock = new PhaseClock();
+        private PublicState syncedState;
+        private string stateKey = "";
+        private int currentTurn = -1, purchases, failures, orderAttempts;
+        private float since;
+        private readonly HashSet<string> attempted = new HashSet<string>();
         public IGameClient Client { get; }
-        public GameClientController Controller => _c;
-
-        public DevBot(IGameClient client, float thinkSeconds)
+        public GameClientController Controller => controller;
+        public DevBot(IGameClient client, float thinkSeconds, int seed = 1, BotDifficulty difficulty = BotDifficulty.Normal)
         {
-            Client = client;
-            _c = new GameClientController(client);
-            _thinkSeconds = thinkSeconds;
+            Client = client; controller = new GameClientController(client); this.thinkSeconds = thinkSeconds;
+            this.seed = seed; this.difficulty = difficulty;
+            strategy = new InformationBotStrategy(seed, new BotPolicy(difficulty));
+            Client.MessageReceived += OnResult;
         }
-
+        public void Dispose() { Client.MessageReceived -= OnResult; controller.Dispose(); Client.Dispose(); }
+        private void OnResult(ServerMessage message)
+        {
+            var r = message.type == "COMMAND_RESULT" ? message.response : null;
+            if (r == null || r.turn != currentTurn) return;
+            if (r.type == "BUY_INFORMATION_RESULT" && !r.success) failures++;
+        }
+        public bool SetDifficulty(BotDifficulty value)
+        {
+            if (controller.Store.Public?.phase != Protocol.Lobby) return false;
+            difficulty = value; strategy = new InformationBotStrategy(seed, new BotPolicy(value)); return true;
+        }
         public void Update(float now)
         {
-            var s = _c.Store.Public;
-            if (s == null || !string.IsNullOrEmpty(_c.Store.EndReason)) return;
-
+            var s = controller.Store.Public;
+            if (s == null || !string.IsNullOrEmpty(controller.Store.EndReason)) return;
+            if (!ReferenceEquals(syncedState, s)) { syncedState = s; clock.Sync(s.serverElapsedSeconds, now); }
+            if (s.phase == Protocol.Lobby && Enum.TryParse(s.botDifficulty, out BotDifficulty selected) && selected != difficulty) SetDifficulty(selected);
+            if (currentTurn != s.turn) { currentTurn = s.turn; purchases = failures = orderAttempts = 0; attempted.Clear(); }
             string key = s.turn + "|" + s.phase + "|" + s.selectionIndex + "|" + s.currentPlayerId;
-            if (key != _stateKey)
-            {
-                _stateKey = key;
-                _since = now;
-            }
-            if (now - _since < _thinkSeconds) return;
-
+            if (key != stateKey) { stateKey = key; since = now; }
+            if (now - since < thinkSeconds) return;
+            var view = controller.Store.View;
+            if (s.phase != Protocol.Lobby && (view == null || view.turn != s.turn)) return;
             switch (s.phase)
             {
                 case Protocol.Lobby:
-                    if (!_c.IsLocalReady && !_c.Store.HasPending(CommandTypes.SetReady)) _c.SetReady(true);
-                    else if (_c.IsHost && _c.AllPlayersReady && !_c.Store.HasPending(CommandTypes.StartGame)) _c.StartGame();
+                    if (!controller.IsLocalReady && !controller.Store.HasPending(CommandTypes.SetReady)) controller.SetReady(true);
+                    else if (controller.IsHost && controller.AllPlayersReady && !controller.Store.HasPending(CommandTypes.StartGame)) controller.StartGame();
                     break;
-
+                case Protocol.AbilitySelection:
+                    if (string.IsNullOrEmpty(view.ability?.selectedId) && view.ability?.candidates?.Length > 0 && !controller.Store.HasPending("SELECT_ABILITY"))
+                        controller.SelectAbility(view.ability.candidates[0]);
+                    break;
+                case Protocol.Auction:
+                    if (view.auction != null && !view.auction.confirmed && !controller.Store.HasPending("SUBMIT_BID")) controller.SubmitBid(0);
+                    break;
                 case Protocol.Info:
+                    if (controller.Store.HasPending(CommandTypes.BuyInformation) || controller.IsDoneForCurrentPhase) break;
+                    if (purchases < strategy.Policy.PurchaseBudget && failures < 3 &&
+                        (!PhaseClock.HasDeadline(s) || clock.RemainingSeconds(s, now) > 2))
+                    {
+                        var buy = strategy.NextPurchase(view, attempted);
+                        if (buy != null)
+                        {
+                            attempted.Add(buy.CompanyId + ":" + buy.BundleIndex); purchases++;
+                            controller.BuyInformation(buy.CompanyId, buy.BundleIndex); break;
+                        }
+                    }
+                    if (controller.CanFinishPhase()) controller.FinishPhase();
+                    break;
                 case Protocol.Reveal:
                 case Protocol.Result:
-                    if (_c.CanFinishPhase()) _c.FinishPhase();
+                    if (controller.CanFinishPhase()) controller.FinishPhase();
                     break;
-
                 case Protocol.Selection:
-                    if (_c.IsMyTurnToSelect() && !_c.Store.HasPending(CommandTypes.SelectCompany))
+                    if (controller.IsMyTurnToSelect() && !controller.Store.HasPending(CommandTypes.SelectCompany))
                     {
-                        string wanted = s.selectionIndex >= 0 && s.selectionIndex < DevFixtures.ReplayPicks.Length
-                            ? DevFixtures.ReplayPicks[s.selectionIndex] : null;
-                        string pick = wanted != null && _c.CanSelect(wanted)
-                            ? wanted
-                            : new[] { "BANK", "FOOD", "AUTO", "AI", "SPACE", "BIO" }.FirstOrDefault(_c.CanSelect);
-                        if (pick != null) _c.SelectCompany(pick);
-                        _since = now; // 같은 차례에 중복 요청하지 않도록
+                        string pick = strategy.SelectCompany(view, s);
+                        if (pick != null && controller.CanSelect(pick)) controller.SelectCompany(pick);
+                        since = now;
                     }
                     break;
-
                 case Protocol.Investment:
-                    if (!_c.Store.OrderLocked && !_c.Store.HasPending(CommandTypes.SubmitInvestment)
-                        && _c.Store.OwnSelections.Count == UiRules.CompaniesPerOrder)
+                    if (!controller.Store.OrderLocked && !controller.Store.HasPending(CommandTypes.SubmitInvestment) && orderAttempts < 2)
                     {
-                        var draft = InvestmentDraft.FromSelections(_c.Store.OwnSelections);
-                        draft.SetFirstWeight(6000);
-                        draft.TryAddInterval(draft.FirstCompanyId, 10, 15);
-                        draft.TryAddInterval(draft.SecondCompanyId, 5, 10);
-                        _c.SubmitInvestment(draft.ToInvestments());
-                        _since = now;
+                        var order = strategy.BuildOrder(view, orderAttempts > 0);
+                        if (order != null) { orderAttempts++; controller.SubmitInvestment(order); }
+                        since = now;
                     }
                     break;
             }

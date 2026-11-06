@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using BlackWhale.Network;
+using BlackWhale.Bots;
 using BlackWhale.Rules;
 using BlackWhale.Rules.Information;
 using BlackWhale.Shared;
@@ -36,6 +37,16 @@ namespace BlackWhale.UI.Dev
         private CancellationTokenSource operation;
         private bool connecting, destroyed;
         private string endpoint;
+        private BotDifficulty botDifficulty = BotDifficulty.Normal;
+        // D binds a lobby control here. Existing/new BOTs share the setting, frozen at start.
+        public bool SetBotDifficulty(BotDifficulty difficulty)
+        {
+            if (!Enum.IsDefined(typeof(BotDifficulty), difficulty) || session?.IsHost != true ||
+                !session.SetBotDifficulty(difficulty.ToString())) return false;
+            botDifficulty = difficulty;
+            foreach (var bot in bots) bot.SetDifficulty(difficulty);
+            return true;
+        }
 
         private void Start()
         {
@@ -129,8 +140,8 @@ namespace BlackWhale.UI.Dev
             {
                 if (host)
                 {
-                    DevFixtures.Load(out var market, out _);
-                    var service = new MarketService(market);
+                    var provider = new SeededMarketProvider(BitConverter.ToInt32(Guid.NewGuid().ToByteArray(), 0));
+                    var service = new MarketService(provider.Get);
                     await active.Host(service, new SharedInformationService(service), nickname.text.Trim(), number, allowLan: true);
                     endpoint = "접속 주소: " + HostAddresses() + "  ·  포트 " + active.ListeningPort;
                 }
@@ -206,7 +217,7 @@ namespace BlackWhale.UI.Dev
                 for (int i = 0; i < 3 && active.LobbyPlayerCount < 4; i++)
                 {
                     var client = await TcpGameClient.Connect("127.0.0.1", active.ListeningPort, "BOT " + (bots.Count + 1), new UnityWireCodec(), cancellationToken: current.Token);
-                    pending = new DevBot(client, botThinkSeconds);
+                    pending = new DevBot(client, botThinkSeconds, bots.Count + 1, botDifficulty);
                     await WaitForWelcome(client, active, current.Token);
                     if (!active.RegisterLocalBot(client.PlayerId)) throw new InvalidOperationException("대기실에서만 BOT을 추가할 수 있습니다.");
                     bots.Add(pending);
@@ -224,7 +235,7 @@ namespace BlackWhale.UI.Dev
                 if (pending != null)
                 {
                     active.RemoveLobbyBot(pending.Controller.LocalPlayerId);
-                    pending.Controller.Dispose(); pending.Client.Dispose();
+                    pending.Dispose();
                 }
                 if (!destroyed && operation == current)
                 {
@@ -240,7 +251,7 @@ namespace BlackWhale.UI.Dev
             foreach (var bot in bots)
             {
                 session.RemoveLobbyBot(bot.Controller.LocalPlayerId);
-                bot.Controller.Dispose(); bot.Client.Dispose();
+                bot.Dispose();
             }
             bots.Clear();
             lobby.Status = LobbyStatus(true);
@@ -272,7 +283,7 @@ namespace BlackWhale.UI.Dev
             if (view != null) { view.gameObject.SetActive(false); Destroy(view.gameObject); }
             view = null;
             controller?.Dispose(); controller = null;
-            foreach (var bot in bots) { bot.Controller.Dispose(); bot.Client.Dispose(); }
+            foreach (var bot in bots) bot.Dispose();
             bots.Clear();
             if (session != null) { session.Close(); Destroy(session.gameObject); }
             session = null; lobby = null;
