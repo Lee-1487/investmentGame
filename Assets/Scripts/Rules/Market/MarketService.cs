@@ -38,7 +38,16 @@ namespace BlackWhale.Rules
         public MarketService(MarketData fixedMarket, InvestmentRules rules = null)
             : this(t => fixedMarket, rules) { }
 
-        /// <summary>Provider mode: one market per turn (random generation is a later increment).</summary>
+        /// <summary>
+        /// Normal play: a new random market every turn from one room seed (NEXT-B02).
+        /// Same seed + turn = same market, so a test or replay can fix the seed.
+        /// </summary>
+        public static MarketService CreateRandom(int seed, InvestmentRules rules = null)
+        {
+            return new MarketService(new RandomMarketGenerator(seed, rules).ForTurn, rules);
+        }
+
+        /// <summary>Provider mode: one market per turn, e.g. <see cref="RandomMarketGenerator.ForTurn"/>.</summary>
         public MarketService(Func<int, MarketData> marketForTurn, InvestmentRules rules = null)
         {
             this.marketForTurn = marketForTurn ?? throw new ArgumentNullException(nameof(marketForTurn));
