@@ -14,6 +14,7 @@
     <Compile Include="../../Assets/Scripts/Flow/*.cs" />
     <Compile Include="../../Assets/Scripts/Bots/*.cs" />
     <Compile Include="../../Assets/Scripts/UI/State/*.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Presentation/SelectionOrder.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/UiRules.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/PhaseClock.cs" />
     <Compile Include="../../Assets/Scripts/UI/Dev/DevBot.cs" />

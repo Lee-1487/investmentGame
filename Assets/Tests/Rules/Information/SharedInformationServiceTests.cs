@@ -10,7 +10,7 @@ namespace BlackWhale.Tests.Information
         private sealed class Market : IMarketDataSource
         {
             public bool Missing, Malformed;
-            public string[] GetCompanyIds() => new[] { "AI" };
+            public string[] GetCompanyIds() => new[] { "AI", "SPACE", "BIO", "FOOD", "AUTO" };
             public ServerInformationBundle GetBundle(int turn, string companyId, int bundleIndex)
                 => Missing && bundleIndex == 1 ? null : new ServerInformationBundle
                 {
@@ -118,6 +118,52 @@ namespace BlackWhale.Tests.Information
             service.GrantTurnCoins(Context(), ids); // delayed turn-start replay
             Assert.AreEqual(4, service.BuildPlayerView(Context(turn: 2), market.GetOwnInvestmentState("P1")).coins);
             Assert.AreEqual(2, service.BuildPlayerView(Context(player: "P2"), market.GetOwnInvestmentState("P2", 1)).companies[0].visibleBundles.Length);
+        }
+
+        [Test]
+        public void BotUsesTheSamePurchaseContract_AndCannotSeeAnotherPlayersPrivateInformation()
+        {
+            // BOT이라는 이유로 별도 구매 규칙을 두지 않는다. 실제 네트워크에서 A가
+            // BOT을 대신 호출하더라도, 사람과 동일하게 방/턴/플레이어/requestId를
+            // 포함한 공통 계약을 거쳐야 한다.
+            IInformationService service = new SharedInformationService(new Market());
+            var players = new[] { "BOT-1", "BOT-2" };
+            service.GrantTurnCoins(Context(player: "BOT-1"), players);
+
+            var first = service.BuyInformation(Context(player: "BOT-1", request: "bot-buy-001"), "AI", 1);
+            Assert.That(first.Success, Is.True);
+            Assert.That(first.Payload.remainingCoins, Is.EqualTo(2));
+
+            // 동일 requestId와 동일 입력은 캐시된 동일 응답을 돌려주며 코인을 다시
+            // 차감하지 않는다. 이는 BOT의 재시도에도 중복 구매가 생기지 않게 한다.
+            var replay = service.BuyInformation(Context(player: "BOT-1", request: "bot-buy-001"), "AI", 1);
+            Assert.That(replay.Success, Is.True);
+            Assert.That(replay.Payload.remainingCoins, Is.EqualTo(2));
+
+            // 같은 requestId를 다른 입력으로 재사용하면 충돌로 거절한다.
+            var conflict = service.BuyInformation(Context(player: "BOT-1", request: "bot-buy-001"), "AI", 0);
+            Assert.That(conflict.ErrorCode, Is.EqualTo(ErrorCodes.RequestIdConflict));
+            Assert.That(service.BuildPlayerView(Context(player: "BOT-1"), Own()).coins, Is.EqualTo(2));
+
+            // 다른 BOT의 개인 구매는 공통/public 정보에 섞이지 않는다.
+            var otherPurchase = service.BuyInformation(Context(player: "BOT-2", request: "bot-buy-002"), "SPACE", 1);
+            Assert.That(otherPurchase.Success, Is.True);
+            var bot1View = service.BuildPlayerView(Context(player: "BOT-1"), Own());
+            var bot2View = service.BuildPlayerView(Context(player: "BOT-2"), Own());
+            Assert.That(bot1View.companies.Single(c => c.companyId == "SPACE").visibleBundles.Any(b => b.bundleIndex == 1), Is.False);
+            Assert.That(bot2View.companies.Single(c => c.companyId == "SPACE").visibleBundles.Any(b => b.bundleIndex == 1), Is.True);
+
+            // BOT도 무료 구매나 추천 전용 우회 경로를 사용할 수 없다. 보유 코인이
+            // 0이 된 뒤의 구매는 NOT_ENOUGH_COINS이며 상태가 바뀌지 않아야 한다.
+            service.BuyInformation(Context(player: "BOT-2", request: "bot-buy-003"), "BIO", 1);
+            service.BuyInformation(Context(player: "BOT-2", request: "bot-buy-004"), "FOOD", 1);
+            var noCoins = service.BuyInformation(Context(player: "BOT-2", request: "bot-buy-005"), "AUTO", 1);
+            Assert.That(noCoins.ErrorCode, Is.EqualTo(ErrorCodes.NotEnoughCoins));
+            Assert.That(service.BuildPlayerView(Context(player: "BOT-2"), Own()).coins, Is.EqualTo(0));
+
+            // 현재 방의 다음 턴이 시작되기 전에는 이전/미래 턴을 섞어 구매할 수 없다.
+            var stale = service.BuyInformation(Context(turn: 2, player: "BOT-1", request: "bot-stale"), "AI", 0);
+            Assert.That(stale.ErrorCode, Is.EqualTo(ErrorCodes.StaleTurn));
         }
     }
 }
