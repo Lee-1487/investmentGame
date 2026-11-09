@@ -46,12 +46,14 @@ namespace BlackWhale.UI.View
             var state = controller.Store.Public;
             Root.gameObject.SetActive(state?.windowInformation == true && (state.phase == Protocol.Info || state.phase == Protocol.Selection));
             if (state?.windowInformation != true) return;
+            reserve.gameObject.SetActive(!state.stockSystem);
+            ((RectTransform)confirm.transform).anchorMax = new Vector2(state.stockSystem ? 1 : .5f, 0);
             Selection.FixedPublicWindow = state.publicSelectionActive;
             string id = companyId();
             var company = controller.Store.View?.companies?.FirstOrDefault(c => c.companyId == id);
             int start = Math.Max(1, StartDay), count = Selection.HasSelection ? InformationWindowRules.NewDays(company, start, EndDay) : 0;
             bool choosing = state.publicSelectionActive, mine = choosing && state.publicSelectionPlayerId == controller.LocalPlayerId;
-            int free = Math.Min(count, controller.Store.View?.ability?.freeInformationCredits ?? 0), cost = count - free;
+            int free = Math.Min(count, (controller.Store.View?.ability?.freeInformationCredits ?? 0) + (controller.Store.View?.portfolio?.informationDiscount ?? 0)), cost = count - free;
             bool overlap = choosing && InformationWindowRules.OverlapsPublic(state, id, StartDay);
             bool pending = controller.Store.HasPending(choosing ? CommandTypes.RevealInformationWindow : CommandTypes.BuyInformationWindow);
             bool active = !state.paused && string.IsNullOrEmpty(controller.Store.EndReason);

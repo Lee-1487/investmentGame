@@ -357,13 +357,14 @@ namespace BlackWhale.UI.View
                 UiKit.SetButton(_pauseButton, paused ? "게임 재개" : "일시정지", can, paused ? Palette.AccentSoft : Palette.Card, Palette.Text);
             }
 
-            _turnLabel.text = s == null ? "" : s.turn + "턴\n<size=11>" + PhaseNames.Korean(s.phase) + "</size>";
+            _turnLabel.text = s == null ? "" : s.turn + (s.stockSystem ? "/" + s.totalTurns : "") + "턴\n<size=11>" + PhaseNames.ForState(s) + "</size>";
             RefreshRanks();
             _investmentPage.Refresh();
             _infoPage.Refresh();
             RefreshTurnIndicator();
             var ability = LiveScreenModels.AbilityId(Store.View?.ability?.selectedId);
             _abilityLabel.text = "<b>내 고유능력</b>\n\n" + (AbilityCatalog.Get(ability)?.Name ?? "선택 대기") + "\n<size=11>클릭하여 상태 보기</size>";
+            if (s?.stockSystem == true) _abilityLabel.text = "<b>내 증강</b>\n\n" + string.Join("\n", (Store.View?.portfolio?.augments ?? new string[0]).Select(StockRules.Name));
 
         }
 
@@ -381,16 +382,16 @@ namespace BlackWhale.UI.View
                     _lastPhaseKey = phaseKey;
                     if (s.phase == Protocol.Lobby) ShowBanner("대기실에 입장했습니다. 준비를 누르세요.");
                     else if (s.phase == Protocol.Ended && !string.IsNullOrEmpty(Store.EndReason)) ShowBanner(ErrorMessages.ToKorean(Store.EndReason));
-                    else if (s.phase != Protocol.Ended) ShowBanner("<b>" + s.turn + "턴 · " + PhaseNames.Korean(s.phase) + "</b> 단계가 시작되었습니다.");
+                    else if (s.phase != Protocol.Ended) ShowBanner("<b>" + s.turn + "턴 · " + PhaseNames.ForState(s) + "</b> 단계가 시작되었습니다.");
                     if (s.phase == Protocol.Info || s.phase == Protocol.Reveal) ShowPage(1);
-                    if (s.phase == Protocol.Lobby || s.phase == Protocol.Selection || s.phase == Protocol.Investment || s.phase == Protocol.Result) ShowPage(0);
+                    if (s.phase == Protocol.Lobby || s.phase == Protocol.Selection || s.phase == StockRules.AugmentPhase || s.phase == Protocol.Investment || s.phase == Protocol.Result) ShowPage(0);
                 }
 
                 if (s.phase == Protocol.Selection && s.currentPlayerId != _lastSelector)
                 {
                     ClearBanners();
                     _lastSelector = s.currentPlayerId;
-                    if (s.currentPlayerId == _c.LocalPlayerId) ShowBanner("<color=#DC2626><b>내 차례입니다.</b></color> 기업을 선택하세요.");
+                    if (s.currentPlayerId == _c.LocalPlayerId) ShowBanner("<color=#DC2626><b>내 차례입니다.</b></color> " + (s.stockSystem ? "주식 보유량을 정하세요." : "기업을 선택하세요."));
                 }
                 string publicSelector = s.publicSelectionActive ? s.turn + "|" + s.publicSelectionIndex + "|" + s.publicSelectionPlayerId : "";
                 if (publicSelector != _lastPublicSelector)
@@ -427,7 +428,7 @@ namespace BlackWhale.UI.View
             {
                 _lastBoardTurn = board.turn;
                 var top = board.rows.OrderBy(r => r.rank).First();
-                ShowBanner(board.gameComplete ? "10턴 최종 승자 · " + board.winnerPlayerId :
+                ShowBanner(board.gameComplete ? (s.totalTurns > 0 ? s.totalTurns : 10) + "턴 최종 승자 · " + board.winnerPlayerId :
                     board.turn + "턴 정산 완료 · 1위 " + top.playerId + " (" + DisplayFormat.Percent(top.turnReturnBps) + ")");
             }
         }

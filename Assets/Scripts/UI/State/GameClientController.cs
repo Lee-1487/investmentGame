@@ -43,7 +43,7 @@ namespace BlackWhale.UI.State
         private void SyncReservations()
         {
             var s = Store.Public;
-            if (s == null || !s.windowInformation || s.paused || Store.OrderLocked ||
+            if (s == null || s.stockSystem || !s.windowInformation || s.paused || Store.OrderLocked ||
                 (s.phase != Protocol.Info && s.phase != Protocol.Selection && s.phase != Protocol.Investment)) return;
             Send(CommandTypes.SaveTradePlan, new CommandPayload { investments = Store.TradePlans.ToReservations() }, notify: false);
         }
@@ -127,6 +127,29 @@ namespace BlackWhale.UI.State
 
             Send(CommandTypes.SelectCompany, new CommandPayload { companyId = companyId }, companyId);
             return CommandStatus.Sent;
+        }
+        public CommandStatus TradeShares(ShareOrder[] orders)
+        {
+            if (!CanDraftShares()) return Block(ErrorCodes.WrongPhase);
+            Send(StockRules.Trade, new CommandPayload { shareOrders = orders?.Select(v => new ShareOrder { companyId = v.companyId, targetShares = v.targetShares }).ToArray() });
+            return CommandStatus.Sent;
+        }
+        public bool CanDraftShares() => Store.Public?.stockSystem == true && IsMyTurnToSelect() && !Store.Public.paused &&
+            !Store.HasPending(StockRules.Trade) && !Store.HasPending(StockRules.Pass);
+        public CommandStatus PassStockDraft()
+        {
+            if (!CanDraftShares()) return Block(ErrorCodes.WrongPhase);
+            Send(StockRules.Pass, new CommandPayload()); return CommandStatus.Sent;
+        }
+        public CommandStatus ChooseAugment(string id, string companyId = "AI")
+        {
+            if (Store.Public?.phase != StockRules.AugmentPhase || Store.Public.paused || Store.View?.portfolio == null || Store.View.portfolio.augmentChosen || Store.HasPending(StockRules.Choose)) return Block(ErrorCodes.WrongPhase);
+            Send(StockRules.Choose, new CommandPayload { augmentId = id, companyId = companyId }); return CommandStatus.Sent;
+        }
+        public CommandStatus UseDraftPriority()
+        {
+            if (Store.Public?.phase != Protocol.Selection || Store.Public.paused || Store.HasPending(StockRules.Priority)) return Block(ErrorCodes.WrongPhase);
+            Send(StockRules.Priority, new CommandPayload()); return CommandStatus.Sent;
         }
 
         public CommandStatus SubmitInvestment(Investment[] investments)

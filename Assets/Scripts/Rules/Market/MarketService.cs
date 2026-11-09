@@ -10,7 +10,7 @@ namespace BlackWhale.Rules
     /// investment orders, assets, settlement and scoreboard. A (GameRoom) calls this; it never
     /// talks to the network or UI. Every rejected call leaves all state unchanged.
     /// </summary>
-    public sealed class MarketService : IMarketService, IMarketProgression, IMarketHistory, IWindowMarketDataSource, IMarketReservations
+    public sealed partial class MarketService : IMarketService, IMarketProgression, IMarketHistory, IWindowMarketDataSource, IMarketReservations
     {
         private readonly InvestmentRules rules;
         private readonly Func<int, MarketData> marketForTurn;
@@ -124,6 +124,7 @@ namespace BlackWhale.Rules
                 costs[id] = 0;
                 selected[id] = new List<string>();
             }
+            if (StockEnabled) BeginStockTurn();
         }
 
         // ---------------- Selection ----------------
@@ -143,11 +144,13 @@ namespace BlackWhale.Rules
 
         public CompanySeat[] GetCompanySeats()
         {
+            if (StockEnabled) return new CompanySeat[0]; // ShareMarket replaces legacy company seats.
             return InvestmentRules.CompanyIds.Select(id => new CompanySeat { companyId = id, remainingSeats = RemainingSeats(id) }).ToArray();
         }
 
         public string[] GetSelectedCompanies(string playerId)
         {
+            if (StockEnabled) return StockHoldings(playerId).Where(p => p.Value > 0).Select(p => p.Key).ToArray();
             List<string> list;
             return selected.TryGetValue(playerId, out list) ? list.ToArray() : new string[0];
         }
@@ -246,6 +249,7 @@ namespace BlackWhale.Rules
                 investments = players.Select(player => new { player, own = GetOwnInvestmentState(player, context.Turn) })
                     .SelectMany(p => p.own.Investments.Where(i => i.companyId == id).Select(i => new RevealedInvestment {
                         playerId = p.player, returnBps = Settlement.CompanyReturnBps(book, i, rules),
+                        shares = StockEnabled ? StockSharesForHistory(p.player, id, context.Turn) : 0,
                         intervals = i.intervals.Select(v => new RevealedTrade { entryDay = v.entryDay, exitDay = v.exitDay,
                             returnBps = book.ChangeBps(id, v.exitDay) - book.ChangeBps(id, rules.entryAtOpen ? Math.Max(0, v.entryDay - 1) : v.entryDay) }).ToArray()
                     })).ToArray() }).ToArray();
@@ -279,10 +283,13 @@ namespace BlackWhale.Rules
 
             // Compute everything first, then apply, so a failure never leaves half-updated assets.
             PlayerSettlement[] results = players.Select(id =>
-                Settlement.SettlePlayer(id, turnStartAssets[id], costs[id], orders[id], market, rules)).ToArray();
+                StockEnabled ? SettleStockPlayer(id) : Settlement.SettlePlayer(id, turnStartAssets[id], costs[id], orders[id], market, rules)).ToArray();
 
             foreach (PlayerSettlement r in results)
             {
+                if (StockEnabled)
+                    foreach (var company in InvestmentRules.CompanyIds)
+                        stockPlayers[r.playerId].Streak[company] = stockPlayers[r.playerId].Shares[company] > 0 ? stockPlayers[r.playerId].Streak[company] + 1 : 0;
                 assets[r.playerId] = r.endingAssets;
                 lastTurnReturn[r.playerId] = r.turnReturnBps;
                 bestTurnReturn[r.playerId] = bestTurnReturn.TryGetValue(r.playerId, out var best) ? Math.Max(best, r.turnReturnBps) : r.turnReturnBps;

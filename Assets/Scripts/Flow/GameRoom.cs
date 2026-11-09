@@ -24,7 +24,7 @@ namespace BlackWhale.Flow
 
     // One room, one synchronization boundary. B/C calls occur inside this boundary.
     // Transport never executes callbacks while the room lock is held.
-    public sealed class GameRoom
+    public sealed partial class GameRoom
     {
         private sealed class Member
         {
@@ -81,9 +81,9 @@ namespace BlackWhale.Flow
             this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
             this.mode = mode;
             fixedOrder = fixedOrderForFixture;
-            this.settings = settings ?? new GameSettings();
-            progression = this.settings.EnableProgressionFeatures ? information as IProgressionService : null;
-            if (this.settings.EnableProgressionFeatures && (progression == null || !(market is IMarketProgression)))
+            this.settings = settings ?? (StockMode ? GameSettings.StockGame : new GameSettings());
+            progression = !StockMode && this.settings.EnableProgressionFeatures ? information as IProgressionService : null;
+            if (!StockMode && this.settings.EnableProgressionFeatures && (progression == null || !(market is IMarketProgression)))
                 throw new ArgumentException("Production games require B/C progression services; use GameSettings.Fixture for fixture services.");
         }
         private double Now { get { return (paused ? pausedAt : clock.Seconds) - origin - pausedSeconds; } }
@@ -273,6 +273,9 @@ namespace BlackWhale.Flow
         }
         private CommandResult Execute(Member member, Command command, double now)
         {
+            if (StockMode && IsStockCommand(command.type)) return ExecuteStockCommand(member.Id, command, now);
+            if (StockMode && (command.type == "SELECT_COMPANY" || command.type == "SUBMIT_INVESTMENT" || command.type == "SAVE_TRADE_PLAN" || command.type == "SUBMIT_BID" || command.type == "SELECT_ABILITY"))
+                return CommandResult.Fail(command, "USE_STOCK_DRAFT");
             if (command.type == "GET_HISTORY")
             {
                 int requested = command.payload?.historyTurn ?? 0;
@@ -426,7 +429,7 @@ namespace BlackWhale.Flow
             string[] ids = members.OrderBy(m => m.Id, StringComparer.Ordinal).Select(m => m.Id).ToArray();
             string[] seats = turn >= 9 && seatsForFinalTurns != null ? seatsForFinalTurns :
                 Enumerable.Range(0, 4).Select(i => initialOrder[(i + (turn - 1) % 4) % 4]).ToArray();
-            order = seats.Concat(seats.Reverse()).ToArray();
+            order = StockMode ? new[] { seats[0], seats[1], seats[2], seats[3], seats[3], seats[0], seats[1], seats[2] } : seats.Concat(seats.Reverse()).ToArray();
             selectionIndex = 0; ordersLocked = false;
             phase = Protocol.Info;
             market.BeginTurn(Context(), ids);
@@ -440,7 +443,7 @@ namespace BlackWhale.Flow
         {
             phase = next;
             phaseEnd = duration == 0 ? 0 : now + duration;
-            pickEnd = next == Protocol.Selection ? now + 4 : 0;
+            pickEnd = next == Protocol.Selection ? now + (StockMode ? 12 : 4) : 0;
             if (next == Protocol.Info && WindowMode)
             {
                 publicPickIndex = 0;
@@ -452,6 +455,12 @@ namespace BlackWhale.Flow
         private void Selected(double now)
         {
             selectionIndex++;
+            if (StockMode)
+            {
+                if (selectionIndex == 8) RevealStockPortfolio(now);
+                else { pickEnd = Math.Min(now + 12, phaseEnd); PublishState(); }
+                return;
+            }
             if (selectionIndex == 8) Enter(Protocol.Investment, now, 23);
             else { pickEnd = Math.Min(now + 4, phaseEnd); PublishState(); }
         }
@@ -490,6 +499,7 @@ namespace BlackWhale.Flow
         }
         private void AutoSelect(double now)
         {
+            if (StockMode) { Selected(now); return; } // Timeout keeps existing holdings and cash.
             string player = CurrentPlayer;
             string[] selected = market.GetSelectedCompanies(player);
             CompanySeat[] seats = market.GetCompanySeats();
@@ -533,6 +543,8 @@ namespace BlackWhale.Flow
         }
         private void NextPhase(double now)
         {
+            if (StockMode && phase == StockRules.AugmentPhase)
+            { Stock.CompleteAugmentSelection(); BeginStockDraft(now); return; }
             switch (phase)
             {
                 case Protocol.AbilitySelection:
@@ -547,7 +559,15 @@ namespace BlackWhale.Flow
                     Enter(Protocol.Info, now, settings.InfoSeconds);
                     foreach (var member in members) SendView(member.Id);
                     break;
-                case Protocol.Info: Enter(Protocol.Selection, now, 32); break;
+                case Protocol.Info:
+                    if (StockMode)
+                    {
+                        if (turn == 1 || turn == 3 || turn == 5)
+                        { Stock.BeginAugmentSelection(); Enter(StockRules.AugmentPhase, now, settings.AbilitySelectionSeconds ?? 20); SendAllViews(); }
+                        else BeginStockDraft(now);
+                    }
+                    else Enter(Protocol.Selection, now, 32);
+                    break;
                 case Protocol.Investment:
                     foreach (Member member in members.Where(m => !market.IsOrderLocked(m.Id)))
                     {
@@ -573,9 +593,9 @@ namespace BlackWhale.Flow
                     {
                         scoreboard = market.SettleTurn(Context()); settled.Add(turn);
                         progression?.RewardTurn(Context(), scoreboard);
-                        if (turn == settings.Turns && market is IMarketProgression finalMarket && progression != null)
+                        if (turn == settings.Turns && market is IMarketProgression finalMarket && (progression != null || StockMode))
                             scoreboard = finalMarket.FinalizeGame(Context(), initialOrder,
-                                initialOrder.Select(id => progression.GetCoins(roomId, id)).ToArray());
+                                initialOrder.Select(id => StockMode ? 0 : progression.GetCoins(roomId, id)).ToArray());
                         latestBoard = scoreboard;
                     }
                     Enter(Protocol.Result, now, 5);
@@ -604,6 +624,8 @@ namespace BlackWhale.Flow
                 selectionDeadlineAtServerSeconds = pickEnd,
                 initialPlayerOrder = (string[])initialOrder.Clone(), seatPlayerIds = order.Take(4).ToArray(),
                 botDifficulty = botDifficulty, events = progression?.GetPublicEvents(roomId) ?? new PublicEvent[0],
+                stockSystem = StockMode, totalTurns = settings.Turns, draftOrder = (string[])order.Clone(),
+                shareMarket = StockMode && turn > 0 ? Stock.GetShareMarket() : new CompanyShareState[0],
                 windowInformation = WindowMode, publicSelectionActive = PublicPicking, publicSelectionIndex = publicPickIndex,
                 publicSelectionPlayerId = PublicPicking ? order[publicPickIndex] : "",
                 publicSelectionDeadlineAtServerSeconds = PublicPicking ? publicPickEnd : 0,
@@ -618,6 +640,7 @@ namespace BlackWhale.Flow
                 information.BuildPlayerView(Context(player), market.GetOwnInvestmentState(player));
             progression?.PopulateView(Context(player), view);
             if (market is IMarketReservations reservations) view.reservedInvestments = reservations.GetReservations(player);
+            if (StockMode) view.portfolio = Stock.GetPortfolio(player);
             Send(player, new ServerMessage { type = "PLAYER_VIEW", playerView = view });
         }
         private void PublishState() { Broadcast(new ServerMessage { type = "PUBLIC_STATE", state = Snapshot() }); }
@@ -642,6 +665,8 @@ namespace BlackWhale.Flow
                     startDay = input.payload.startDay, endDay = input.payload.endDay, itemId = input.payload.itemId, targetPlayerId = input.payload.targetPlayerId,
                     abilityId = input.payload.abilityId, bidAmount = input.payload.bidAmount, useFreePass = input.payload.useFreePass,
                     historyTurn = input.payload.historyTurn,
+                    augmentId = input.payload.augmentId,
+                    shareOrders = input.payload.shareOrders?.Select(v => v == null ? null : new ShareOrder { companyId = v.companyId, targetShares = v.targetShares }).ToArray(),
                     seatPreferences = (string[])input.payload.seatPreferences?.Clone() } };
         }
         private static CommandResult Copy(CommandResult input)
@@ -665,6 +690,10 @@ namespace BlackWhale.Flow
                     writer.Write(c.payload.startDay); writer.Write(c.payload.endDay); writer.Write(c.payload.itemId ?? ""); writer.Write(c.payload.targetPlayerId ?? "");
                     writer.Write(c.payload.abilityId ?? ""); writer.Write(c.payload.bidAmount); writer.Write(c.payload.useFreePass);
                     writer.Write(c.payload.historyTurn);
+                    writer.Write(c.payload.augmentId ?? "");
+                    writer.Write(c.payload.shareOrders?.Length ?? -1);
+                    foreach (var v in c.payload.shareOrders ?? new ShareOrder[0])
+                    { writer.Write(v != null); if (v != null) { writer.Write(v.companyId ?? ""); writer.Write(v.targetShares); } }
                     writer.Write(c.payload.seatPreferences?.Length ?? -1);
                     if (c.payload.seatPreferences != null) foreach (var seat in c.payload.seatPreferences) writer.Write(seat ?? "");
                     writer.Write(c.payload.investments?.Length ?? -1);

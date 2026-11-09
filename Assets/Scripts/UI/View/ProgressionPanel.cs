@@ -44,12 +44,14 @@ namespace BlackWhale.UI.View
             nav.offsetMin = new Vector2(148, -33); nav.offsetMax = new Vector2(-48, -2);
             string[] labels = { "전광판", "입찰 결과", "내 능력", "상점", "보유 아이템", "BOT 난이도" };
             Page[] pages = { Page.Board, Page.Auction, Page.Ability, Page.Shop, Page.Inventory, Page.Difficulty };
+            if (controller.Store.Public?.stockSystem == true)
+            { labels = new[] { "전광판", "주식 현황", "내 증강", "BOT 난이도" }; pages = new[] { Page.Board, Page.Auction, Page.Ability, Page.Difficulty }; }
             for (int i = 0; i < labels.Length; i++)
             {
                 Page target = pages[i];
                 var button = UiKit.Button(nav, labels[i], 12, Palette.Card, Palette.Text, () => Open(target));
                 button.name = "Open" + target;
-                UiKit.Anchor((RectTransform)button.transform, i / 6f, 0, (i + 1) / 6f, 1, 3, 1);
+                UiKit.Anchor((RectTransform)button.transform, i / (float)labels.Length, 0, (i + 1) / (float)labels.Length, 1, 3, 1);
             }
             modal = UiKit.Panel(root, "LiveGameScreen", Palette.Screen, rounded: true, raycast: true).rectTransform;
             UiKit.Stretch(modal, 42, 40, 42, 40);
@@ -108,6 +110,7 @@ namespace BlackWhale.UI.View
                 + "|" + lobby?.Busy + "|" + state.paused
                 + "|" + endReason
                 + "|" + string.Join(",", view?.ability?.candidates ?? new string[0]);
+            if (state.stockSystem) nextSignature += "|" + string.Join(",", view?.portfolio?.augments ?? new string[0]) + "|" + state.selectionIndex;
             bool newBoard = !ReferenceEquals(shownBoard, store.Scoreboard);
             if (nextSignature == signature && !newBoard) return;
             signature = nextSignature; shownBoard = store.Scoreboard;
@@ -121,7 +124,7 @@ namespace BlackWhale.UI.View
             complete.name = state.phase == Protocol.AbilitySelection ? "DefaultAbilities" : "CompleteResult";
             UiKit.SetButton(complete, state.phase == Protocol.AbilitySelection ? "미선택자는 첫 후보로 진행" : "정산 확인 · 완료",
                 controller.CanFinishPhase(), Palette.Accent, Color.white);
-            feedback.text = endReason == "GAME_COMPLETE" ? "10턴 게임이 종료되었습니다. 서버가 확정한 최종 결과입니다."
+            feedback.text = endReason == "GAME_COMPLETE" ? (state.totalTurns > 0 ? state.totalTurns : 10) + "턴 게임이 종료되었습니다. 서버가 확정한 최종 결과입니다."
                 : !connected ? ErrorMessages.ToKorean(endReason) : store.LastError != null ? ErrorMessages.ToKorean(store.LastError.ErrorCode)
                 : mandatory ? "선택과 확정은 서버가 처리합니다. 다른 참가자의 개인 정보는 표시하지 않습니다." : "실제 게임 상태 · 화면을 닫아도 게임은 계속 진행됩니다.";
             UiKit.Clear(content); abilityScreen = null; auctionScreen = null;
@@ -131,6 +134,11 @@ namespace BlackWhale.UI.View
             switch (page)
             {
                 case Page.Ability:
+                    if (state.stockSystem)
+                    {
+                        Message("<b>내 증강</b>\n\n" + string.Join("\n\n", (view?.portfolio?.augments ?? new string[0]).Select(id => "<b>" + StockRules.Name(id) + "</b>\n" + StockRules.Description(id))) + "\n\n증강은 1·3·5턴 정보 확인 후 선택합니다.");
+                        break;
+                    }
                     var ability = LiveScreenModels.Ability(state, view, abilityDraft, store.HasPending(CommandTypes.SelectAbility), seconds);
                     if (state.phase != Protocol.AbilitySelection) { ability.Candidates = ability.Selected.Length > 0 ? new[] { ability.Selected } : new string[0]; ability.Confirmed = true; }
                     abilityScreen = new AbilityPickScreen(content);
@@ -139,6 +147,12 @@ namespace BlackWhale.UI.View
                     abilityScreen.Show(ability, ability.Confirmed ? LiveScreenModels.AbilityStatus(view) : null);
                     break;
                 case Page.Auction:
+                    if (state.stockSystem)
+                    {
+                        Message("<b>기업별 주식 보유 현황</b>\n\n" + string.Join("\n\n", (state.shareMarket ?? new CompanyShareState[0]).Select(c =>
+                            "<b>" + c.companyId + "</b> · 잔여 " + (20 - c.owners.Sum(v => v.shares)) + "/20주\n" + string.Join("   ", c.owners.Select(v => v.playerId + " " + v.shares + "주")))));
+                        break;
+                    }
                     if (state.phase == Protocol.Auction)
                         auctionDraft = LiveScreenModels.Auction(state, view, auctionDraft, store.HasPending(CommandTypes.SubmitBid), seconds);
                     else lastAuction = LiveScreenModels.LastAuction(state, view, lastAuction);

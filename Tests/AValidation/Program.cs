@@ -35,6 +35,7 @@ internal static class Program
             string[] realBC = await RealInformationValidation.Run(suite, codec);
             string[] nextA = await NextAValidation.Run(codec);
             string[] stock = StockPatternValidation.Run();
+            stock = stock.Concat(StockSystemValidation.Run()).ToArray();
             foreach (string check in core.Concat(network).Concat(realBC)) Console.WriteLine("PASS " + check);
             foreach (string check in nextA) Console.WriteLine("PASS " + check);
             foreach (string check in stock) Console.WriteLine("PASS " + check);

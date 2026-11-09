@@ -53,6 +53,8 @@ namespace BlackWhale.UI.Presentation
     public sealed class ScoreboardModel
     {
         public const int TotalTurns = 10;
+        public int GameTurns = 10;
+        public bool StockSystem;
         public int Turn;
         public bool Final;
         public string WinnerId = "";
@@ -68,7 +70,8 @@ namespace BlackWhale.UI.Presentation
         public static ScoreboardModel FromScoreboard(Scoreboard board, PublicState state, string localPlayerId,
             IDictionary<string, int> prevRanks = null, IDictionary<string, long> prevAssets = null)
         {
-            var model = new ScoreboardModel { Turn = board?.turn ?? state?.turn ?? 0 };
+            var model = new ScoreboardModel { Turn = board?.turn ?? state?.turn ?? 0,
+                GameTurns = state?.totalTurns > 0 ? state.totalTurns : 10, StockSystem = state?.stockSystem == true };
             if (board?.rows == null) return model;
             foreach (var r in board.rows)
             {

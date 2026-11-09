@@ -201,7 +201,7 @@ namespace BlackWhale.UI.View
             _zoom.gameObject.SetActive(false);
         }
 
-        private bool CanPlan => _zoomCompany != null && string.IsNullOrEmpty(_c.Store.EndReason) && !_c.Store.OrderLocked && _c.Store.Public?.paused != true && _c.Store.Public?.publicSelectionActive != true
+        private bool CanPlan => _c.Store.Public?.stockSystem != true && _zoomCompany != null && string.IsNullOrEmpty(_c.Store.EndReason) && !_c.Store.OrderLocked && _c.Store.Public?.paused != true && _c.Store.Public?.publicSelectionActive != true
             && (_c.Store.Public?.phase == Protocol.Info || _c.Store.Public?.phase == Protocol.Selection);
         private void Enlarge(string company)
         {
@@ -246,6 +246,10 @@ namespace BlackWhale.UI.View
         {
             if (_zoomCompany == null) return;
             var store = _c.Store; var plan = store.TradePlans.Get(_zoomCompany);
+            bool stockSystem = store.Public?.stockSystem == true;
+            _favorite.gameObject.SetActive(!stockSystem);
+            foreach (var rankButton in _rankButtons) rankButton.gameObject.SetActive(!stockSystem);
+            _interactionMode.gameObject.SetActive(!stockSystem);
             bool windows = store.Public?.windowInformation == true;
             if (store.Public?.publicSelectionActive == true) _selectInformation = true;
             _interactionMode.gameObject.SetActive(windows && (store.View?.inventory?.Length ?? 0) > 0 && store.Public?.publicSelectionActive != true);
@@ -273,7 +277,7 @@ namespace BlackWhale.UI.View
                 allowed = _entryDay.HasValue ? new Vector2Int(_entryDay.Value + 5, Math.Min(30, _entryDay.Value + 10)) : new Vector2Int(0, 25);
             _zoomChart.SetAllowed(allowed);
             _zoomTitle.text = CompanyCatalog.Get(_zoomCompany).DisplayName + " · " + _zoomCompany + "  <size=13>"
-                + (revealed != null ? "전체 플레이어 투자 구간" : store.OrderLocked ? "확정 주문 진입·청산" : windows ? store.Public?.publicSelectionActive == true ? "공용 정보 선택" : "정보 구매 · 구간 예약" : "이번 턴 개인 투자 계획") + "</size>";
+                + (revealed != null ? "전체 플레이어 투자 구간" : stockSystem ? "주식 분석 · 정보 구매" : store.OrderLocked ? "확정 주문 진입·청산" : windows ? store.Public?.publicSelectionActive == true ? "공용 정보 선택" : "정보 구매 · 구간 예약" : "이번 턴 개인 투자 계획") + "</size>";
             _zoomPurchaseStatus.text = store.Public?.publicSelectionActive == true
                 ? "공용 공개 " + (store.Public.publicSelectionIndex + 1) + "/4 · " + store.Public.publicSelectionPlayerId + " 차례"
                 : store.Public?.phase == Protocol.Info
@@ -284,11 +288,21 @@ namespace BlackWhale.UI.View
             for (int i = 0; i < _rankButtons.Length; i++)
                 UiKit.SetButton(_rankButtons[i], i == 0 ? "미정" : i + "순위", CanPlan, plan.Rank == i ? Palette.Accent : Palette.Card, plan.Rank == i ? Color.white : Palette.Text);
             _cancelEntry.interactable = CanPlan && _entryDay.HasValue;
-            string rowsKey = _zoomCompany + ":" + store.CurrentTurn + ":" + (revealed != null) + ":" + store.OrderLocked + ":" + CanPlan + ":" + string.Join(";", intervals.Select(i => i.entryDay + "," + i.exitDay));
+            string rowsKey = _zoomCompany + ":" + store.CurrentTurn + ":" + store.Public?.selectionIndex + ":" + (revealed != null) + ":" + store.OrderLocked + ":" + CanPlan + ":" + string.Join(";", intervals.Select(i => i.entryDay + "," + i.exitDay));
             if (_rowKey != rowsKey)
             {
                 _rowKey = rowsKey; UiKit.Clear(_planRows);
                 if (revealed?.investments != null) BuildRevealedRows(revealed);
+                else if (stockSystem)
+                {
+                    var owners = store.Public.shareMarket?.FirstOrDefault(c => c.companyId == _zoomCompany)?.owners ?? new ShareOwner[0];
+                    for (int i = 0; i < owners.Length; i++)
+                    {
+                        var label = UiKit.Label(ScreenKit.TopStrip(_planRows, "PublicShares_" + i, i * 24, 24), "■ " + owners[i].playerId + " · " + owners[i].shares + "/20주 보유", 13, Palette.Player(owners[i].playerId), TextAnchor.MiddleLeft);
+                        UiKit.Stretch(label.rectTransform);
+                    }
+                    _planRows.sizeDelta = new Vector2(0, Math.Max(72, owners.Length * 24));
+                }
                 else
                 {
                 _planRows.sizeDelta = new Vector2(0, Math.Max(72, intervals.Length * 34));
@@ -314,6 +328,8 @@ namespace BlackWhale.UI.View
                 : _note.Length > 0 ? _note : "선택한 기업의 예약은 투자 마감 때 자동 적용됩니다. 투자 화면에서 비중과 구간을 수정할 수 있습니다.";
             if (windows) _zoomMessage.text = revealed != null ? "플레이어 색 띠 = 확정 구간 · 아래 목록을 스크롤해 구간별 수익률을 확인하세요. 종목 합산은 해당 기업의 투자금 기준입니다."
                 : "진입일 시가 → 청산일 종가 · 예약은 투자 마감 때 자동 적용 · 양 끝 조절 / 몸통 이동 / Del 삭제";
+            if (stockSystem && revealed == null) _zoomMessage.text = "주식은 드래프트 차례에 확보합니다. 1주 = 내 자산의 1/30 · 보유 기업 수 제한 없이 최대 30칸입니다.";
+            if (stockSystem && revealed != null) _zoomMessage.text = "그래프와 구간 수익률은 증강 적용 전 값입니다. 증강·현금을 포함한 최종 수익률은 전광판에서 확인하세요.";
             RefreshZoomHover();
         }
         private void BuildRevealedRows(RevealedCompany revealed)
@@ -420,6 +436,9 @@ namespace BlackWhale.UI.View
                 ? "개인 정보 수신 대기"
                 : "보유 코인 <b>" + v.coins + "개</b>   ·   자산 " + DisplayFormat.Money(v.assets)
                   + (phase == Protocol.Info ? state?.publicSelectionActive == true ? " · " + state.publicSelectionPlayerId + " 공개 차례" : "   ·   1코인 = 1일" : "   ·   구매는 정보 탐색 단계에서만");
+            if (state?.stockSystem == true && !showingResults && !state.publicSelectionActive)
+                _publicHistory.text = "1코인 = 새 날짜 1일 · 정보 할인 " + (v?.portfolio?.informationDiscount ?? 0) + "일 · 주식은 드래프트에서 매수합니다.\n"
+                    + string.Join(" / ", (v?.portfolio?.insights ?? Array.Empty<StockInsight>()).Select(i => i.companyId + " 이벤트 성공 가능성 " + DisplayFormat.Percent(i.probabilityBps, false)));
             foreach (var card in _cards) card.Refresh();
             if (_zoomCompany != null)
             {
@@ -525,7 +544,7 @@ namespace BlackWhale.UI.View
             pointer.DeleteInterval = index => { if (CanPlan) _c.Store.TradePlans.RemoveInterval(_companyId, index); };
             pointer.RangeChanged = () => { DrawSelection(); _window.Refresh(); };
         }
-        private bool CanPlan => _c.Store.Public?.paused != true && _c.Store.Public?.publicSelectionActive != true && !_c.Store.OrderLocked && string.IsNullOrEmpty(_c.Store.EndReason)
+        private bool CanPlan => _c.Store.Public?.stockSystem != true && _c.Store.Public?.paused != true && _c.Store.Public?.publicSelectionActive != true && !_c.Store.OrderLocked && string.IsNullOrEmpty(_c.Store.EndReason)
             && (_c.Store.Public?.phase == Protocol.Info || _c.Store.Public?.phase == Protocol.Selection);
         public string SaveReservation()
         {

@@ -25,6 +25,58 @@ namespace BlackWhale.UI.Tests
     public class NetworkGameUiTests
     {
         [UnityTest]
+        public IEnumerator StockDraftShowsTwentyColoredSharesAndSubmitsOnlyOnApply()
+        {
+            var client = new PlanningClient(); var controller = new GameClientController(client);
+            var canvas = new GameObject("Stock System UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.GetComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvas.GetComponent<CanvasScaler>().referenceResolution = new Vector2(1280, 720);
+            try
+            {
+                client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+                var state = new PublicState { turn = 2, totalTurns = 6, stockSystem = true, windowInformation = true, phase = Protocol.Selection,
+                    currentPlayerId = "P1", selectionDeadlineAtServerSeconds = 12, phaseEndsAtServerSeconds = 96,
+                    draftOrder = new[] { "P1", "P2", "P3", "P4", "P4", "P1", "P2", "P3" },
+                    players = new[] { "P1", "P2", "P3", "P4" }.Select(id => new Player { playerId = id, displayName = id, connected = true }).ToArray(),
+                    shareMarket = UiRules.CompanyIds.Select(id => new CompanyShareState { companyId = id, owners = new[] { 10, 4, 3, 2 }.Select((q, n) => new ShareOwner { playerId = "P" + (n + 1), shares = id == "AI" ? q : 0 }).ToArray() }).ToArray() };
+                var portfolio = new PortfolioState { usedSlots = 10, augmentChosen = true, augments = new string[0], candidates = new string[0], insights = new StockInsight[0],
+                    holdings = UiRules.CompanyIds.Select(id => new PortfolioHolding { companyId = id, shares = id == "AI" ? 10 : 0 }).ToArray() };
+                var view = new PlayerView { turn = 2, phase = Protocol.Selection, recipientPlayerId = "P1", assets = 10000, portfolio = portfolio,
+                    companies = UiRules.CompanyIds.Select(id => new VisibleCompany { companyId = id }).ToArray() };
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state }); client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                var tablet = TabletView.Create((RectTransform)canvas.transform, controller);
+                yield return new WaitForSecondsRealtime(.4f); Canvas.ForceUpdateCanvases();
+                Assert.AreEqual(120, canvas.GetComponentsInChildren<Image>().Count(v => v.name.StartsWith("ShareBlock_")), "six firms issue twenty visible blocks each");
+                var ai = canvas.GetComponentsInChildren<RectTransform>().Single(r => r.name == "ShareCard_AI");
+                Assert.AreEqual(10, ai.GetComponentsInChildren<Image>().Count(v => v.name.StartsWith("ShareBlock_") && v.color == Palette.Player("P1")));
+                Assert.AreEqual(4, ai.GetComponentsInChildren<Image>().Count(v => v.name.StartsWith("ShareBlock_") && v.color == Palette.Player("P2")));
+                StringAssert.Contains("P3: 3주", ai.GetComponentsInChildren<Text>().Single(t => t.name == "ShareOwner_AI_P3").text);
+                var slider = ai.GetComponentInChildren<Slider>(); Assert.IsTrue(slider.wholeNumbers); slider.value = 5;
+                Assert.AreEqual(0, client.Sent.Count, "dragging is a preview and cannot buy shares");
+                StringAssert.Contains("전체 발행량 25%", ai.GetComponentsInChildren<Text>().Single(t => t.name == "ShareTarget_AI").text);
+                ClickPlanning(canvas, "SelectShare_BANK");
+                Assert.AreEqual(10, slider.value, "switching firms clears a discarded single-company preview");
+                slider.value = 5;
+                CapturePlanningScreen(canvas.GetComponent<Canvas>(), "stock-system-draft-ownership");
+                ClickPlanning(canvas, "ApplyShareDraft");
+                Assert.AreEqual(StockRules.Trade, client.Sent.Single().type); Assert.AreEqual(5, client.Sent[0].payload.shareOrders[0].targetShares);
+                Assert.AreEqual(10, controller.Store.Public.shareMarket.Single(c => c.companyId == "AI").owners[0].shares, "ownership changes only after server confirmation");
+                state.phase = StockRules.AugmentPhase; state.turn = 3; state.phaseEndsAtServerSeconds = 20;
+                view.turn = 3; view.phase = StockRules.AugmentPhase; portfolio.augmentChosen = false;
+                portfolio.candidates = new[] { "CONCENTRATION", "DIVERSIFY", "ANALYST" };
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state }); client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                yield return null; Canvas.ForceUpdateCanvases();
+                Assert.AreEqual(3, canvas.GetComponentsInChildren<Button>().Count(b => b.name.StartsWith("ChooseAugment_")));
+                ClickPlanning(canvas, "FocusCompany_BANK");
+                CapturePlanningScreen(canvas.GetComponent<Canvas>(), "stock-system-augment-choice");
+                ClickPlanning(canvas, "ChooseAugment_CONCENTRATION");
+                Assert.AreEqual(StockRules.Choose, client.Sent.Last().type); Assert.AreEqual("BANK", client.Sent.Last().payload.companyId);
+            }
+            finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); }
+        }
+
+        [UnityTest]
         public IEnumerator MarketRevealShowsEveryPlayersColoredRangesAndScrollableReturns()
         {
             var client = new PlanningClient(); var controller = new GameClientController(client);
@@ -355,15 +407,9 @@ namespace BlackWhale.UI.Tests
             Click(guest, "Ready");
             yield return Until(() => C(host).AllPlayersReady, "all players ready");
             Click(host, "StartGame");
-            yield return Until(() => C(host).Store.Public.phase == Protocol.AbilitySelection && C(host).Store.View?.ability?.candidates?.Length == 3,
-                "three ability candidates before first turn");
-            yield return null;
-            string chosenAbility = C(host).Store.View.ability.candidates[0];
-            Click(host, "ChooseAbility_" + chosenAbility);
-            Click(host, "ConfirmAbility");
-            yield return Until(() => C(host).Store.View.ability.selectedId == chosenAbility, "D ability confirmation reaches actual C service");
-            Click(host, "DefaultAbilities");
-            yield return Until(() => C(guest).Store.View?.turn == 1 && C(host).Store.Public.phase == Protocol.Info, "start synchronized");
+            yield return Until(() => C(guest).Store.View?.turn == 1 && C(host).Store.Public.phase == Protocol.Info, "six-turn stock game starts with information");
+            Assert.IsTrue(C(host).Store.Public.stockSystem);
+            Assert.AreEqual(6, C(host).Store.Public.totalTurns);
             var hostSession = Field<NetworkSession>(host, "session");
             var guestSession = Field<NetworkSession>(guest, "session");
             var hostedRoom = Field<BlackWhale.Flow.GameRoom>(hostSession, "hostedRoom");
@@ -396,10 +442,7 @@ namespace BlackWhale.UI.Tests
             editorPause.Invoke(hostSession, new object[] { UnityEditor.PauseState.Unpaused });
             Assert.Less(hostedRoom.Snapshot().serverElapsedSeconds - pausedTime, .1, "editor resume does not catch up elapsed wall time");
             yield return Until(() => !C(guest).Store.Public.paused, "guest sees editor resume");
-            Click(host, "OpenShop");
-            Assert.AreEqual(8, host.GetComponentsInChildren<Button>().Count(b => b.name.StartsWith("Buy_")));
-            Assert.IsTrue(host.GetComponentsInChildren<Button>().Where(b => b.name.StartsWith("Buy_")).All(b => !b.interactable), "unsupported purchases disabled in actual game");
-            Click(host, "CloseGameScreen");
+            Assert.IsFalse(host.GetComponentsInChildren<Button>().Any(b => b.name == "OpenShop"), "stock mode uses augments and share competition");
             Assert.IsFalse(host.GetComponentsInChildren<Button>().Any(b => b.name == "RemoveBots"), "cannot remove bots mid-game");
             float publicDeadline = Time.realtimeSinceStartup + 20;
             while (C(guest).Store.Public.publicSelectionActive || C(host).Store.Public.publicSelectionActive)
@@ -410,7 +453,7 @@ namespace BlackWhale.UI.Tests
             }
             int startDay = Enumerable.Range(1, 26).First(d => InformationWindowRules.NewDays(C(guest).Store.View.companies.Single(c => c.companyId == "AI"), d) > 0);
             int guestBefore = C(guest).Store.View.coins;
-            int cost = Math.Max(0, InformationWindowRules.NewDays(C(guest).Store.View.companies.Single(c => c.companyId == "AI"), startDay) - C(guest).Store.View.ability.freeInformationCredits);
+            int cost = Math.Max(0, InformationWindowRules.NewDays(C(guest).Store.View.companies.Single(c => c.companyId == "AI"), startDay) - (C(guest).Store.View.ability?.freeInformationCredits ?? 0));
             Click(guest, "Expand_AI");
             DragChart(guest.GetComponentsInChildren<ChartPointerLayer>().Single(p => p.name == "ZoomChart_AI"), startDay, startDay + 4);
             Click(guest, "ConfirmInformationWindow");
@@ -432,8 +475,8 @@ namespace BlackWhale.UI.Tests
             }
             Assert.AreEqual(4, C(host).Store.Scoreboard.rows.Length);
             CollectionAssert.AreEqual(C(host).Store.Scoreboard.rows.Select(r => r.totalAssets), C(guest).Store.Scoreboard.rows.Select(r => r.totalAssets));
-            Assert.AreEqual(2, C(guest).Store.View.ownInvestments.Length);
-            Assert.AreEqual(2, C(host).Store.View.ownInvestments.Length);
+            Assert.Greater(C(guest).Store.View.portfolio.usedSlots, 0);
+            Assert.Greater(C(host).Store.View.portfolio.usedSlots, 0);
             Click(host, "LeaveRoom");
             yield return Until(() => !string.IsNullOrEmpty(C(guest).Store.EndReason), "host leaving closes the room");
             Assert.IsNotNull(C(guest).Store.Scoreboard, "settled history remains visible after disconnect");
@@ -680,6 +723,25 @@ namespace BlackWhale.UI.Tests
         {
             if (c.Store.Public?.publicSelectionActive == true) { RevealPublic(c); return; }
             var state = c.Store.Public;
+            if (state.stockSystem && state.phase == StockRules.AugmentPhase)
+            {
+                var p = c.Store.View?.portfolio;
+                if (p?.augmentChosen == false && p.candidates?.Length > 0) c.ChooseAugment(p.candidates[0]);
+                return;
+            }
+            if (state.stockSystem && state.phase == Protocol.Selection)
+            {
+                if (!c.CanDraftShares()) return;
+                var p = c.Store.View.portfolio;
+                foreach (var company in state.shareMarket)
+                {
+                    int own = company.owners.Single(v => v.playerId == c.LocalPlayerId).shares;
+                    int available = 20 - company.owners.Sum(v => v.shares);
+                    int target = Math.Min(p.LimitFor(company.companyId), own + Math.Min(available, p.CashSlots));
+                    if (target > own) { c.TradeShares(new[] { new ShareOrder { companyId = company.companyId, targetShares = target } }); return; }
+                }
+                c.PassStockDraft(); return;
+            }
             if (state.phase == Protocol.Info || state.phase == Protocol.Reveal)
             { if (c.CanFinishPhase()) c.FinishPhase(); }
             else if (state.phase == Protocol.Selection && c.IsMyTurnToSelect() && !c.Store.HasPending(CommandTypes.SelectCompany))

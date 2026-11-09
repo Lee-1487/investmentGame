@@ -4,8 +4,8 @@ namespace BlackWhale.Shared
 {
     public static class Protocol
     {
-        public const string Version = "prototype-v4";
-        public const string RulesVersion = "rules-v4-daily-open";
+        public const string Version = "prototype-v5-stock";
+        public const string RulesVersion = "rules-v5-six-turn-shares";
         public const string Info = "INFO", Selection = "SELECTION", Investment = "INVESTMENT";
         public const string Reveal = "MARKET_REVEAL", Result = "RESULT", Lobby = "LOBBY", Ended = "ENDED";
         public const string AbilitySelection = "ABILITY_SELECTION", Auction = "AUCTION";
@@ -32,6 +32,8 @@ namespace BlackWhale.Shared
         public long bidAmount;
         public bool useFreePass;
         public string[] seatPreferences;
+        public ShareOrder[] shareOrders;
+        public string augmentId;
     }
     [Serializable] public sealed class Command
     {
@@ -86,6 +88,10 @@ namespace BlackWhale.Shared
         public string publicSelectionPlayerId;
         public double publicSelectionDeadlineAtServerSeconds;
         public PublicInformationChoice[] publicInformation;
+        public bool stockSystem;
+        public int totalTurns;
+        public string[] draftOrder;
+        public CompanyShareState[] shareMarket;
     }
     [Serializable] public sealed class VisibleBundle
     {
@@ -101,7 +107,7 @@ namespace BlackWhale.Shared
     }
     [Serializable] public sealed class VisibleInformationWindow
     {
-        public string recordId, source;
+        public string recordId, source, companyId;
         public int startDay, paidCoins;
         public int[] dailyChangesBps;
         public int[] dailyOpenBps;
@@ -125,6 +131,7 @@ namespace BlackWhale.Shared
         public AbilityState ability;
         public AuctionState auction;
         public string[] inventory;
+        public PortfolioState portfolio;
     }
     [Serializable] public sealed class ReturnPoint { public int turn, returnBps; }
     [Serializable] public sealed class ScoreRow
@@ -166,6 +173,7 @@ namespace BlackWhale.Shared
     {
         public string playerId;
         public int returnBps;
+        public int shares;
         public RevealedTrade[] intervals;
     }
     [Serializable] public sealed class RevealedCompany
