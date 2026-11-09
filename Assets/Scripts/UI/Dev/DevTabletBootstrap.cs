@@ -87,7 +87,7 @@ namespace BlackWhale.UI.Dev
             joinButton = UiKit.Button(card, "참가", 18, Palette.AccentSoft, Palette.Accent, () => BeginConnection(false));
             joinButton.name = "Join";
             UiKit.Place((RectTransform)joinButton.transform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(135, -370), new Vector2(250, 48));
-            connectionStatus = Label(card, "방을 만든 뒤 대기실에서 접속 주소를 확인할 수 있습니다.\n혼자 테스트할 때는 빈자리를 BOT으로 채워 주세요.", 14, -432, 66, Palette.SubText);
+            connectionStatus = Label(card, "", 14, -432, 66, Palette.SubText);
             cancelButton = UiKit.Button(card, "연결 취소", 13, Palette.Card, Palette.Text, Leave);
             cancelButton.name = "CancelConnection";
             UiKit.Place((RectTransform)cancelButton.transform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 22), new Vector2(180, 32));
@@ -199,9 +199,7 @@ namespace BlackWhale.UI.Dev
             finally { client.MessageReceived -= onMessage; }
         }
 
-        private string LobbyStatus(bool host) => endpoint + (host
-            ? "\n사람이 입장한 뒤 BOT을 채워 주세요. BOT 내보내기로 자리를 비울 수 있습니다.\n채우기를 누르면 연결이 끊긴 참가자의 자리 예약이 해제됩니다."
-            : "\n준비를 누르고 방장이 게임을 시작할 때까지 기다려 주세요.");
+        private string LobbyStatus(bool host) => endpoint;
 
         private async void FillBots()
         {

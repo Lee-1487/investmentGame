@@ -6,6 +6,7 @@ namespace BlackWhale.Flow
     public sealed class GameSettings
     {
         public double InfoSeconds { get; }
+        public double PublicInformationPickSeconds => Math.Min(10, InfoSeconds / 5);
         public int Turns { get; }
         public double? AbilitySelectionSeconds { get; }
         public bool EnableProgressionFeatures { get; }

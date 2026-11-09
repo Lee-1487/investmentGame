@@ -36,13 +36,17 @@ namespace BlackWhale.UI.View
         public static readonly Color32 HoverColor = new Color32(0x11, 0x18, 0x27, 0x22);
 
         private DayBar[] _bars = new DayBar[0];
-        private int _limitBps = 1;
+        private ChartVerticalRange _verticalRange = ChartVerticalRange.FromVisibleValues(null);
         private readonly List<Vector2Int> _bands = new List<Vector2Int>();
+        private RevealedInvestment[] _revealedInvestments = new RevealedInvestment[0];
         private int? _candidate;
         private Vector2Int? _preview;
         private bool _previewOk;
         private int? _hover;
         private Vector2Int? _allowed;
+        private Vector2Int? _informationRange;
+        public void SetInformationWindow(int? start) => SetInformationRange(start.HasValue ? new Vector2Int(start.Value, start.Value + 4) : (Vector2Int?)null);
+        public void SetInformationRange(Vector2Int? range) { _informationRange = range; SetVerticesDirty(); }
         private RectTransform _tradeMarkerRoot;
         private string _tradeMarkerKey;
 
@@ -55,10 +59,12 @@ namespace BlackWhale.UI.View
 
         public void SetInteractive(bool on) => raycastTarget = on;
 
-        public void SetData(DayBar[] bars, int limitBps)
+        public void SetData(DayBar[] bars, int limitBps) => SetData(bars); // v2 caller compatibility; limits are not display bounds
+        public void SetData(DayBar[] bars)
         {
             _bars = bars ?? new DayBar[0];
-            _limitBps = Mathf.Max(1, limitBps);
+            _verticalRange = ChartVerticalRange.FromVisibleValues(_bars.Where(b => b.Bps.HasValue).Select(b => b.Bps.Value)
+                .Concat(_bars.Where(b => b.Bps.HasValue && b.OpenBps.HasValue).Select(b => b.OpenBps.Value)));
             SetVerticesDirty();
         }
 
@@ -71,6 +77,7 @@ namespace BlackWhale.UI.View
 
         public void SetTradeIntervals(IEnumerable<Interval> intervals, bool planned = false)
         {
+            _revealedInvestments = new RevealedInvestment[0];
             var ranges = (intervals ?? new Interval[0]).Where(i => i != null).ToArray();
             SetBands(ranges.Select(i => new Vector2Int(i.entryDay, i.exitDay)));
             string key = planned + ":" + string.Join(";", ranges.Select(i => i.entryDay + "," + i.exitDay));
@@ -81,16 +88,40 @@ namespace BlackWhale.UI.View
             UiKit.Clear(_tradeMarkerRoot);
             for (int i = 0; i < ranges.Length; i++)
             {
-                TradeMarker("EntryMarker_" + i, "진입 " + ranges[i].entryDay, ranges[i].entryDay, i, Palette.Success);
-                TradeMarker("ExitMarker_" + i, "청산 " + ranges[i].exitDay, ranges[i].exitDay, i, Palette.Accent);
+                TradeMarker("EntryMarker_" + i, ranges[i].entryDay + "일 시가", ranges[i].entryDay, (i % 2) * 2, Palette.Success, false);
+                TradeMarker("ExitMarker_" + i, ranges[i].exitDay + "일 종가", ranges[i].exitDay, (i % 2) * 2 + 1, Palette.Accent, true);
             }
         }
-        private void TradeMarker(string name, string text, int day, int row, Color color)
+        public void SetRevealedInvestments(IEnumerable<RevealedInvestment> investments)
         {
-            var label = UiKit.Label(_tradeMarkerRoot, text, 9, color, TextAnchor.UpperCenter, FontStyle.Bold);
+            _bands.Clear();
+            _revealedInvestments = (investments ?? new RevealedInvestment[0]).ToArray();
+            string key = "reveal:" + string.Join(";", _revealedInvestments.Select(i => i.playerId + ":" + i.returnBps + ":" +
+                string.Join(",", i.intervals.Select(v => v.entryDay + "-" + v.exitDay + "=" + v.returnBps))));
+            SetVerticesDirty();
+            if (key == _tradeMarkerKey) return;
+            _tradeMarkerKey = key;
+            if (_tradeMarkerRoot == null)
+            { _tradeMarkerRoot = UiKit.Rect(transform, "TradeMarkers"); UiKit.Stretch(_tradeMarkerRoot); }
+            UiKit.Clear(_tradeMarkerRoot);
+            for (int i = 0; i < _revealedInvestments.Length; i++)
+            {
+                var p = _revealedInvestments[i];
+                var label = UiKit.Label(_tradeMarkerRoot, "■ " + p.playerId + "  " + DisplayFormat.Percent(p.returnBps), 10,
+                    Palette.Player(p.playerId), TextAnchor.UpperLeft, FontStyle.Bold);
+                label.name = "RevealedPlayer_" + p.playerId;
+                UiKit.Place(label.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(3, -i * 14), new Vector2(128, 14));
+            }
+        }
+        private void TradeMarker(string name, string text, int day, int row, Color color, bool exit)
+        {
+            var label = UiKit.Label(_tradeMarkerRoot, text, 9, color, exit ? TextAnchor.UpperRight : TextAnchor.UpperLeft, FontStyle.Bold);
             label.name = name;
-            UiKit.Place(label.rectTransform, new Vector2((day + .5f) / DayAxis.Count, 1), new Vector2(.5f, 1),
-                new Vector2(0, -row * 13), new Vector2(56, 13));
+            float anchor = (day + (exit ? 1f : 0f)) / DayAxis.Count;
+            float width = rectTransform.rect.width;
+            float inset = width <= 0 ? 0 : exit ? Mathf.Max(0, 64 - width * anchor) : Mathf.Min(0, width * (1 - anchor) - 64);
+            UiKit.Place(label.rectTransform, new Vector2(anchor, 1), new Vector2(exit ? 1 : 0, 1),
+                new Vector2(inset, -row * 13), new Vector2(64, 13));
         }
 
         public void SetCandidate(int? day)
@@ -130,8 +161,7 @@ namespace BlackWhale.UI.View
 
         private float ValueY(Rect r, int bps)
         {
-            float t = Mathf.Clamp(bps, -_limitBps, _limitBps) / (float)_limitBps; // -1..1
-            return r.center.y + t * (r.height * 0.5f);
+            return r.yMin + (float)_verticalRange.Fraction(bps) * r.height;
         }
 
         protected override void OnPopulateMesh(VertexHelper vh)
@@ -140,7 +170,7 @@ namespace BlackWhale.UI.View
             var r = rectTransform.rect; // DayAxis와 같은 사각형(클릭 판정과 일치)
             if (r.width <= 0 || r.height <= 0) return;
             float slot = DayAxis.SlotWidth(r.width);
-            float zeroY = r.center.y;
+            float zeroY = ValueY(r, 0);
 
             // 미열람 날짜: 칸 전체 음영
             for (int i = 0; i < _bars.Length; i++)
@@ -164,8 +194,33 @@ namespace BlackWhale.UI.View
                 }
             }
 
-            // 선택 구간과 미리보기(진입일 칸 중앙 → 청산일 칸 중앙)
+            // 시가 진입부터 종가 청산까지 양 끝 날짜의 칸 전체를 포함한다.
+            if (_informationRange.HasValue)
+            {
+                float left = DayAxis.LeftX(_informationRange.Value.x, r.xMin, r.width);
+                float right = DayAxis.LeftX(_informationRange.Value.y, r.xMin, r.width) + slot;
+                var highlight = new Color32(0xD9, 0x77, 0x06, 0x35);
+                Quad(vh, left, r.yMin, right, r.yMax, highlight);
+                Quad(vh, left, r.yMax - 3, right, r.yMax, new Color32(0xD9, 0x77, 0x06, 0xFF));
+                Quad(vh, left, r.yMin, left + 2, r.yMax, new Color32(0xD9, 0x77, 0x06, 0xFF));
+                Quad(vh, right - 2, r.yMin, right, r.yMax, new Color32(0xD9, 0x77, 0x06, 0xFF));
+            }
             foreach (var b in _bands) Band(vh, r, b.x, b.y, BandColor, true);
+            for (int p = 0; p < _revealedInvestments.Length; p++)
+            {
+                var position = _revealedInvestments[p];
+                Color32 edge = Palette.Player(position.playerId); var fill = edge; fill.a = 18;
+                foreach (var trade in position.intervals)
+                {
+                    Band(vh, r, trade.entryDay, trade.exitDay, fill, false);
+                    float left = DayAxis.LeftX(trade.entryDay, r.xMin, r.width);
+                    float right = DayAxis.LeftX(trade.exitDay + 1, r.xMin, r.width);
+                    float lane = r.yMin + 3 + p * 8;
+                    Quad(vh, left, lane, right, lane + 4, edge);
+                    Quad(vh, left, lane, left + 2, r.yMax - p * 2, edge);
+                    Quad(vh, right - 2, lane, right, r.yMax - p * 2, edge);
+                }
+            }
             if (_preview.HasValue) Band(vh, r, _preview.Value.x, _preview.Value.y, _previewOk ? PreviewOkColor : PreviewBadColor, false);
 
             // 마우스 위치
@@ -175,10 +230,10 @@ namespace BlackWhale.UI.View
                 Quad(vh, x0, r.yMin, x0 + slot, r.yMax, HoverColor);
             }
 
-            // 보조 가로선(±한도의 절반·한도)과 0% 기준선
-            foreach (float f in new[] { -1f, -0.5f, 0.5f, 1f })
+            // 숫자 없는 보조 가로선과 공개된 0일차 기준선. 기업의 변동 한도는 그리지 않는다.
+            foreach (float f in new[] { .25f, .5f, .75f })
             {
-                float gy = zeroY + f * (r.height * 0.5f);
+                float gy = r.yMin + f * r.height;
                 gy = Mathf.Clamp(gy, r.yMin + 0.5f, r.yMax - 0.5f);
                 Quad(vh, r.xMin, gy - 0.5f, r.xMax, gy + 0.5f, SubGridColor);
             }
@@ -218,6 +273,15 @@ namespace BlackWhale.UI.View
                 Quad(vh, cx - bodyW * 0.5f, y0, cx + bodyW * 0.5f, y1, color);
             }
 
+            foreach (var b in _bands)
+            {
+                Endpoint(vh, r, b.x, false, Palette.Success);
+                Endpoint(vh, r, b.y, true, Palette.Accent);
+            }
+            foreach (var p in _revealedInvestments)
+                foreach (var v in p.intervals)
+                { Endpoint(vh, r, v.entryDay, false, Palette.Player(p.playerId)); Endpoint(vh, r, v.exitDay, true, Palette.Player(p.playerId)); }
+
             // 진입일 후보 표식
             if (_candidate.HasValue && _candidate.Value >= 0 && _candidate.Value < DayAxis.Count)
             {
@@ -230,12 +294,24 @@ namespace BlackWhale.UI.View
         {
             int a = Mathf.Clamp(Mathf.Min(entry, exit), 0, DayAxis.Count - 1);
             int b = Mathf.Clamp(Mathf.Max(entry, exit), 0, DayAxis.Count - 1);
-            float x0 = DayAxis.CenterX(a, r.xMin, r.width);
-            float x1 = DayAxis.CenterX(b, r.xMin, r.width);
+            float x0 = DayAxis.LeftX(a, r.xMin, r.width);
+            float x1 = DayAxis.LeftX(b + 1, r.xMin, r.width);
             Quad(vh, x0, r.yMin, x1, r.yMax, color);
             if (!edges) return;
-            Quad(vh, x0 - 1f, r.yMin, x0 + 1f, r.yMax, BandEdgeColor);
-            Quad(vh, x1 - 1f, r.yMin, x1 + 1f, r.yMax, BandEdgeColor);
+            Quad(vh, x0, r.yMin, x0 + 2f, r.yMax, BandEdgeColor);
+            Quad(vh, x1 - 2f, r.yMin, x1, r.yMax, BandEdgeColor);
+        }
+
+        private void Endpoint(VertexHelper vh, Rect r, int day, bool exit, Color32 color)
+        {
+            if (day < 0 || day >= _bars.Length || !_bars[day].Bps.HasValue) return;
+            int? value = exit ? _bars[day].Bps : _bars[day].OpenBps;
+            if (!value.HasValue) return;
+            float edge = DayAxis.LeftX(day + (exit ? 1 : 0), r.xMin, r.width);
+            float center = DayAxis.CenterX(day, r.xMin, r.width);
+            float y = ValueY(r, value.Value);
+            Quad(vh, Mathf.Min(edge, center), y - 1.5f, Mathf.Max(edge, center), y + 1.5f, color);
+            Quad(vh, Mathf.Clamp(edge - 2, r.xMin, r.xMax - 4), y - 3, Mathf.Clamp(edge - 2, r.xMin, r.xMax - 4) + 4, y + 3, color);
         }
 
         private static void Quad(VertexHelper vh, float x0, float y0, float x1, float y1, Color32 color)

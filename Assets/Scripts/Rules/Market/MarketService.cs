@@ -10,7 +10,7 @@ namespace BlackWhale.Rules
     /// investment orders, assets, settlement and scoreboard. A (GameRoom) calls this; it never
     /// talks to the network or UI. Every rejected call leaves all state unchanged.
     /// </summary>
-    public sealed class MarketService : IMarketService, IMarketProgression, IMarketHistory
+    public sealed class MarketService : IMarketService, IMarketProgression, IMarketHistory, IWindowMarketDataSource, IMarketReservations
     {
         private readonly InvestmentRules rules;
         private readonly Func<int, MarketData> marketForTurn;
@@ -22,6 +22,7 @@ namespace BlackWhale.Rules
 
         private readonly Dictionary<string, List<string>> selected = new Dictionary<string, List<string>>();
         private readonly Dictionary<string, Investment[]> orders = new Dictionary<string, Investment[]>();
+        private readonly Dictionary<string, Investment[]> reservations = new Dictionary<string, Investment[]>();
         private readonly Dictionary<string, long> assets = new Dictionary<string, long>();
         private readonly Dictionary<string, long> turnStartAssets = new Dictionary<string, long>();
         private readonly Dictionary<string, int> lastTurnReturn = new Dictionary<string, int>();
@@ -39,12 +40,29 @@ namespace BlackWhale.Rules
             : this(t => fixedMarket, rules) { }
 
         /// <summary>
-        /// Normal play: a new random market every turn from one room seed (NEXT-B02).
+        /// Normal v3 play: one seeded pattern market per turn and movable information windows.
         /// Same seed + turn = same market, so a test or replay can fix the seed.
         /// </summary>
         public static MarketService CreateRandom(int seed, InvestmentRules rules = null)
         {
-            return new MarketService(new RandomMarketGenerator(seed, rules).ForTurn, rules);
+            var liveRules = (rules ?? new InvestmentRules()).Copy(); liveRules.entryAtOpen = true;
+            liveRules.minHoldingDays = 1; liveRules.maxHoldingDays = 30; liveRules.maxIntervalsPerCompany = 0;
+            return new MarketService(new PatternMarketGenerator(seed, liveRules).ForTurn, liveRules) { UsesWindowInformation = true };
+        }
+
+        public bool UsesWindowInformation { get; private set; }
+
+        public int[] GetWindow(int requestedTurn, string companyId, int startDay, int length = 5)
+        {
+            if (startDay < 1 || length < 1 || startDay > 30 || length > 31 - startDay) throw new ArgumentOutOfRangeException(nameof(startDay));
+            if (!markets.TryGetValue(requestedTurn, out var book) || !book.HasCompany(companyId))
+                throw new ArgumentException("Unknown market or company.");
+            return Enumerable.Range(startDay, length).Select(d => book.ChangeBps(companyId, d)).ToArray();
+        }
+        public int[] GetOpenWindow(int requestedTurn, string companyId, int startDay, int length = 5)
+        {
+            GetWindow(requestedTurn, companyId, startDay, length); // validate the same range
+            return Enumerable.Range(startDay, length).Select(d => markets[requestedTurn].ChangeBps(companyId, d - 1)).ToArray();
         }
 
         /// <summary>Provider mode: one market per turn, e.g. <see cref="RandomMarketGenerator.ForTurn"/>.</summary>
@@ -90,6 +108,7 @@ namespace BlackWhale.Rules
             players = (string[])playerIds.Clone();
             selected.Clear();
             orders.Clear();
+            reservations.Clear();
             allLocked = false;
             costs.Clear();
             foreach (string id in players)
@@ -140,6 +159,47 @@ namespace BlackWhale.Rules
 
         // ---------------- Orders ----------------
 
+        public RuleResult SaveReservations(RequestContext context, Investment[] input)
+        {
+            if (context.Turn != turn) return new RuleResult("STALE_TURN");
+            if (!selected.ContainsKey(context.PlayerId)) return new RuleResult("INVALID_PLAYER");
+            if (context.Phase != Protocol.Info && context.Phase != Protocol.Selection && context.Phase != Protocol.Investment)
+                return new RuleResult("WRONG_PHASE");
+            if (allLocked || IsOrderLocked(context.PlayerId)) return new RuleResult(ErrorCodes.OrderLocked);
+            if (input == null || input.Length > InvestmentRules.CompanyIds.Length || input.Any(i => i == null || !market.HasCompany(i.companyId)))
+                return new RuleResult(ErrorCodes.InvalidCompany);
+            if (input.Select(i => i.companyId).Distinct().Count() != input.Length) return new RuleResult(ErrorCodes.DuplicateCompany);
+            foreach (var i in input)
+            {
+                if ((i.intervals?.Length ?? 0) == 0) continue;
+                string error = OrderValidator.ValidateIntervals(i.intervals, rules);
+                if (error.Length > 0) return new RuleResult(error);
+            }
+            var weighted = input.Where(i => i.weightBps != 0).ToArray();
+            if (weighted.Length != 0 && (weighted.Length != 2 ||
+                Array.IndexOf(rules.firstCompanyWeightOptionsBps, weighted[0].weightBps) < 0 ||
+                weighted[0].weightBps + weighted[1].weightBps != InvestmentRules.FullWeightBps))
+                return new RuleResult(ErrorCodes.InvalidRatio);
+            reservations[context.PlayerId] = Copy(input);
+            return new RuleResult();
+        }
+
+        public Investment[] GetReservations(string playerId)
+            => reservations.TryGetValue(playerId, out var saved) ? Copy(saved) : new Investment[0];
+
+        public Investment[] BuildAutomaticInvestments(string playerId)
+        {
+            var saved = GetReservations(playerId);
+            var companies = GetSelectedCompanies(playerId);
+            var weighted = saved.Where(i => i.weightBps != 0).ToArray();
+            bool useWeights = weighted.Length == 2 && weighted.All(i => companies.Contains(i.companyId));
+            return (useWeights ? weighted.Select(i => i.companyId) : companies).Select(id => new Investment {
+                companyId = id, weightBps = useWeights ? weighted.Single(i => i.companyId == id).weightBps : 5000,
+                intervals = saved.FirstOrDefault(i => i.companyId == id)?.intervals is Interval[] ranges && ranges.Length > 0
+                    ? ranges : new[] { new Interval { entryDay = 0, exitDay = 5 } }
+            }).ToArray();
+        }
+
         public RuleResult SubmitInvestment(RequestContext context, Investment[] investments)
         {
             string code = CheckContext(context, Protocol.Investment);
@@ -182,7 +242,13 @@ namespace BlackWhale.Rules
             if (!markets.TryGetValue(context.Turn, out var book)) throw new ArgumentOutOfRangeException(nameof(context));
             if (context.Turn == turn ? !allLocked : !settledBoards.ContainsKey(context.Turn))
                 throw new InvalidOperationException("Market cannot be revealed before all orders are locked.");
-            return InvestmentRules.CompanyIds.Select(id => new RevealedCompany { companyId = id, dailyChangesBps = book.AllDays(id) }).ToArray();
+            return InvestmentRules.CompanyIds.Select(id => new RevealedCompany { companyId = id, dailyChangesBps = book.AllDays(id),
+                investments = players.Select(player => new { player, own = GetOwnInvestmentState(player, context.Turn) })
+                    .SelectMany(p => p.own.Investments.Where(i => i.companyId == id).Select(i => new RevealedInvestment {
+                        playerId = p.player, returnBps = Settlement.CompanyReturnBps(book, i, rules),
+                        intervals = i.intervals.Select(v => new RevealedTrade { entryDay = v.entryDay, exitDay = v.exitDay,
+                            returnBps = book.ChangeBps(id, v.exitDay) - book.ChangeBps(id, rules.entryAtOpen ? Math.Max(0, v.entryDay - 1) : v.entryDay) }).ToArray()
+                    })).ToArray() }).ToArray();
         }
 
         // Server-side history. Callers may project only the requesting player's state to clients.

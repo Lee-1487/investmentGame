@@ -1,9 +1,9 @@
 // 매수 창: 단계에 따라 내용이 바뀐다.
 // - 정보 탐색: 안내 + 기업별 남은 자리
-// - 기업 선택: 기업 카드(이름·이미지), 정원 2칸(내 확정/익명 선점/빈칸), 후보 선택→취소/교체→선택 확정
-// - 투자 결정: 비율(5:5/6:4/7:3)·순서, 일봉 그래프에서 진입일→청산일 클릭(정수 일, 5~10일, 최대 2개) 후 주문 확정
+// - 기업 선택: 기업 카드 클릭 즉시 서버에 선택 요청. 정원 2칸(내 확정/익명 선점/빈칸).
+// - 투자 결정: 비율·순서·시가→종가 예약, 마감 자동 주문 또는 조기 확정. 일반 게임은 보유 기간/구간 수 제한 없음.
 // - 시장 공개/결과: 확정 주문과 결과 표시
-// 타인의 투자 기업·금액·구간은 표시하지 않는다(남은 자리와 현재 차례만).
+// 타인 구간은 주문 잠금 뒤 시장 공개 그래프에서만 공개한다. 개인 예약·배분 금액은 비공개다.
 using System.Collections.Generic;
 using System.Linq;
 using BlackWhale.Shared;
@@ -11,6 +11,7 @@ using BlackWhale.UI.Presentation;
 using BlackWhale.UI.State;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 
 namespace BlackWhale.UI.View
 {
@@ -30,13 +31,12 @@ namespace BlackWhale.UI.View
         private Button _submitButton;
         private readonly Dictionary<string, BarChartGraphic> _orderCharts = new Dictionary<string, BarChartGraphic>();
         private readonly Dictionary<string, Text> _chartTips = new Dictionary<string, Text>();
+        private readonly Dictionary<string, ChartRangeSelection> _mouseRanges = new Dictionary<string, ChartRangeSelection>();
+        private readonly Dictionary<string, Button> _reserveButtons = new Dictionary<string, Button>();
         private readonly List<KeyValuePair<Interval, Text>> _holdLabels = new List<KeyValuePair<Interval, Text>>();
 
-        // NEXT-D02 클릭 초안(서버 전송 없음) / NEXT-D04 기업 후보(서버 전송 없음)
+        // 날짜 구간 편집은 주문 확정 전까지 로컬 초안으로 유지한다.
         private readonly IntervalPicker _picker = new IntervalPicker(null);
-        private readonly SelectionCandidate _candidate = new SelectionCandidate();
-        private Text _confirmLabel;
-        private Button _confirmButton;
 
         public InvestmentPage(RectTransform page, GameClientController controller, LobbyActions lobby = null)
         {
@@ -55,7 +55,6 @@ namespace BlackWhale.UI.View
 
         public void Refresh()
         {
-            SyncCandidate();
             UiKit.Clear(_body);
             var s = _c.Store.Public;
             if (s == null)
@@ -176,13 +175,13 @@ namespace BlackWhale.UI.View
         }
 
         // ------------------------------------------------------------------
-        // 기업 선택 (NEXT-D03 카드 + NEXT-D04 자리 2칸·후보→취소/교체→확정)
+        // 기업 선택: 카드 클릭 즉시 요청, 서버 응답으로 확정
         // ------------------------------------------------------------------
 
         private string SelectionHint(PublicState s)
         {
             if (_c.IsMyTurnToSelect())
-                return "<color=#DC2626><b>내 차례입니다.</b></color> 카드를 눌러 후보를 고른 뒤 <b>선택 확정</b>을 누르세요. ("
+                return "<color=#DC2626><b>내 차례입니다.</b></color> <b>기업 카드를 누르면 바로 선택됩니다.</b> ("
                        + (_c.Store.OwnSelections.Count + 1) + "번째 / 2개)";
             if (string.IsNullOrEmpty(s.currentPlayerId)) return "기업 선택 진행 중";
             return s.currentPlayerId + " 님이 고르는 중입니다. 차례 순서: A→B→C→D→D→C→B→A";
@@ -193,24 +192,13 @@ namespace BlackWhale.UI.View
 
         private int SecondsLeft => RemainingSeconds?.Invoke() ?? 1;
 
-        private void SyncCandidate()
-        {
-            var s = _c.Store.Public;
-            if (s == null) { _candidate.Clear(); return; }
-            if (s.paused) return;
-            _candidate.Sync(s.turn, s.phase, s.selectionIndex, _c.IsMyTurnToSelect());
-        }
-
         private void BuildSelectionGrid(bool active, string hint)
         {
-            SyncCandidate();
-            _confirmLabel = null;
-            _confirmButton = null;
-
             _orderTimer = null;
             var order = active ? _c.Store.SelectionOrder.Build(_c.Store.Public, _c.LocalPlayerId) : null;
             bool showOrder = order != null && order.Slots.Length > 0;
-            if (showOrder) hint = order.Summary() + (order.IsMyTurn ? "  ·  카드를 눌러 후보 → <b>선택 확정</b>" : "");
+            if (showOrder) hint = order.Summary() + (order.IsMyTurn ? "  ·  <b>카드를 누르면 바로 선택</b>" : "");
+            if (_c.Store.HasPending(CommandTypes.SelectCompany)) hint = "<b>기업 선택을 처리하고 있습니다…</b>";
 
             var hintText = UiKit.Label(_body, hint, 15, Palette.Text, TextAnchor.MiddleLeft);
             UiKit.Place(hintText.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(8, -4), new Vector2(860, 40));
@@ -226,7 +214,7 @@ namespace BlackWhale.UI.View
 
             bool myTurn = active && _c.IsMyTurnToSelect();
             var grid = UiKit.Rect(_body, "SelectGrid");
-            UiKit.Stretch(grid, 0, top, 0, myTurn ? 60 : 0);
+            UiKit.Stretch(grid, 0, top, 0, 0);
             var ids = UiRules.CompanyIds;
             for (int i = 0; i < ids.Length; i++)
             {
@@ -236,7 +224,6 @@ namespace BlackWhale.UI.View
                 BuildCompanyPickCard(cell, ids[i], myTurn);
             }
 
-            if (myTurn) BuildConfirmBar();
         }
 
         /// <summary>선택 차례 줄: 1~8번째 칸에 누가 고르는지, 지금 차례(주황), 내 차례(파랑), 끝난 차례(회색).
@@ -323,18 +310,19 @@ namespace BlackWhale.UI.View
             var entry = CompanyCatalog.Get(id);
             int seats = _c.RemainingSeats(id);
             bool own = _c.Store.OwnSelections.Contains(id);
-            bool selectable = myTurn && _c.CanSelect(id);
-            bool isCandidate = _candidate.CompanyId == id;
-            int known = _c.Store.View?.companies?.FirstOrDefault(c => c.companyId == id)?.visibleBundles?.Length ?? 0;
+            bool selectable = myTurn && _c.CanSelect(id) && SecondsLeft > 0 && string.IsNullOrEmpty(_c.Store.EndReason);
+            var company = _c.Store.View?.companies?.FirstOrDefault(c => c.companyId == id);
+            int known = InformationWindowRules.KnownDays(company).Skip(1).Count(d => d.HasValue);
             var slots = SeatMath.Compute(seats, own);
 
-            // 테두리: 내 확정 = 파랑, 후보 = 주황(점유와 구분), 그 외 = 회색
-            Color border = own ? Palette.Accent : isCandidate ? (Color)BarChartGraphic.CandidateColor : Palette.CardBorder;
+            Color border = own || selectable ? Palette.Accent : Palette.CardBorder;
             var frame = UiKit.Panel(cell, "Frame", border, rounded: true);
             UiKit.Stretch(frame.rectTransform);
             Color bg = own ? Palette.AccentSoft : slots.Empty == 0 ? Palette.Disabled : Palette.Card;
             var button = UiKit.Button(frame.transform, "", 12, bg, Palette.Text, () => OnCardClicked(id));
-            UiKit.Stretch((RectTransform)button.transform, isCandidate || own ? 3 : 1, isCandidate || own ? 3 : 1, isCandidate || own ? 3 : 1, isCandidate || own ? 3 : 1);
+            button.name = "SelectCompany_" + id;
+            float inset = own || selectable ? 3 : 1;
+            UiKit.Stretch((RectTransform)button.transform, inset, inset, inset, inset);
             button.interactable = selectable;
             var colors = button.colors;
             colors.disabledColor = Color.white; // 비활성이어도 상태 색 유지
@@ -350,7 +338,7 @@ namespace BlackWhale.UI.View
             name.name = "SelectionPlan_" + id;
             UiKit.Place(name.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(72, -12), new Vector2(200, 52));
 
-            var info = UiKit.Label(root, "열람 정보 " + known + "/6", 11, Palette.SubText, TextAnchor.UpperRight);
+            var info = UiKit.Label(root, "열람 " + known + "/30일", 11, Palette.SubText, TextAnchor.UpperRight);
             UiKit.Place(info.rectTransform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-10, -12), new Vector2(90, 16));
 
             // 정원 2칸: 내 확정 / 익명 선점 / 빈칸 (타인 이름·주문은 표시하지 않음)
@@ -362,9 +350,8 @@ namespace BlackWhale.UI.View
             for (int e = 0; e < slots.Empty; e++) SeatBox(seatRow, k++, "빈칸", Color.white, Palette.SubText, outline: true);
 
             string state = own ? "<color=#2563EB><b>내 확정</b></color>"
-                : isCandidate ? "<color=#B45309><b>후보 · 아직 확정 전</b></color>"
                 : slots.Empty == 0 ? "정원 마감"
-                : selectable ? "눌러서 후보로" : "남은 자리 " + slots.Empty;
+                : selectable ? "<color=#2563EB><b>클릭하여 바로 선택</b></color>" : "남은 자리 " + slots.Empty;
             var stateText = UiKit.Label(root, state, 12, Palette.SubText, TextAnchor.LowerLeft);
             UiKit.Place(stateText.rectTransform, new Vector2(0, 0), new Vector2(0, 0), new Vector2(12, 8), new Vector2(240, 22));
         }
@@ -386,78 +373,17 @@ namespace BlackWhale.UI.View
 
         private void OnCardClicked(string id)
         {
-            if (!_c.IsMyTurnToSelect() || !_c.CanSelect(id)) return;
-            _candidate.Toggle(id); // 로컬 후보만 바뀜. 서버 전송 없음.
-            Refresh();
+            if (!_c.IsMyTurnToSelect() || !_c.CanSelect(id) || SecondsLeft <= 0 || !string.IsNullOrEmpty(_c.Store.EndReason)) return;
+            _c.SelectCompany(id);
         }
 
-        private void BuildConfirmBar()
-        {
-            var bar = UiKit.Panel(_body, "ConfirmBar", Palette.Card, rounded: true);
-            var rt = bar.rectTransform;
-            rt.anchorMin = new Vector2(0, 0);
-            rt.anchorMax = new Vector2(1, 0);
-            rt.pivot = new Vector2(0.5f, 0);
-            rt.offsetMin = new Vector2(6, 4);
-            rt.offsetMax = new Vector2(-6, 56);
-
-            _confirmLabel = UiKit.Label(rt, "", 14, Palette.Text, TextAnchor.MiddleLeft);
-            UiKit.Stretch(_confirmLabel.rectTransform, 14, 0, 330, 0);
-
-            var cancel = UiKit.Button(rt, "후보 취소", 14, Palette.Card, Palette.Text, () => { _candidate.Clear(); Refresh(); });
-            cancel.name = "CancelCandidate";
-            UiKit.Place((RectTransform)cancel.transform, new Vector2(1, 0.5f), new Vector2(1, 0.5f), new Vector2(-196, 0), new Vector2(120, 40));
-            cancel.interactable = _candidate.HasCandidate;
-
-            _confirmButton = UiKit.Button(rt, "선택 확정", 16, Palette.Disabled, Palette.DisabledText, ConfirmCandidate);
-            _confirmButton.name = "ConfirmSelection";
-            UiKit.Place((RectTransform)_confirmButton.transform, new Vector2(1, 0.5f), new Vector2(1, 0.5f), new Vector2(-8, 0), new Vector2(180, 40));
-            UpdateConfirmBar();
-        }
-
-        private CandidateBlock ConfirmBlock()
-        {
-            string id = _candidate.CompanyId;
-            return _candidate.CanConfirm(_c.IsMyTurnToSelect(), id == null ? 0 : _c.RemainingSeats(id),
-                id != null && _c.Store.OwnSelections.Contains(id), _c.Store.HasPending(CommandTypes.SelectCompany), SecondsLeft);
-        }
-
-        private void ConfirmCandidate()
-        {
-            var block = ConfirmBlock();
-            if (block != CandidateBlock.None)
-            {
-                if (_confirmLabel != null) _confirmLabel.text = "<color=#DC2626>" + SelectionCandidate.Explain(block) + "</color>";
-                return;
-            }
-            _c.SelectCompany(_candidate.CompanyId); // 기존 SELECT_COMPANY 1회
-        }
-
-        private void UpdateConfirmBar()
-        {
-            if (_confirmButton == null || _confirmLabel == null) return;
-            var block = ConfirmBlock();
-            bool pending = _c.Store.HasPending(CommandTypes.SelectCompany);
-            int left = SecondsLeft;
-            string who = _candidate.HasCandidate ? "후보: <b>" + CompanyCatalog.Get(_candidate.CompanyId).Label + "</b>" : "후보 없음 · 카드를 눌러 고르세요";
-            _confirmLabel.text = who + "    <color=#DC2626><b>" + left + "초</b></color> 남음"
-                                 + (block == CandidateBlock.SeatFull || block == CandidateBlock.Expired ? "   <color=#DC2626>" + SelectionCandidate.Explain(block) + "</color>" : "");
-            bool can = block == CandidateBlock.None;
-            UiKit.SetButton(_confirmButton, pending ? "확정 중…" : "선택 확정", can,
-                can ? Palette.Accent : Palette.Disabled, can ? Color.white : Palette.DisabledText);
-        }
-
-        /// <summary>매 프레임(TabletView.Update): 남은 초 표시, 마감이 지난 후보 폐기.</summary>
+        // 매 프레임 서버 기한의 남은 시간을 표시한다.
         public void Tick()
         {
-            if (_candidate.HasCandidate && SecondsLeft <= 0)
-            {
-                _candidate.Clear(); // 서버 자동 선택을 따른다
-                Refresh();
-                return;
-            }
-            UpdateConfirmBar();
             UpdateOrderTimer();
+            if (SecondsLeft <= 0)
+                foreach (var button in _body.GetComponentsInChildren<Button>())
+                    if (button.name.StartsWith("SelectCompany_")) button.interactable = false;
         }
 
         // ------------------------------------------------------------------
@@ -475,6 +401,7 @@ namespace BlackWhale.UI.View
             // 턴·선택 기업이 바뀌면 이전 초안과 진입일 후보를 버린다(잘못된 기업/턴의 후보가 남지 않게).
             _draft = InvestmentDraft.FromSelections(sel, _c.Store.TradePlans);
             _draftTurn = turn;
+            _mouseRanges.Clear(); _reserveButtons.Clear();
             _picker.Reset(_draft);
         }
 
@@ -494,6 +421,8 @@ namespace BlackWhale.UI.View
                 return;
             }
             _picker.Editable = OrderEditable;
+
+            SyncDraftReservations();
 
             // 비율·순서
             var top = UiKit.Rect(_body, "RatioRow");
@@ -586,6 +515,22 @@ namespace BlackWhale.UI.View
 
             pointer.Hovered = day => OnChartHover(companyId, day);
             pointer.Clicked = (day, right) => OnChartClick(companyId, day, right);
+            if (_c.Store.Public?.windowInformation == true)
+            {
+                if (!_mouseRanges.TryGetValue(companyId, out var selection)) _mouseRanges.Add(companyId, selection = new ChartRangeSelection());
+                pointer.RangeSelection = selection; pointer.CanEditRange = () => OrderEditable;
+                pointer.Intervals = () => _draft.IntervalsOf(companyId).ToArray();
+                pointer.EditInterval = (rowIndex, a, b) => {
+                    string error = _draft.TryReplaceInterval(companyId, rowIndex, a, b);
+                    if (error == "") { Refresh(); EventSystem.current?.SetSelectedGameObject(_orderCharts[companyId].gameObject); } return error;
+                };
+                pointer.DeleteInterval = rowIndex => { if (OrderEditable) { _draft.RemoveInterval(companyId, rowIndex); Refresh(); } };
+                pointer.RangeChanged = () => UpdateMouseOrderRange(companyId);
+                var reserve = UiKit.Button(root, "예약하기", 11, Palette.AccentSoft, Palette.Accent, () => SaveMouseOrderRange(companyId));
+                reserve.name = "ReserveOrderRange_" + companyId; _reserveButtons[companyId] = reserve;
+                UiKit.Place((RectTransform)reserve.transform, Vector2.one, Vector2.one, new Vector2(-14, -154), new Vector2(90, 22));
+                UpdateMouseOrderRange(companyId);
+            }
 
             // 진행 중 후보 취소 버튼(우클릭과 같은 기능)
             var candidateDay = _picker.CandidateOf(companyId);
@@ -598,20 +543,25 @@ namespace BlackWhale.UI.View
 
             // 완성 구간 행(숫자 입력은 보조 수단으로 유지, 삭제 후 다시 클릭 가능)
             var intervals = _draft.IntervalsOf(companyId);
-            float y = -178;
+            var viewport = UiKit.Rect(root, "TradeIntervalScroll");
+            UiKit.Stretch(viewport, 0, 178, 0, 4);
+            var rows = UiKit.ScrollContent(viewport, "TradeIntervalRows");
+            float y = 0;
             for (int i = 0; i < intervals.Count; i++)
             {
-                BuildIntervalRow(root, companyId, i, intervals[i], y);
+                BuildIntervalRow(rows, companyId, i, intervals[i], y);
                 y -= 40;
             }
-            if (intervals.Count < UiRules.MaxIntervalsPerCompany)
+            if (_draft.EntryAtOpen || intervals.Count < UiRules.MaxIntervalsPerCompany)
             {
                 string guide = candidateDay.HasValue
                     ? "<color=#B45309>진입 " + candidateDay.Value + "일 선택됨 → 청산일을 클릭하세요</color>"
+                    : _c.Store.Public?.windowInformation == true ? "드래그 → 예약하기 · 양 끝을 끌어 조절 / 몸통을 끌어 이동 · 선택 후 Del / Backspace로 삭제"
                     : "그래프에서 <b>진입일 → 청산일</b> 순서로 클릭 (보유 5~10일, 최대 2구간) · <color=#059669>초록</color> = 지금 고를 수 있는 날짜, 회색(미열람)도 선택 가능";
-                var hint = UiKit.Label(root, guide, 12, Palette.SubText, TextAnchor.MiddleLeft);
+                var hint = UiKit.Label(rows, guide, 12, Palette.SubText, TextAnchor.MiddleLeft);
                 UiKit.Place(hint.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(14, y - 4), new Vector2(400, 26));
             }
+            rows.sizeDelta = new Vector2(0, -y + 66);
             DrawOrderChart(chart, companyId);
         }
 
@@ -635,7 +585,7 @@ namespace BlackWhale.UI.View
             if (entry.HasValue && day.Value > entry.Value)
             {
                 bool ok = _picker.PreviewIsValid(companyId, day.Value);
-                var ret = DailyBarModel.IntervalReturnBps(bars, entry.Value, day.Value);
+                var ret = DailyBarModel.IntervalReturnBps(bars, entry.Value, day.Value, _c.Store.View?.entryAtOpen == true);
                 text = entry.Value + "일 → " + day.Value + "일 · 보유 " + (day.Value - entry.Value) + "일"
                        + (ret.HasValue ? " · 알려진 값 기준 구간 " + DisplayFormat.Percent(ret.Value) + "p" : " · 끝점 미열람")
                        + (ok ? "" : "  <color=#DC2626>(불가)</color>");
@@ -673,6 +623,20 @@ namespace BlackWhale.UI.View
             row.pivot = new Vector2(0.5f, 1);
             row.offsetMin = new Vector2(14, y - 34);
             row.offsetMax = new Vector2(-14, y);
+            if (_c.Store.Public?.windowInformation == true)
+            {
+                var select = UiKit.Button(row, (index + 1) + ". " + iv.entryDay + "일 시가 → " + iv.exitDay + "일 종가", 12,
+                    Palette.AccentSoft, Palette.Accent, () => {
+                        _mouseRanges[companyId].SelectInterval(index, iv.entryDay, iv.exitDay);
+                        EventSystem.current?.SetSelectedGameObject(_orderCharts[companyId].gameObject); UpdateMouseOrderRange(companyId);
+                    });
+                UiKit.Stretch((RectTransform)select.transform, 0, 0, 78, 0); select.interactable = OrderEditable;
+                var delete = UiKit.Button(row, "삭제", 12, Palette.Card, Palette.SubText, () => {
+                    if (!OrderEditable) return; _mouseRanges[companyId].Clear(); _draft.RemoveInterval(companyId, index); Refresh(); });
+                delete.name = "RemoveInterval_" + companyId + "_" + index;
+                UiKit.Place((RectTransform)delete.transform, new Vector2(1,.5f), new Vector2(1,.5f), Vector2.zero, new Vector2(70,30));
+                delete.interactable = OrderEditable; return;
+            }
 
             var label = UiKit.Label(row, "구간 " + (index + 1), 13, Palette.SubText, TextAnchor.MiddleLeft);
             UiKit.Place(label.rectTransform, new Vector2(0, 0.5f), new Vector2(0, 0.5f), Vector2.zero, new Vector2(48, 34));
@@ -720,19 +684,28 @@ namespace BlackWhale.UI.View
             if (_draft == null || _orderMessage == null || _submitButton == null) return;
             _picker.Editable = OrderEditable;
             string error = _draft.Validate();
+            SyncDraftReservations();
             bool pending = _c.Store.HasPending(CommandTypes.SubmitInvestment);
             bool can = error.Length == 0 && OrderEditable;
 
             bool empty = _draft.FirstIntervals.Count == 0 || _draft.SecondIntervals.Count == 0;
-            _orderMessage.text = empty ? "두 기업 모두 그래프에서 구간을 1개 이상 고르면 주문을 확정할 수 있습니다. 시간 초과 시 50:50 · 각 0→5일로 자동 확정됩니다."
+            _orderMessage.text = empty ? "예약 구간과 비중은 마감 때 자동 적용됩니다. 구간이 없는 기업만 0→5일로 투자합니다."
                 : error.Length > 0 ? ErrorMessages.ToKorean(error)
-                : "확정 후에는 바꿀 수 없습니다.";
+                : "예약·비중은 마감 때 자동 적용됩니다. 지금 확정하면 편집이 잠깁니다.";
             _orderMessage.color = error.Length > 0 && !empty ? Palette.Up : Palette.SubText;
             UiKit.SetButton(_submitButton, pending ? "확정 중…" : "주문 확정", can,
                 can ? Palette.Accent : Palette.Disabled, can ? Color.white : Palette.DisabledText);
 
             foreach (var pair in _holdLabels) UpdateHoldLabel(pair.Key, pair.Value);
             foreach (var pair in _orderCharts) DrawOrderChart(pair.Value, pair.Key);
+        }
+
+        private void SyncDraftReservations()
+        {
+            if (_draft == null || !OrderEditable || _c.Store.Public?.windowInformation != true) return;
+            var investments = _draft.ToInvestments();
+            if (investments.Any(i => i.intervals.Length > 0 && OrderInputValidator.ValidateIntervals(i.intervals, _draft.EntryAtOpen) != "")) return;
+            _c.Store.TradePlans.SetDraft(investments);
         }
 
         private static void UpdateHoldLabel(Interval iv, Text hold)
@@ -743,12 +716,42 @@ namespace BlackWhale.UI.View
             hold.color = ok ? Palette.SubText : Palette.Up;
         }
 
+        private string MouseOrderRangeError(string company)
+        {
+            var range = _mouseRanges[company];
+            var list = _draft.IntervalsOf(company).Select(DtoCopy.Copy).ToList();
+            var candidate = new Interval { entryDay = range.Start, exitDay = range.End };
+            if (range.SelectedIndex >= 0 && range.SelectedIndex < list.Count) list[range.SelectedIndex] = candidate; else list.Add(candidate);
+            return OrderInputValidator.ValidateIntervals(list, _draft.EntryAtOpen);
+        }
+        private void SaveMouseOrderRange(string company)
+        {
+            if (!OrderEditable || !_mouseRanges.TryGetValue(company, out var range) || !range.HasSelection || MouseOrderRangeError(company) != "") return;
+            int index = range.SelectedIndex;
+            string error;
+            if (index >= 0) error = _draft.TryReplaceInterval(company, index, range.Start, range.End);
+            else { index = _draft.IntervalsOf(company).Count; error = _draft.TryAddInterval(company, range.Start, range.End); }
+            if (error != "") return;
+            range.SelectInterval(index, range.Start, range.End); Refresh();
+            EventSystem.current?.SetSelectedGameObject(_orderCharts[company].gameObject);
+        }
+        private void UpdateMouseOrderRange(string company)
+        {
+            if (!_mouseRanges.TryGetValue(company, out var range) || !_orderCharts.TryGetValue(company, out var chart) || chart == null) return;
+            chart.SetInformationRange(range.HasSelection ? new Vector2Int(range.Start, range.End) : (Vector2Int?)null);
+            bool valid = range.HasSelection && MouseOrderRangeError(company) == "";
+            if (_reserveButtons.TryGetValue(company, out var reserve) && reserve != null)
+                reserve.interactable = OrderEditable && valid;
+            if (_chartTips.TryGetValue(company, out var tip) && tip != null && range.HasSelection)
+                tip.text = range.Start + "일 시가 → " + range.End + "일 종가 · " + (valid ? "예약 가능" : "날짜 / 겹침 확인");
+        }
         private void DrawOrderChart(BarChartGraphic chart, string companyId)
         {
             if (chart == null || _draft == null) return;
             var company = _c.Store.View?.companies?.FirstOrDefault(c => c.companyId == companyId);
-            chart.SetData(DailyBarModel.Build(company), GraphSeriesBuilder.AxisLimitBps(companyId));
+            chart.SetData(DailyBarModel.Build(company));
             chart.SetTradeIntervals(_draft.IntervalsOf(companyId));
+            if (_c.Store.Public?.windowInformation == true) { UpdateMouseOrderRange(companyId); return; }
             chart.SetCandidate(_picker.CandidateOf(companyId));
             chart.SetAllowed(OrderEditable ? _picker.AllowedRange(companyId) : null);
         }

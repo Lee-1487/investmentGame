@@ -119,7 +119,7 @@ namespace InvestmentGame.Rules.Information
         /// 턴 시작 코인을 지급한다.
         /// 같은 턴을 다시 호출해도 지급 원장이 이미 있으면 잔액을 변경하지 않는다.
         /// </summary>
-        public CoinGrantResult GrantTurnCoins(int turn, IEnumerable<string> playerIds)
+        public CoinGrantResult GrantTurnCoins(int turn, IEnumerable<string> playerIds, bool perDay = false)
         {
             if (turn < 1) throw new ArgumentOutOfRangeException(nameof(turn));
             if (playerIds == null) throw new ArgumentNullException(nameof(playerIds));
@@ -135,7 +135,8 @@ namespace InvestmentGame.Rules.Information
                     var granted = state.GrantedTurns.Add(key);
                     // rules-v2에 따라 6턴부터 5개, 그 전에는 3개를 지급한다.
                     if (granted) state.Coins += turn >= InformationConstants.LateGrantStartsAtTurn
-                        ? InformationConstants.LateTurnCoinGrant : InformationConstants.EarlyTurnCoinGrant;
+                        ? (perDay ? InformationConstants.DailyLateTurnCoinGrant : InformationConstants.LateTurnCoinGrant)
+                        : (perDay ? InformationConstants.DailyEarlyTurnCoinGrant : InformationConstants.EarlyTurnCoinGrant);
                     if (granted) state.CoinsByTurn[turn] = state.Coins;
                     last = new CoinGrantResult(playerId, turn, state.Coins, granted);
                 }
@@ -243,6 +244,19 @@ namespace InvestmentGame.Rules.Information
         public int GetCoins(string playerId)
         {
             lock (sync) return GetPlayer(playerId).Coins;
+        }
+
+        // Called while the adapter holds its room transaction lock, after all window validation.
+        internal bool SpendWindowCoins(string playerId, int turn, int amount)
+        {
+            lock (sync)
+            {
+                var state = GetPlayer(playerId);
+                if (amount < 0 || state.Coins < amount) return false;
+                state.Coins -= amount;
+                state.CoinsByTurn[turn] = state.Coins;
+                return true;
+            }
         }
 
         /// <summary>특정 플레이어·턴의 구매 원장 개수를 반환한다.</summary>

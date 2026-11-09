@@ -27,6 +27,7 @@ namespace BlackWhale.UI.Presentation
         public static double DeadlineOf(PublicState s)
         {
             if (s == null) return 0;
+            if (s.publicSelectionActive) return s.publicSelectionDeadlineAtServerSeconds;
             if (s.phase == Protocol.Selection && s.selectionDeadlineAtServerSeconds > 0)
                 return s.selectionDeadlineAtServerSeconds;
             return s.phaseEndsAtServerSeconds;

@@ -96,7 +96,7 @@ namespace BlackWhale.Rules.Information
                 room.Turn = context.Turn;
                 foreach (var p in room.Players)
                 {
-                    p.Value.FreeCredits = p.Value.Ability == "INFORMATION_BROKER" ? 1 : 0;
+                    p.Value.FreeCredits = p.Value.Ability == "INFORMATION_BROKER" ? (UsesWindowInformation ? 5 : 1) : 0;
                     p.Value.Bid = new AuctionState { maximumBid = ((IMarketProgression)source).GetTurnStartAssets(p.Key) / 10,
                         seatPreferences = (string[])SeatNames.Clone() };
                 }

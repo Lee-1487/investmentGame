@@ -14,6 +14,8 @@ namespace BlackWhale.Tests
     }
     public sealed class UnityNetworkTests
     {
+        [Test] public void StockPatternsAndInformationWindows()
+        { TestContext.WriteLine(string.Join("\n", StockPatternValidation.Run())); }
         [UnityTest] public IEnumerator NextATimingBotsAndTenTurns()
         {
             var task = NextAValidation.Run(new UnityWireCodec());

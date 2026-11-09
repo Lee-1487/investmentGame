@@ -23,8 +23,10 @@ namespace BlackWhale.UI.State
         public const string CompletePhase = "COMPLETE_PHASE";
         public const string GetPlayerView = "GET_PLAYER_VIEW";
         public const string BuyInformation = "BUY_INFORMATION";
+        public const string BuyInformationWindow = "BUY_INFORMATION_WINDOW", RevealInformationWindow = "REVEAL_INFORMATION_WINDOW", UseInformationItem = "USE_INFORMATION_ITEM";
         public const string SelectCompany = "SELECT_COMPANY";
         public const string SubmitInvestment = "SUBMIT_INVESTMENT";
+        public const string SaveTradePlan = "SAVE_TRADE_PLAN";
         public const string SelectAbility = "SELECT_ABILITY", SubmitBid = "SUBMIT_BID";
 
         /// <summary>GameRoom 규칙: 결과 type = 요청 type + "_RESULT".</summary>

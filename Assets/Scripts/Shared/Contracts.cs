@@ -4,8 +4,8 @@ namespace BlackWhale.Shared
 {
     public static class Protocol
     {
-        public const string Version = "prototype-v2";
-        public const string RulesVersion = "rules-v2";
+        public const string Version = "prototype-v4";
+        public const string RulesVersion = "rules-v4-daily-open";
         public const string Info = "INFO", Selection = "SELECTION", Investment = "INVESTMENT";
         public const string Reveal = "MARKET_REVEAL", Result = "RESULT", Lobby = "LOBBY", Ended = "ENDED";
         public const string AbilitySelection = "ABILITY_SELECTION", Auction = "AUCTION";
@@ -23,6 +23,8 @@ namespace BlackWhale.Shared
     {
         public string companyId;
         public int bundleIndex;
+        public int startDay, endDay;
+        public string itemId, targetPlayerId;
         public int historyTurn;
         public Investment[] investments;
         public bool ready;
@@ -42,9 +44,12 @@ namespace BlackWhale.Shared
         public string companyId;
         public int remainingCoins, bundleIndex, startDay;
         public int[] dailyChangesBps;
+        public int[] dailyOpenBps;
         public bool locked, automatic;
         public Investment[] investments;
         public string source;
+        public string recordId;
+        public int paidCoins;
     }
     [Serializable] public sealed class CommandResult
     {
@@ -76,6 +81,11 @@ namespace BlackWhale.Shared
         public string[] initialPlayerOrder, seatPlayerIds;
         public string botDifficulty;
         public PublicEvent[] events;
+        public bool windowInformation, publicSelectionActive;
+        public int publicSelectionIndex;
+        public string publicSelectionPlayerId;
+        public double publicSelectionDeadlineAtServerSeconds;
+        public PublicInformationChoice[] publicInformation;
     }
     [Serializable] public sealed class VisibleBundle
     {
@@ -87,14 +97,30 @@ namespace BlackWhale.Shared
     {
         public string companyId;
         public VisibleBundle[] visibleBundles;
+        public VisibleInformationWindow[] visibleWindows;
+    }
+    [Serializable] public sealed class VisibleInformationWindow
+    {
+        public string recordId, source;
+        public int startDay, paidCoins;
+        public int[] dailyChangesBps;
+        public int[] dailyOpenBps;
+    }
+    [Serializable] public sealed class PublicInformationChoice
+    {
+        public string playerId, companyId;
+        public int startDay;
+        public bool automatic;
     }
     [Serializable] public sealed class PlayerView
     {
         public string schemaVersion = "1.0", recipientPlayerId, phase;
         public int turn, coins;
+        public bool entryAtOpen;
         public long assets;
         public string[] selectedCompanies;
         public Investment[] ownInvestments;
+        public Investment[] reservedInvestments;
         public VisibleCompany[] companies;
         public AbilityState ability;
         public AuctionState auction;
@@ -135,7 +161,19 @@ namespace BlackWhale.Shared
         public int turn;
         public string eventId, kind, playerId, targetPlayerId, detail;
     }
-    [Serializable] public sealed class RevealedCompany { public string companyId; public int[] dailyChangesBps; }
+    [Serializable] public sealed class RevealedTrade { public int entryDay, exitDay, returnBps; }
+    [Serializable] public sealed class RevealedInvestment
+    {
+        public string playerId;
+        public int returnBps;
+        public RevealedTrade[] intervals;
+    }
+    [Serializable] public sealed class RevealedCompany
+    {
+        public string companyId;
+        public int[] dailyChangesBps;
+        public RevealedInvestment[] investments;
+    }
     [Serializable] public sealed class HistorySnapshot
     {
         public int turn;

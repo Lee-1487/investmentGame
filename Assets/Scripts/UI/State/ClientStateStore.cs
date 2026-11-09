@@ -94,10 +94,10 @@ namespace BlackWhale.UI.State
         // 대기 상태
         // ------------------------------------------------------------------
 
-        public void MarkPending(string requestId, string type, int turn, string key = "")
+        public void MarkPending(string requestId, string type, int turn, string key = "", bool notify = true)
         {
             _pending[requestId] = new PendingRequest { Type = type, Turn = turn, Key = key ?? "" };
-            Raise();
+            if (notify) Raise();
         }
 
         public bool IsPending(string requestId) => _pending.ContainsKey(requestId);
@@ -183,6 +183,8 @@ namespace BlackWhale.UI.State
 
             BeginTurnIfNewer(view.turn);
             View = DtoCopy.Copy(view);
+            TradePlans.EntryAtOpen = view.entryAtOpen;
+            TradePlans.RestoreReservations(view.reservedInvestments);
             if (string.IsNullOrEmpty(LocalPlayerId)) LocalPlayerId = view.recipientPlayerId ?? "";
             Raise();
             return ApplyOutcome.Applied;
@@ -232,6 +234,17 @@ namespace BlackWhale.UI.State
                     source = string.IsNullOrEmpty(p.source) ? BundleSources.Purchased : p.source,
                     dailyChangesBps = (int[])p.dailyChangesBps?.Clone()
                 });
+            }
+            else if ((result.type == CommandTypes.ResultOf(CommandTypes.BuyInformationWindow)
+                || result.type == CommandTypes.ResultOf(CommandTypes.RevealInformationWindow)
+                || result.type == CommandTypes.ResultOf(CommandTypes.UseInformationItem)) && p?.dailyChangesBps != null && View != null)
+            {
+                View.coins = p.remainingCoins;
+                var company = View.companies?.FirstOrDefault(c => c.companyId == p.companyId);
+                if (company != null && !(company.visibleWindows ?? new VisibleInformationWindow[0]).Any(w => w.recordId == p.recordId))
+                    company.visibleWindows = (company.visibleWindows ?? new VisibleInformationWindow[0]).Concat(new[] {
+                        new VisibleInformationWindow { recordId = p.recordId, startDay = p.startDay, source = p.source,
+                            paidCoins = p.paidCoins, dailyChangesBps = (int[])p.dailyChangesBps.Clone(), dailyOpenBps = (int[])p.dailyOpenBps?.Clone() } }).ToArray();
             }
             else if (result.type == CommandTypes.ResultOf(CommandTypes.SelectCompany))
             {

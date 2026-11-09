@@ -2,7 +2,9 @@
     "name": "BlackWhale.UI.Editor",
     "rootNamespace": "BlackWhale.UI.EditorTools",
     "references": [
-        "BlackWhale.UI.Dev"
+        "BlackWhale.UI.Dev",
+        "BlackWhale.Rules.Market",
+        "BlackWhale.UI"
     ],
     "includePlatforms": [
         "Editor"

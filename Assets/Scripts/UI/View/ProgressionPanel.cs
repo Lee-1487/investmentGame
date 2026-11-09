@@ -163,7 +163,9 @@ namespace BlackWhale.UI.View
                     var inventory = new InventoryScreen(content);
                     inventory.SelectSlot = index => { selectedSlot = index; ForceRefresh(); };
                     inventory.Show(LiveScreenModels.Inventory(view, state.phase, selectedSlot));
-                    feedback.text = "서버가 지급한 보유 아이템입니다. 프리패스는 9턴 입찰 화면에서 사용합니다.";
+                    feedback.text = state.windowInformation
+                        ? "정보 아이템은 공용 공개 후 정보 구매 창의 확대 화면에서 사용합니다. 프리패스는 9턴 입찰에서 사용합니다."
+                        : "서버가 지급한 보유 아이템입니다. 프리패스는 9턴 입찰 화면에서 사용합니다.";
                     break;
                 case Page.Difficulty:
                     Enum.TryParse(state.botDifficulty, out BotDifficulty difficulty);

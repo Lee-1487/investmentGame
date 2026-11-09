@@ -252,7 +252,7 @@ namespace BlackWhale.UI.Presentation
         {
             string id = AbilityId(view?.ability?.selectedId);
             return new AbilityStatusModel { AbilityId = id, State = id.Length == 0 ? "선택 대기" : "선택 완료",
-                Detail = id == "INFOBROKER" ? "이번 턴 무료 정보 구매 " + view.ability.freeInformationCredits + "회 남음 · 추가 능력 효과 준비 중"
+                Detail = id == "INFOBROKER" ? "이번 턴 무료 정보 구매 " + view.ability.freeInformationCredits + (view.entryAtOpen ? "일" : "회") + " 남음 · 추가 능력 효과 준비 중"
                     : id == "OPERATOR" ? "초기 정보 훔치기 아이템 지급 · 공격 효과 준비 중" : "능력 효과 준비 중" };
         }
         public static AuctionModel Auction(PublicState state, PlayerView view, AuctionModel draft, bool pending, int seconds)

@@ -40,6 +40,17 @@ namespace BlackWhale.Tests
                 => Room.ProcessCommand("c" + player, new Command { type = type, requestId = "test-" + ++counter,
                     turn = Room.Snapshot().turn, payload = payload });
             public void Start() { if (Room.Snapshot().phase == Protocol.AbilitySelection) Send(1, "COMPLETE_PHASE"); }
+            public void FinishPublic()
+            {
+                while (Room.Snapshot().publicSelectionActive)
+                {
+                    var state = Room.Snapshot();
+                    string company = Market.GetCompanyIds().First(id => Enumerable.Range(1, 26).Any(d => !InformationWindowRules.OverlapsPublic(state, id, d)));
+                    int start = Enumerable.Range(1, 26).First(d => !InformationWindowRules.OverlapsPublic(state, company, d));
+                    Check(Send(int.Parse(state.publicSelectionPlayerId.Substring(1)), "REVEAL_INFORMATION_WINDOW", new CommandPayload { companyId = company, startDay = start }).success,
+                        "finish public selections");
+                }
+            }
         }
         public static async Task<string[]> Run(IWireCodec codec)
         {
@@ -120,7 +131,7 @@ namespace BlackWhale.Tests
             var command = RoomValidation.Command("COMPLETE_PHASE", "paused-complete", 1);
             Check(h.Room.ProcessCommand("c1", command).errorCode == ErrorCodes.GamePaused, "server refuses state mutations while paused");
             var uiClock = new BlackWhale.UI.Presentation.PhaseClock(); uiClock.Sync(frozen.serverElapsedSeconds, 1);
-            Check(uiClock.RemainingSeconds(frozen, 10000) == 78, "client countdown stays frozen without repeated snapshots");
+            Check(uiClock.RemainingSeconds(frozen, 10000) == (int)Math.Ceiling(BlackWhale.UI.Presentation.PhaseClock.DeadlineOf(frozen) - frozen.serverElapsedSeconds), "client countdown stays frozen without repeated snapshots");
             var wireCopy = DtoCopy.Copy(frozen);
             Check(wireCopy.paused, "pause survives client snapshot copy");
             using (var client = new BotClient())
@@ -138,6 +149,7 @@ namespace BlackWhale.Tests
                 bot.Dispose();
             }
             Check(h.Room.SetPaused(false) && h.Room.Snapshot().serverElapsedSeconds == 12, "resume excludes paused wall time");
+            h.FinishPublic();
             Check(h.Room.ProcessCommand("c1", command).success, "paused request can be retried after resume");
             h.Clock.Seconds = 689.999; h.Room.Tick();
             Check(h.Room.Snapshot().phase == Protocol.Info, "deadline is preserved after resume");
@@ -187,12 +199,12 @@ namespace BlackWhale.Tests
                 Check(h.Room.Snapshot().phaseEndsAtServerSeconds == 90, "INFO deadline");
                 var hidden = h.Market.GetCompanyIds().SelectMany(id => Enumerable.Range(0, 6).Select(b => h.Market.GetBundle(1, id, b)))
                     .First(b => !b.IsPublic);
-                var command = new Command { type = "BUY_INFORMATION", requestId = "boundary", turn = 1,
-                    payload = new CommandPayload { companyId = hidden.CompanyId, bundleIndex = hidden.BundleIndex } };
+                var command = new Command { type = "BUY_INFORMATION_WINDOW", requestId = "boundary", turn = 1,
+                    payload = new CommandPayload { companyId = "BIO", startDay = 26, endDay = 30 } };
                 h.Clock.Seconds = 100; // main thread handles a packet received earlier
                 var result = h.Room.ProcessCommandAt("c1", command, receipt);
                 Check(result.success == (receipt < 90), "receipt, not processing time");
-                if (receipt == 90) Check(result.errorCode == "DEADLINE_EXCEEDED" && h.Info.GetCoins("NEXT", "P1") == 3, "exact deadline unchanged");
+                if (receipt == 90) Check(result.errorCode == "DEADLINE_EXCEEDED" && h.Info.GetCoins("NEXT", "P1") == 15, "exact deadline unchanged");
                 h.Clock.Seconds = 200; h.Room.Tick();
                 var replay = h.Room.ProcessCommandAt("c1", command, 200);
                 Check(replay.success == result.success && replay.errorCode == result.errorCode, "replay before ended/deadline");
@@ -202,6 +214,7 @@ namespace BlackWhale.Tests
         {
             var early = new Harness(new GameSettings(turns: 1, enableProgressionFeatures: false));
             early.Clock.Seconds = 20;
+            early.Room.Tick(); early.FinishPublic();
             for (int p = 1; p <= 4; p++) Check(early.Send(p, "COMPLETE_PHASE").success, "early completion");
             Check(early.Room.Snapshot().selectionDeadlineAtServerSeconds == 24, "new pick deadline");
             var h = new Harness(new GameSettings(turns: 1, enableProgressionFeatures: false));
@@ -337,7 +350,7 @@ namespace BlackWhale.Tests
             }
             Check(h.Market.GetScoreboard(10).gameComplete && !string.IsNullOrEmpty(h.Market.GetScoreboard(10).winnerPlayerId), "final winner");
             Check(h.Market.GetScoreboard(10).rows.All(r => r.returnHistory.Length == 11), "ten results");
-            Check(h.Info.GetCoins("NEXT", "P1") >= 40, "3/5 coin carry");
+            Check(h.Info.GetCoins("NEXT", "P1") >= 200, "15/25 coin carry");
         }
         private static void Auctions()
         {
@@ -547,9 +560,9 @@ namespace BlackWhale.Tests
                 }
                 foreach (var log in logs.Skip(4 - botCount))
                 {
-                    Check(log.Any(m => m.type == "COMMAND_RESULT" && m.response.type == "BUY_INFORMATION_RESULT" && m.response.success), "bot actually buys via TCP");
+                    Check(log.Any(m => m.type == "COMMAND_RESULT" && m.response.type == "BUY_INFORMATION_WINDOW_RESULT" && m.response.success), "bot actually buys a window via TCP");
                     foreach (var message in log.Where(m => m.type == "COMMAND_RESULT" && m.response.turn == 1 &&
-                        (m.response.type == "BUY_INFORMATION_RESULT" || m.response.type == "SUBMIT_INVESTMENT_RESULT")))
+                        (m.response.type == "BUY_INFORMATION_WINDOW_RESULT" || m.response.type == "SUBMIT_INVESTMENT_RESULT")))
                         BotCommandEvidence.Add(codec.EncodeServer(message));
                 }
                 Check(market.GetScoreboard(10).rows.All(r => r.returnHistory.Length == 11), "TCP history");
@@ -571,6 +584,14 @@ namespace BlackWhale.Tests
                 return;
             }
             if (view == null || view.turn != state.turn) return;
+            if (state.publicSelectionActive && state.publicSelectionPlayerId == c.LocalPlayerId && !c.Store.HasPending(CommandTypes.RevealInformationWindow))
+            {
+                foreach (var id in view.companies.Select(v => v.companyId))
+                {
+                    int start = Enumerable.Range(1, 26).FirstOrDefault(d => !InformationWindowRules.OverlapsPublic(state, id, d));
+                    if (start > 0) { c.SelectInformationWindow(id, start); break; }
+                }
+            }
             if (state.phase == Protocol.AbilitySelection && string.IsNullOrEmpty(view.ability?.selectedId) && !c.Store.HasPending("SELECT_ABILITY"))
             {
                 var screen = BlackWhale.UI.Presentation.LiveScreenModels.Ability(state, view, "", false, 0);

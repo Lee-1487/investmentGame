@@ -34,7 +34,8 @@ namespace BlackWhale.Rules
         {
             int sum = 0;
             foreach (Interval i in investment.intervals)
-                sum += market.ChangeBps(investment.companyId, i.exitDay) - market.ChangeBps(investment.companyId, i.entryDay);
+                sum += market.ChangeBps(investment.companyId, i.exitDay) - market.ChangeBps(investment.companyId,
+                    rules.entryAtOpen ? Math.Max(0, i.entryDay - 1) : i.entryDay);
             return Math.Max(sum, rules.minimumCompanyReturnBps);
         }
 

@@ -9,7 +9,9 @@
         "BlackWhale.Information",
         "BlackWhale.UI",
         "BlackWhale.UI.Dev",
+        "BlackWhale.UI.Editor",
         "UnityEngine.UI",
+        "Unity.InputSystem",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"
     ],

@@ -20,7 +20,7 @@ namespace BlackWhale.UI.Presentation
         /// <summary>표시 순서: 위 3개(AI, SPACE, FOOD), 아래 3개(BANK, BIO, AUTO). REQ-005.</summary>
         public static readonly string[] CompanyIds = { "AI", "SPACE", "FOOD", "BANK", "BIO", "AUTO" };
 
-        /// <summary>0일차 대비 변화율 상한(bps). 그래프 축을 비공개 원본 대신 설정값으로 정할 때 사용.</summary>
+        /// <summary>기존 v2 규칙의 0일차 대비 변화율 상한(bps). 현재 차트의 표시 범위에는 사용하지 않는다.</summary>
         public static int AbsoluteChangeCapBps(string companyId)
         {
             switch (companyId)

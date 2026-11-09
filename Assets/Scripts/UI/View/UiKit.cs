@@ -49,6 +49,18 @@ namespace BlackWhale.UI.View
 
     public static class UiKit
     {
+        public static RectTransform ScrollContent(RectTransform viewport, string name)
+        {
+            var image = viewport.gameObject.AddComponent<Image>(); image.color = new Color(1, 1, 1, .01f);
+            viewport.gameObject.AddComponent<RectMask2D>();
+            var content = Rect(viewport, name);
+            content.anchorMin = new Vector2(0, 1); content.anchorMax = Vector2.one; content.pivot = new Vector2(.5f, 1);
+            content.offsetMin = Vector2.zero; content.offsetMax = Vector2.zero;
+            var scroll = viewport.gameObject.AddComponent<ScrollRect>();
+            scroll.viewport = viewport; scroll.content = content; scroll.horizontal = false;
+            scroll.movementType = ScrollRect.MovementType.Clamped; scroll.scrollSensitivity = 24;
+            return content;
+        }
         private static Font _font;
         private static Sprite _rounded;
 
@@ -251,7 +263,8 @@ namespace BlackWhale.UI.View
             {
                 var child = t.GetChild(i).gameObject;
                 child.SetActive(false);
-                UnityEngine.Object.Destroy(child);
+                if (Application.isPlaying) UnityEngine.Object.Destroy(child);
+                else UnityEngine.Object.DestroyImmediate(child);
             }
         }
 
