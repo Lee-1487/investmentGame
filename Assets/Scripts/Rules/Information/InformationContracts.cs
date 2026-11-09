@@ -18,6 +18,8 @@ namespace InvestmentGame.Rules.Information
         public const int InformationCostCoins = 1;
         // 1~5턴 시작 시 지급하는 코인 수이다.
         public const int EarlyTurnCoinGrant = 3;
+        public const int DailyEarlyTurnCoinGrant = 15;
+        public const int DailyLateTurnCoinGrant = 25;
         // 6~10턴 시작 시 증가하는 코인 지급량이다.
         public const int LateTurnCoinGrant = 5;
         // 이 턴부터 후기 지급량을 적용한다.

@@ -16,11 +16,278 @@ using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 
 namespace BlackWhale.UI.Tests
 {
     public class NetworkGameUiTests
     {
+        [UnityTest]
+        public IEnumerator MarketRevealShowsEveryPlayersColoredRangesAndScrollableReturns()
+        {
+            var client = new PlanningClient(); var controller = new GameClientController(client);
+            var canvas = new GameObject("Public trade UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.GetComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvas.GetComponent<CanvasScaler>().referenceResolution = new Vector2(1280, 720);
+            try
+            {
+                client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+                var state = new PublicState { turn = 1, phase = Protocol.Reveal, windowInformation = true, phaseEndsAtServerSeconds = 10,
+                    players = new[] { "P1", "P2", "P3", "P4" }.Select(id => new Player { playerId = id, displayName = id, connected = true }).ToArray(), companySeats = new CompanySeat[0] };
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = new PlayerView { turn = 1, phase = Protocol.Reveal, entryAtOpen = true,
+                    recipientPlayerId = "P1", assets = 10000, selectedCompanies = new[] { "AI", "BANK" },
+                    ownInvestments = new[] { new Investment { companyId = "AI", weightBps = 5000, intervals = new[] { new Interval { entryDay = 1, exitDay = 3 } } } },
+                    companies = UiRules.CompanyIds.Select(id => new VisibleCompany { companyId = id }).ToArray() } });
+                var tablet = TabletView.Create((RectTransform)canvas.transform, controller); tablet.ShowPage(1);
+                var positions = new[] {
+                    new RevealedInvestment { playerId = "P1", returnBps = 1800, intervals = new[] {
+                        new RevealedTrade { entryDay = 1, exitDay = 3, returnBps = 300 },
+                        new RevealedTrade { entryDay = 9, exitDay = 9, returnBps = 100 },
+                        new RevealedTrade { entryDay = 17, exitDay = 30, returnBps = 1400 } } },
+                    new RevealedInvestment { playerId = "P2", returnBps = 1000, intervals = new[] {
+                        new RevealedTrade { entryDay = 2, exitDay = 8, returnBps = 700 },
+                        new RevealedTrade { entryDay = 20, exitDay = 22, returnBps = 300 } } }
+                };
+                client.Receive(new ServerMessage { type = "MARKET_REVEAL", revealedMarket = UiRules.CompanyIds.Select(id => new RevealedCompany {
+                    companyId = id, dailyChangesBps = Enumerable.Range(0, 31).Select(d => d * 100).ToArray(),
+                    investments = id == "AI" ? positions : new RevealedInvestment[0] }).ToArray() });
+                yield return new WaitForSecondsRealtime(.4f); Canvas.ForceUpdateCanvases();
+                var badge = canvas.GetComponentsInChildren<Text>().Single(t => t.name == "PlanBadge_AI").text;
+                StringAssert.Contains("P1", badge); StringAssert.Contains("P2", badge);
+                CapturePlanningScreen(canvas.GetComponent<Canvas>(), "trading-reveal-all-companies");
+                ClickPlanning(canvas, "Expand_AI"); Canvas.ForceUpdateCanvases();
+                var chart = canvas.GetComponentsInChildren<BarChartGraphic>().Single(c => c.name == "ZoomChart_AI");
+                Assert.AreEqual(2, Field<RevealedInvestment[]>(chart, "_revealedInvestments").Length);
+                Assert.AreEqual(Palette.Player("P2"), chart.GetComponentsInChildren<Text>().Single(t => t.name == "RevealedPlayer_P2").color);
+                var rows = canvas.GetComponentsInChildren<RectTransform>().Single(r => r.name == "PlannedIntervals");
+                var labels = rows.GetComponentsInChildren<Text>();
+                Assert.AreEqual(7, labels.Length, "both player totals and all five trades are accessible");
+                Assert.IsTrue(labels.Any(t => t.text.Contains("9일 시가 → 9일 종가") && t.text.Contains("+1%")));
+                Assert.IsTrue(labels.Any(t => t.text.Contains("P1") && t.text.Contains("+18%")));
+                Assert.Greater(rows.sizeDelta.y, ((RectTransform)rows.parent).rect.height, "returns scroll instead of being clipped away");
+                Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Where(b => b.name == "ReserveRange").Any(b => b.interactable));
+                CapturePlanningScreen(canvas.GetComponent<Canvas>(), "trading-reveal-colored-intervals");
+            }
+            finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); }
+        }
+
+        [UnityTest]
+        public IEnumerator MouseRanges_BuyPerDay_ReserveMoveResize_DeleteWithKeyboard_AndOpenPrice()
+        {
+            var client = new PlanningClient(); var controller = new GameClientController(client);
+            var events = new GameObject("Range test events", typeof(EventSystem));
+            var previousInputMode = InputSystem.settings.updateMode;
+            var previousBackground = InputSystem.settings.backgroundBehavior;
+            var previousEditorInput = InputSystem.settings.editorInputBehaviorInPlayMode;
+            InputSystem.settings.updateMode = InputSettings.UpdateMode.ProcessEventsManually;
+            InputSystem.settings.backgroundBehavior = InputSettings.BackgroundBehavior.IgnoreFocus;
+            InputSystem.settings.editorInputBehaviorInPlayMode = InputSettings.EditorInputBehaviorInPlayMode.AllDeviceInputAlwaysGoesToGameView;
+            var keyboard = InputSystem.AddDevice<Keyboard>();
+            InputSystem.EnableDevice(keyboard);
+            var canvas = new GameObject("Mouse Range UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.GetComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvas.GetComponent<CanvasScaler>().referenceResolution = new Vector2(1280, 720);
+            try
+            {
+                client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+                var state = new PublicState { turn = 1, phase = Protocol.Info, windowInformation = true, phaseEndsAtServerSeconds = 90,
+                    players = new[] { new Player { playerId = "P1", displayName = "Range", connected = true } }, companySeats = new CompanySeat[0] };
+                var view = new PlayerView { turn = 1, phase = Protocol.Info, entryAtOpen = true, recipientPlayerId = "P1", coins = 15, assets = 10000,
+                    selectedCompanies = new string[0], ownInvestments = new Investment[0],
+                    companies = UiRules.CompanyIds.Select(id => new VisibleCompany { companyId = id, visibleWindows = new VisibleInformationWindow[0] }).ToArray() };
+                view.companies[0].visibleWindows = new[] { new VisibleInformationWindow { recordId = "public", source = "PUBLIC", startDay = 1,
+                    dailyChangesBps = new[] { 100, 200, 300, 400, 500 }, dailyOpenBps = new[] { 0, 100, 200, 300, 400 } } };
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state }); client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                var tablet = TabletView.Create((RectTransform)canvas.transform, controller); tablet.ShowPage(1);
+                yield return null; ClickPlanning(canvas, "Expand_AI"); Canvas.ForceUpdateCanvases();
+                var pointer = canvas.GetComponentsInChildren<ChartPointerLayer>().Single(p => p.name == "ZoomChart_AI");
+                Assert.AreEqual(0, canvas.GetComponentsInChildren<Slider>().Length, "no range sliders");
+                DragChart(pointer, 3, 9);
+                Assert.AreEqual(0, client.Sent.Count); Assert.AreEqual(0, controller.Store.TradePlans.Get("AI").Intervals.Length);
+                StringAssert.Contains("4코인", canvas.GetComponentsInChildren<Text>().Single(t => t.name == "InformationRangeCost").text);
+                ClickPlanning(canvas, "ReserveRange");
+                Assert.AreEqual(3, controller.Store.TradePlans.Get("AI").Intervals[0].entryDay);
+                Assert.AreEqual(CommandTypes.SaveTradePlan, client.Sent.Single().type, "reservation is saved privately for automatic execution, without buying information or locking an order");
+                DragChart(pointer, 6, 8);
+                Assert.AreEqual(5, controller.Store.TradePlans.Get("AI").Intervals[0].entryDay);
+                Assert.AreEqual(11, controller.Store.TradePlans.Get("AI").Intervals[0].exitDay);
+                DragChart(pointer, 11, 13);
+                Assert.AreEqual(13, controller.Store.TradePlans.Get("AI").Intervals[0].exitDay);
+                DragChart(pointer, 13, 20);
+                Assert.AreEqual(20, controller.Store.TradePlans.Get("AI").Intervals[0].exitDay, "holding longer than ten days is allowed");
+                CapturePlanningScreen(canvas.GetComponent<Canvas>(), "mouse-range-reservation");
+                EventSystem.current.SetSelectedGameObject(pointer.gameObject);
+                Assert.AreSame(pointer.gameObject, EventSystem.current.currentSelectedGameObject);
+                Assert.AreEqual(0, pointer.RangeSelection.SelectedIndex);
+                Assert.IsTrue(Field<InputAction>(pointer, "_deleteAction").enabled);
+                InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Delete)); InputSystem.Update();
+                var deleteAction = Field<InputAction>(pointer, "_deleteAction");
+                Assert.IsTrue(deleteAction.triggered, "Delete invokes the chart input action");
+                Assert.IsTrue(keyboard.deleteKey.isPressed, "queued Delete reaches the test keyboard"); yield return null;
+                Assert.AreEqual(0, controller.Store.TradePlans.Get("AI").Intervals.Length, "Delete removes selected reservation");
+                InputSystem.QueueStateEvent(keyboard, new KeyboardState()); InputSystem.Update(); yield return null;
+                DragChart(pointer, 3, 9); ClickPlanning(canvas, "ReserveRange");
+                InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Backspace)); InputSystem.Update(); yield return null;
+                Assert.AreEqual(0, controller.Store.TradePlans.Get("AI").Intervals.Length, "Backspace removes selected reservation");
+                InputSystem.QueueStateEvent(keyboard, new KeyboardState()); InputSystem.Update(); yield return null;
+                DragChart(pointer, 30, 30); ClickPlanning(canvas, "ConfirmInformationWindow");
+                var buy = client.Sent.Single(c => c.type == CommandTypes.BuyInformationWindow); Assert.AreEqual(30, buy.payload.startDay); Assert.AreEqual(30, buy.payload.endDay);
+                client.Receive(new ServerMessage { type = "COMMAND_RESULT", response = new CommandResult { type = "BUY_INFORMATION_WINDOW_RESULT", turn = 1,
+                    requestId = buy.requestId, success = true, payload = new ResultPayload { recordId = "day30", companyId = "AI", startDay = 30,
+                        dailyChangesBps = new[] { 1000 }, dailyOpenBps = new[] { 950 }, paidCoins = 1, remainingCoins = 14, source = "PURCHASED" } } });
+                Assert.AreEqual(14, controller.Store.View.coins);
+                var bars = Field<DayBar[]>(pointer.GetComponent<BarChartGraphic>(), "_bars");
+                Assert.IsNull(bars[29].Bps); Assert.AreEqual(950, bars[30].OpenBps); Assert.AreEqual(1000, bars[30].Bps);
+                CapturePlanningScreen(canvas.GetComponent<Canvas>(), "mouse-range-day-purchase");
+                state.phase = Protocol.Selection; state.currentPlayerId = "P1"; state.phaseEndsAtServerSeconds = 122; state.selectionDeadlineAtServerSeconds = 94;
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                view.selectedCompanies = new[] { "AI", "BANK" }; client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                state.phase = Protocol.Investment; client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                Canvas.ForceUpdateCanvases();
+                pointer = canvas.GetComponentsInChildren<ChartPointerLayer>().Single(p => p.GetComponentsInParent<RectTransform>().Any(r => r.name == "Col_AI"));
+                DragChart(pointer, 3, 9); ClickPlanning(canvas, "ReserveOrderRange_AI");
+                pointer = canvas.GetComponentsInChildren<ChartPointerLayer>().Single(p => p.GetComponentsInParent<RectTransform>().Any(r => r.name == "Col_AI"));
+                DragChart(pointer, 9, 10);
+                var draft = Field<InvestmentDraft>(Field<InvestmentPage>(tablet, "_investmentPage"), "_draft");
+                Assert.AreEqual(10, draft.FirstIntervals[0].exitDay, "order intervals can be resized by mouse too");
+                pointer = canvas.GetComponentsInChildren<ChartPointerLayer>().Single(p => p.GetComponentsInParent<RectTransform>().Any(r => r.name == "Col_AI"));
+                DragChart(pointer, 6, 6); EventSystem.current.SetSelectedGameObject(pointer.gameObject);
+                InputSystem.QueueStateEvent(keyboard, new KeyboardState(Key.Delete)); InputSystem.Update(); yield return null;
+                Assert.AreEqual(0, draft.FirstIntervals.Count, "keyboard deletion works in the investment draft");
+            }
+            finally {
+                InputSystem.RemoveDevice(keyboard); InputSystem.settings.updateMode = previousInputMode; InputSystem.settings.backgroundBehavior = previousBackground;
+                InputSystem.settings.editorInputBehaviorInPlayMode = previousEditorInput;
+                controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); UnityEngine.Object.DestroyImmediate(events);
+            }
+        }
+        [UnityTest]
+        public IEnumerator CompanyCardClick_SelectsImmediately_AndBlocksPendingFullExpiredAndOtherTurns()
+        {
+            var client = new PlanningClient(); var controller = new GameClientController(client);
+            var canvas = new GameObject("Direct Selection UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.GetComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvas.GetComponent<CanvasScaler>().referenceResolution = new Vector2(1280, 720);
+            try
+            {
+                client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+                var state = new PublicState { turn = 1, phase = Protocol.Selection, currentPlayerId = "P1", serverElapsedSeconds = 90,
+                    phaseEndsAtServerSeconds = 122, selectionDeadlineAtServerSeconds = 94,
+                    players = new[] { new Player { playerId = "P1", displayName = "Selector", connected = true } },
+                    companySeats = UiRules.CompanyIds.Select(id => new CompanySeat { companyId = id, remainingSeats = id == "BANK" ? 0 : 2 }).ToArray() };
+                var view = new PlayerView { turn = 1, phase = Protocol.Selection, recipientPlayerId = "P1", coins = 3,
+                    selectedCompanies = new string[0], ownInvestments = new Investment[0],
+                    companies = UiRules.CompanyIds.Select(id => new VisibleCompany { companyId = id, visibleWindows = new VisibleInformationWindow[0] }).ToArray() };
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                var tablet = TabletView.Create((RectTransform)canvas.transform, controller);
+                yield return null; Canvas.ForceUpdateCanvases();
+                Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Any(b => b.name == "ConfirmSelection" || b.name == "CancelCandidate"));
+                var full = canvas.GetComponentsInChildren<Button>().Single(b => b.name == "SelectCompany_BANK");
+                Assert.IsFalse(full.interactable); full.onClick.Invoke(); Assert.AreEqual(0, client.Sent.Count);
+                var ai = canvas.GetComponentsInChildren<Button>().Single(b => b.name == "SelectCompany_AI");
+                Assert.IsTrue(ai.interactable); ai.onClick.Invoke(); ai.onClick.Invoke();
+                Assert.AreEqual(1, client.Sent.Count, "one card click sends one command immediately, pending click cannot duplicate it");
+                Assert.AreEqual(CommandTypes.SelectCompany, client.Sent[0].type); Assert.AreEqual("AI", client.Sent[0].payload.companyId);
+                Assert.AreEqual(0, controller.Store.OwnSelections.Count, "confirmed selections still come from the server");
+                client.Receive(new ServerMessage { type = "COMMAND_RESULT", response = new CommandResult { type = "SELECT_COMPANY_RESULT",
+                    turn = 1, requestId = client.Sent[0].requestId, success = true, payload = new ResultPayload { companyId = "AI" } } });
+                CollectionAssert.AreEqual(new[] { "AI" }, controller.Store.OwnSelections);
+                state.currentPlayerId = "P2"; state.selectionIndex = 1;
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                var space = canvas.GetComponentsInChildren<Button>().Single(b => b.name == "SelectCompany_SPACE");
+                Assert.IsFalse(space.interactable); space.onClick.Invoke(); Assert.AreEqual(1, client.Sent.Count);
+                state.currentPlayerId = "P1"; state.selectionIndex = 7; state.serverElapsedSeconds = 120; state.selectionDeadlineAtServerSeconds = 119;
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                space = canvas.GetComponentsInChildren<Button>().Single(b => b.name == "SelectCompany_SPACE");
+                Assert.IsFalse(space.interactable); space.onClick.Invoke(); Assert.AreEqual(1, client.Sent.Count);
+                CapturePlanningScreen(canvas.GetComponent<Canvas>(), "company-click-selection");
+            }
+            finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); }
+        }
+        [UnityTest]
+        public IEnumerator InformationWindowZoom_KeepsTimerVisible_AndConfirmsOnlyAfterClick()
+        {
+            var client = new PlanningClient(); var controller = new GameClientController(client);
+            var canvas = new GameObject("Window UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.GetComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvas.GetComponent<CanvasScaler>().referenceResolution = new Vector2(1280, 720);
+            try
+            {
+                client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+                var state = new PublicState { turn = 1, phase = Protocol.Info, windowInformation = true, publicSelectionActive = true,
+                    publicSelectionPlayerId = "P1", publicSelectionDeadlineAtServerSeconds = 10, phaseEndsAtServerSeconds = 90,
+                    players = new[] { "P1", "P2", "P3", "P4" }.Select(id => new Player { playerId = id, displayName = id, connected = true }).ToArray(),
+                    publicInformation = new PublicInformationChoice[0], companySeats = new CompanySeat[0] };
+                var view = new PlayerView { turn = 1, phase = Protocol.Info, recipientPlayerId = "P1", coins = 3, assets = 10000,
+                    selectedCompanies = new string[0], ownInvestments = new Investment[0],
+                    companies = UiRules.CompanyIds.Select(id => new VisibleCompany { companyId = id, visibleWindows = new VisibleInformationWindow[0] }).ToArray() };
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                var tablet = TabletView.Create((RectTransform)canvas.transform, controller); tablet.ShowPage(1);
+                yield return new WaitForSecondsRealtime(.35f); Canvas.ForceUpdateCanvases();
+                Assert.IsTrue(Field<RectTransform>(tablet, "_turnHighlight").gameObject.activeInHierarchy);
+                StringAssert.Contains("지금 내 차례", Field<Text>(tablet, "_turnNoticeText").text);
+                CapturePlanningScreen(canvas.GetComponent<Canvas>(), "stock-window-six-companies");
+                yield return new WaitForSecondsRealtime(5.1f);
+                Assert.IsTrue(Field<RectTransform>(tablet, "_turnNotice").gameObject.activeInHierarchy, "turn notice persists after the transient banner expires");
+                Assert.IsTrue(Field<RectTransform>(tablet, "_turnHighlight").gameObject.activeInHierarchy);
+                ClickPlanning(canvas, "Expand_AI"); yield return null; Canvas.ForceUpdateCanvases();
+                var zoom = canvas.GetComponentsInChildren<RectTransform>().Single(t => t.name == "ZoomCompanyPanel");
+                Assert.IsFalse(canvas.GetComponentsInChildren<Text>().Any(t => t.text == DisplayFormat.Percent(5000) || t.text == DisplayFormat.Percent(-5000)), "stock charts have no upper/lower percentage labels");
+                var timer = Field<Text>(tablet, "_timerText");
+                var zoomCorners = new Vector3[4]; var timerCorners = new Vector3[4];
+                zoom.GetWorldCorners(zoomCorners); timer.rectTransform.GetWorldCorners(timerCorners);
+                Assert.Less(zoomCorners[2].y, timerCorners[0].y, "the timer stays above the enlarged chart");
+                Assert.AreSame(tablet.ScreenRect, timer.transform.parent.parent, "timer belongs to the top HUD, outside the right column");
+                Assert.IsTrue(timer.gameObject.activeInHierarchy);
+                StringAssert.Contains("공용 공개", timer.text); StringAssert.Contains("P1", timer.text);
+                Assert.AreEqual(0, zoom.GetComponentsInChildren<Slider>().Length);
+                var mouseChart = zoom.GetComponentInChildren<ChartPointerLayer>();
+                DragChart(mouseChart, 26, 26);
+                Assert.AreEqual(0, client.Sent.Count, "moving the window never spends or reveals");
+                ClickPlanning(canvas, "ConfirmInformationWindow");
+                Assert.AreEqual(CommandTypes.RevealInformationWindow, client.Sent.Single().type);
+                Assert.AreEqual(26, client.Sent.Single().payload.startDay);
+                Assert.IsFalse(controller.CanFinishPhase(), "cannot finish before all public picks");
+                CapturePlanningScreen(canvas.GetComponent<Canvas>(), "public-my-turn-highlight-zoom");
+                state.publicSelectionIndex = 1; state.publicSelectionPlayerId = "P2"; state.publicSelectionDeadlineAtServerSeconds = 20;
+                state.publicInformation = new[] { new PublicInformationChoice { playerId = "P1", companyId = "AI", startDay = 26 } };
+                view.companies.Single(c => c.companyId == "AI").visibleWindows = new[] { new VisibleInformationWindow {
+                    recordId = "public-1", source = "PUBLIC", startDay = 26, dailyChangesBps = new[] { 100, 200, 300, 250, 350 } } };
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                yield return null;
+                StringAssert.Contains("P2", timer.text);
+                Assert.IsFalse(Field<RectTransform>(tablet, "_turnHighlight").gameObject.activeInHierarchy);
+                StringAssert.Contains("P2", Field<Text>(tablet, "_turnNoticeText").text);
+                Assert.IsTrue(zoom.gameObject.activeInHierarchy, "public turns preserve the enlarged chart");
+                var bars = Field<DayBar[]>(zoom.GetComponentInChildren<BarChartGraphic>(), "_bars");
+                Assert.IsNull(bars[25].Bps); Assert.AreEqual(350, bars[30].Bps);
+                CapturePlanningScreen(canvas.GetComponent<Canvas>(), "stock-window-public-timer");
+                state.publicSelectionActive = false; state.publicSelectionIndex = 4;
+                state.publicSelectionPlayerId = ""; state.publicSelectionDeadlineAtServerSeconds = 0;
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                client.Receive(new ServerMessage { type = "COMMAND_RESULT", response = new CommandResult { type = "REVEAL_INFORMATION_WINDOW_RESULT",
+                    requestId = client.Sent[0].requestId, turn = 1, success = true } });
+                yield return null;
+                StringAssert.DoesNotContain("공용 공개", timer.text);
+                Assert.IsFalse(Field<RectTransform>(tablet, "_turnNotice").gameObject.activeInHierarchy);
+                DragChart(mouseChart, 24, 28);
+                ClickPlanning(canvas, "ConfirmInformationWindow");
+                Assert.AreEqual(CommandTypes.BuyInformationWindow, client.Sent.Last().type);
+                Assert.AreEqual(24, client.Sent.Last().payload.startDay);
+                CapturePlanningScreen(canvas.GetComponent<Canvas>(), "stock-window-private-timer");
+            }
+            finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); }
+        }
         private sealed class PlanningClient : IGameClient
         {
             public readonly List<Command> Sent = new List<Command>();
@@ -49,6 +316,7 @@ namespace BlackWhale.UI.Tests
             Port(host, number);
             Click(host, "Host");
             yield return Until(() => C(host)?.Store.Public?.players.Length == 1, "host lobby");
+            Assert.IsFalse(host.GetComponentsInChildren<Text>().Any(t => t.text.Contains("사람이 입장한 뒤") || t.text.Contains("혼자 테스트할 때는")), "lobby has no small setup instructions");
             Assert.AreEqual("P1", C(host).LocalPlayerId);
             Assert.IsFalse(C(host).Store.Public.players[0].isBot);
             Click(host, "OpenDifficulty");
@@ -133,19 +401,27 @@ namespace BlackWhale.UI.Tests
             Assert.IsTrue(host.GetComponentsInChildren<Button>().Where(b => b.name.StartsWith("Buy_")).All(b => !b.interactable), "unsupported purchases disabled in actual game");
             Click(host, "CloseGameScreen");
             Assert.IsFalse(host.GetComponentsInChildren<Button>().Any(b => b.name == "RemoveBots"), "cannot remove bots mid-game");
-            int bundle = Enumerable.Range(0, 6).First(b => !C(guest).IsVisible("AI", b));
+            float publicDeadline = Time.realtimeSinceStartup + 20;
+            while (C(guest).Store.Public.publicSelectionActive || C(host).Store.Public.publicSelectionActive)
+            {
+                RevealPublic(C(host)); RevealPublic(C(guest));
+                Assert.Less(Time.realtimeSinceStartup, publicDeadline, "public selections finish in INFO");
+                yield return null;
+            }
+            int startDay = Enumerable.Range(1, 26).First(d => InformationWindowRules.NewDays(C(guest).Store.View.companies.Single(c => c.companyId == "AI"), d) > 0);
             int guestBefore = C(guest).Store.View.coins;
-            bool free = C(guest).Store.View.ability.freeInformationCredits > 0;
+            int cost = Math.Max(0, InformationWindowRules.NewDays(C(guest).Store.View.companies.Single(c => c.companyId == "AI"), startDay) - C(guest).Store.View.ability.freeInformationCredits);
             Click(guest, "Expand_AI");
-            Click(guest, "ZoomBuyBundle_" + bundle);
-            yield return Until(() => C(guest).IsVisible("AI", bundle), "private C purchase result");
+            DragChart(guest.GetComponentsInChildren<ChartPointerLayer>().Single(p => p.name == "ZoomChart_AI"), startDay, startDay + 4);
+            Click(guest, "ConfirmInformationWindow");
+            yield return Until(() => InformationWindowRules.NewDays(C(guest).Store.View.companies.Single(c => c.companyId == "AI"), startDay) == 0, "private C purchase result");
             Assert.IsTrue(guest.GetComponentsInChildren<ChartPointerLayer>().Any(p => p.name == "ZoomChart_AI"), "purchase keeps graph enlarged");
-            Assert.IsFalse(guest.GetComponentsInChildren<Button>().Single(b => b.name == "ZoomBuyBundle_" + bundle).interactable, "purchased bundle cannot be bought twice");
+            Assert.IsFalse(guest.GetComponentsInChildren<Button>().Single(b => b.name == "ConfirmInformationWindow").interactable, "purchased window cannot be bought twice");
             CapturePlanningScreen(guest.GetComponentInChildren<Canvas>(), "zoom-purchase");
             Click(guest, "ShrinkChart");
-            Assert.AreEqual(guestBefore - (free ? 0 : 1), C(guest).Store.View.coins);
-            Assert.IsFalse(C(host).IsVisible("AI", bundle));
-            Assert.AreEqual(3, C(host).Store.View.coins);
+            Assert.AreEqual(guestBefore - cost, C(guest).Store.View.coins);
+            Assert.Greater(InformationWindowRules.NewDays(C(host).Store.View.companies.Single(c => c.companyId == "AI"), startDay), 0);
+            Assert.AreEqual(15, C(host).Store.View.coins);
 
             var deadline = Time.realtimeSinceStartup + 40;
             while (C(host).Store.Scoreboard == null || C(guest).Store.Scoreboard == null)
@@ -215,12 +491,10 @@ namespace BlackWhale.UI.Tests
                 Assert.AreEqual("", Field<Text>(tablet, "_bannerText").text, "visible old-phase message disappears immediately");
                 yield return null;
                 StringAssert.Contains("내 차례", Field<Text>(tablet, "_bannerText").text);
-                var selectionCandidate = Field<SelectionCandidate>(Field<InvestmentPage>(tablet, "_investmentPage"), "_candidate");
-                selectionCandidate.Toggle("AI");
                 state.paused = true; client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
-                Assert.AreEqual("AI", selectionCandidate.CompanyId, "pause preserves unfinished company candidate");
+                Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Single(b => b.name == "SelectCompany_AI").interactable, "pause blocks immediate selection");
                 state.paused = false; client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
-                Assert.AreEqual("AI", selectionCandidate.CompanyId, "resume retains candidate before its original deadline");
+                Assert.IsTrue(canvas.GetComponentsInChildren<Button>().Single(b => b.name == "SelectCompany_AI").interactable, "resume allows selection before its original deadline");
                 tablet.ShowBanner("지난 선택 차례 안내");
                 state.currentPlayerId = "P2"; state.selectionIndex = 1;
                 client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
@@ -385,8 +659,26 @@ namespace BlackWhale.UI.Tests
             finally { listener?.Stop(); }
         }
 
+        private static void DragChart(ChartPointerLayer pointer, int start, int end)
+        {
+            var rect = (RectTransform)pointer.transform;
+            Vector2 Point(int day) => RectTransformUtility.WorldToScreenPoint(null, rect.TransformPoint(new Vector3(DayAxis.CenterX(day, rect.rect.xMin, rect.rect.width), rect.rect.center.y)));
+            var e = new PointerEventData(EventSystem.current) { position = Point(start), button = PointerEventData.InputButton.Left };
+            pointer.OnPointerDown(e); e.position = Point(end); pointer.OnDrag(e); pointer.OnPointerUp(e);
+        }
+        private static void RevealPublic(GameClientController c)
+        {
+            var state = c.Store.Public;
+            if (state?.publicSelectionActive != true || state.publicSelectionPlayerId != c.LocalPlayerId || c.Store.HasPending(CommandTypes.RevealInformationWindow)) return;
+            foreach (var company in c.Store.View.companies)
+            {
+                int start = Enumerable.Range(1, 26).FirstOrDefault(d => !InformationWindowRules.OverlapsPublic(state, company.companyId, d));
+                if (start > 0) { c.SelectInformationWindow(company.companyId, start); return; }
+            }
+        }
         private static void DriveHuman(GameClientController c)
         {
+            if (c.Store.Public?.publicSelectionActive == true) { RevealPublic(c); return; }
             var state = c.Store.Public;
             if (state.phase == Protocol.Info || state.phase == Protocol.Reveal)
             { if (c.CanFinishPhase()) c.FinishPhase(); }

@@ -15,6 +15,7 @@ namespace BlackWhale.UI.Presentation
         public string SecondCompanyId { get; private set; }
         public int FirstWeightBps { get; private set; } = 5000;
         public int SecondWeightBps => UiRules.TotalWeightBps - FirstWeightBps;
+        public bool EntryAtOpen { get; set; }
 
         private List<Interval> _firstIntervals = new List<Interval>();
         private List<Interval> _secondIntervals = new List<Interval>();
@@ -33,6 +34,13 @@ namespace BlackWhale.UI.Presentation
         {
             if (ownSelections == null || ownSelections.Count != UiRules.CompaniesPerOrder) return null;
             var draft = new InvestmentDraft(ownSelections[0], ownSelections[1]);
+            draft.EntryAtOpen = plans?.EntryAtOpen ?? false;
+            if (plans?.WeightedCompanies is Investment[] weighted && weighted.Length == 2 &&
+                weighted.All(i => ownSelections.Contains(i.companyId)))
+            {
+                draft = new InvestmentDraft(weighted[0].companyId, weighted[1].companyId) { EntryAtOpen = plans.EntryAtOpen };
+                draft.SetFirstWeight(weighted[0].weightBps);
+            }
             if (plans != null)
                 foreach (string company in ownSelections)
                     foreach (var interval in plans.Get(company).Intervals)
@@ -66,7 +74,7 @@ namespace BlackWhale.UI.Presentation
             var list = IntervalsOf(companyId);
             var candidate = list.Select(DtoCopy.Copy).ToList();
             candidate.Add(new Interval { entryDay = entryDay, exitDay = exitDay });
-            var error = OrderInputValidator.ValidateIntervals(candidate);
+            var error = OrderInputValidator.ValidateIntervals(candidate, EntryAtOpen);
             if (error.Length == 0) list.Add(new Interval { entryDay = entryDay, exitDay = exitDay });
             return error;
         }
@@ -75,6 +83,15 @@ namespace BlackWhale.UI.Presentation
         {
             var list = IntervalsOf(companyId);
             if (index >= 0 && index < list.Count) list.RemoveAt(index);
+        }
+        public string TryReplaceInterval(string companyId, int index, int entryDay, int exitDay)
+        {
+            var list = IntervalsOf(companyId);
+            if (index < 0 || index >= list.Count) return ErrorCodes.MissingInterval;
+            var candidate = list.Select(DtoCopy.Copy).ToArray(); candidate[index] = new Interval { entryDay = entryDay, exitDay = exitDay };
+            string error = OrderInputValidator.ValidateIntervals(candidate, EntryAtOpen);
+            if (error.Length == 0) list[index] = candidate[index];
+            return error;
         }
 
         public Investment[] ToInvestments()
@@ -97,7 +114,7 @@ namespace BlackWhale.UI.Presentation
         }
 
         public string Validate()
-            => OrderInputValidator.Validate(ToInvestments(), new[] { FirstCompanyId, SecondCompanyId });
+            => OrderInputValidator.Validate(ToInvestments(), new[] { FirstCompanyId, SecondCompanyId }, EntryAtOpen);
     }
 
     public sealed class CompanyTradePlan
@@ -107,17 +124,49 @@ namespace BlackWhale.UI.Presentation
         public Interval[] Intervals = Array.Empty<Interval>();
     }
 
-    // Per-client, per-turn notes. Never sent as company selections or investment commands.
+    // Per-turn personal notes. Reservations sync privately; actual orders lock at submit/deadline.
     public sealed class TradePlanBook
     {
+        public bool EntryAtOpen { get; set; }
         private readonly Dictionary<string, CompanyTradePlan> companies = new Dictionary<string, CompanyTradePlan>();
         public int Turn { get; private set; }
         public event Action Changed;
+        public event Action ReservationsChanged;
+        public bool HasLocalReservations { get; private set; }
+        public Investment[] WeightedCompanies { get; private set; } = Array.Empty<Investment>();
         public void BeginTurn(int turn)
         {
             if (turn <= Turn) return;
-            Turn = turn; companies.Clear();
+            Turn = turn; companies.Clear(); HasLocalReservations = false; WeightedCompanies = Array.Empty<Investment>();
         }
+        public Investment[] ToReservations()
+        {
+            var ids = WeightedCompanies.Select(i => i.companyId).Concat(UiRules.CompanyIds).Distinct();
+            return ids.Select(id => new Investment { companyId = id,
+                weightBps = WeightedCompanies.FirstOrDefault(i => i.companyId == id)?.weightBps ?? 0,
+                intervals = Get(id).Intervals }).ToArray();
+        }
+        public void RestoreReservations(Investment[] saved)
+        {
+            if (HasLocalReservations || saved == null || saved.Length == 0) return;
+            foreach (var i in saved) Edit(i.companyId).Intervals = (i.intervals ?? Array.Empty<Interval>()).Select(DtoCopy.Copy).ToArray();
+            WeightedCompanies = saved.Where(i => i.weightBps != 0).Select(DtoCopy.Copy).ToArray();
+            HasLocalReservations = true;
+        }
+        // The investment page already refreshes itself; do not rebuild the UI inside its input callbacks.
+        public void SetDraft(Investment[] draft)
+        {
+            bool same = WeightedCompanies.Length == draft.Length && draft.Select((i, n) =>
+                WeightedCompanies[n].companyId == i.companyId && WeightedCompanies[n].weightBps == i.weightBps &&
+                Get(i.companyId).Intervals.Select(v => v.entryDay + ":" + v.exitDay)
+                    .SequenceEqual(i.intervals.Select(v => v.entryDay + ":" + v.exitDay))).All(v => v);
+            if (same) return;
+            foreach (var i in draft) Edit(i.companyId).Intervals = i.intervals.Select(DtoCopy.Copy).ToArray();
+            WeightedCompanies = draft.Select(DtoCopy.Copy).ToArray();
+            HasLocalReservations = true; ReservationsChanged?.Invoke();
+        }
+        private void ReservationEdited()
+        { HasLocalReservations = true; ReservationsChanged?.Invoke(); Changed?.Invoke(); }
         private CompanyTradePlan Edit(string id)
         {
             if (!companies.TryGetValue(id, out var plan)) companies.Add(id, plan = new CompanyTradePlan());
@@ -152,15 +201,31 @@ namespace BlackWhale.UI.Presentation
             if (!UiRules.IsKnownCompany(id)) return ErrorCodes.InvalidCompany;
             var plan = Get(id);
             var intervals = plan.Intervals.Concat(new[] { new Interval { entryDay = entry, exitDay = exit } }).ToArray();
-            string error = OrderInputValidator.ValidateIntervals(intervals);
+            string error = OrderInputValidator.ValidateIntervals(intervals, EntryAtOpen);
             if (error.Length > 0) return error;
-            Edit(id).Intervals = intervals; Changed?.Invoke(); return "";
+            Edit(id).Intervals = intervals; ReservationEdited(); return "";
         }
         public bool RemoveInterval(string id, int index)
         {
             var plan = Get(id);
             if (index < 0 || index >= plan.Intervals.Length) return false;
-            Edit(id).Intervals = plan.Intervals.Where((_, i) => i != index).ToArray(); Changed?.Invoke(); return true;
+            Edit(id).Intervals = plan.Intervals.Where((_, i) => i != index).ToArray(); ReservationEdited(); return true;
+        }
+        public string RangeError(string id, int index, int entry, int exit)
+        {
+            var list = Get(id).Intervals.ToList();
+            var range = new Interval { entryDay = entry, exitDay = exit };
+            if (index >= 0 && index < list.Count) list[index] = range; else list.Add(range);
+            return OrderInputValidator.ValidateIntervals(list, EntryAtOpen);
+        }
+        public string TryReplaceInterval(string id, int index, int entry, int exit)
+        {
+            var plan = Get(id);
+            if (Turn < 1 || index < 0 || index >= plan.Intervals.Length) return ErrorCodes.MissingInterval;
+            plan.Intervals[index] = new Interval { entryDay = entry, exitDay = exit };
+            string error = OrderInputValidator.ValidateIntervals(plan.Intervals, EntryAtOpen);
+            if (error.Length == 0) { Edit(id).Intervals = plan.Intervals; ReservationEdited(); }
+            return error;
         }
         public string Summary(string id)
         {

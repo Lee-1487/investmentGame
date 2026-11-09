@@ -19,7 +19,7 @@ namespace BlackWhale.Bots
         }
     }
     public sealed class InformationPurchase
-    { public string CompanyId; public int BundleIndex; }
+    { public string CompanyId; public int BundleIndex, StartDay, EndDay; }
     // Only references Shared: no server services, fixture data, Unity or clock.
     public sealed class InformationBotStrategy
     {
@@ -29,14 +29,15 @@ namespace BlackWhale.Bots
         { random = new Random(seed); Policy = policy ?? throw new ArgumentNullException(nameof(policy)); }
         public static int?[] KnownDays(VisibleCompany company)
         {
-            var days = new int?[31]; days[0] = 0;
-            foreach (var b in company?.visibleBundles ?? Array.Empty<VisibleBundle>())
-            {
-                if (b?.dailyChangesBps == null) continue;
-                for (int i = 0; i < b.dailyChangesBps.Length; i++)
-                    if (b.startDay + i >= 1 && b.startDay + i <= 30) days[b.startDay + i] = b.dailyChangesBps[i];
-            }
-            return days;
+            return InformationWindowRules.KnownDays(company);
+        }
+        public InformationPurchase NextPublicChoice(PlayerView view, PublicState state)
+        {
+            foreach (var company in view.companies.OrderBy(c => (state.publicInformation ?? Array.Empty<PublicInformationChoice>()).Count(w => w.companyId == c.companyId)))
+                for (int start = 1; start <= 26; start++)
+                    if (!InformationWindowRules.OverlapsPublic(state, company.companyId, start))
+                        return new InformationPurchase { CompanyId = company.companyId, StartDay = start };
+            return null;
         }
         public InformationPurchase NextPurchase(PlayerView view, ISet<string> attempted)
         {
@@ -45,6 +46,24 @@ namespace BlackWhale.Bots
             foreach (var company in view.companies ?? Array.Empty<VisibleCompany>())
             {
                 var days = KnownDays(company);
+                if (company.visibleWindows != null)
+                {
+                    for (int start = 1; start <= 30; start++)
+                    {
+                        if (attempted.Contains(company.companyId + ":" + start)) continue;
+                        int budget = view.coins + (view.ability?.freeInformationCredits ?? 0);
+                        int end = Math.Min(30, start + Math.Min(5, budget) - 1);
+                        int newDays = InformationWindowRules.NewDays(company, start, end);
+                        if (newDays == 0) continue;
+                        int potential = newDays;
+                        for (int d = start; d <= end; d++)
+                            if (!days[d].HasValue)
+                                for (int other = 0; other <= 30; other++)
+                                    if (days[other].HasValue && Math.Abs(d - other) >= 5 && Math.Abs(d - other) <= 10) potential++;
+                        candidates.Add(Tuple.Create(new InformationPurchase { CompanyId = company.companyId, StartDay = start, EndDay = end }, potential));
+                    }
+                    continue;
+                }
                 for (int b = 0; b < 6; b++)
                 {
                     if ((company.visibleBundles ?? Array.Empty<VisibleBundle>()).Any(v => v.bundleIndex == b) || attempted.Contains(company.companyId + ":" + b)) continue;
@@ -65,11 +84,12 @@ namespace BlackWhale.Bots
         private Plan Evaluate(PlayerView view, string companyId)
         {
             var days = KnownDays(view?.companies?.FirstOrDefault(c => c.companyId == companyId));
+            var entryValues = view?.entryAtOpen == true ? InformationWindowRules.KnownOpens(view.companies?.FirstOrDefault(c => c.companyId == companyId)) : days;
             var candidates = new List<Plan>();
-            for (int entry = 0; entry <= 25; entry++)
-                for (int exit = entry + 5; exit <= Math.Min(30, entry + 10); exit++)
-                    if (days[entry].HasValue && days[exit].HasValue)
-                        candidates.Add(new Plan { Company = companyId, Score = (long)days[exit].Value - days[entry].Value,
+            for (int entry = 0; entry <= (view?.entryAtOpen == true ? 26 : 25); entry++)
+                for (int exit = entry + 5 - (view?.entryAtOpen == true && entry > 0 ? 1 : 0); exit <= Math.Min(30, entry + 10 - (view?.entryAtOpen == true && entry > 0 ? 1 : 0)); exit++)
+                    if (entryValues[entry].HasValue && days[exit].HasValue)
+                        candidates.Add(new Plan { Company = companyId, Score = (long)days[exit].Value - entryValues[entry].Value,
                             Intervals = new[] { new Interval { entryDay = entry, exitDay = exit } } });
             if (candidates.Count == 0) return new Plan { Company = companyId, Score = 0,
                 Intervals = new[] { new Interval { entryDay = 0, exitDay = 5 } } };
@@ -82,7 +102,7 @@ namespace BlackWhale.Bots
             if (Policy.MaxIntervals == 2)
                 foreach (var a in candidates)
                     foreach (var b in candidates)
-                        if (a.Intervals[0].exitDay <= b.Intervals[0].entryDay && a.Score + b.Score > best.Score)
+                        if ((a.Intervals[0].exitDay < b.Intervals[0].entryDay || view?.entryAtOpen != true && a.Intervals[0].exitDay == b.Intervals[0].entryDay) && a.Score + b.Score > best.Score)
                             best = new Plan { Company = companyId, Score = a.Score + b.Score, Intervals = new[] { a.Intervals[0], b.Intervals[0] } };
             return best;
         }

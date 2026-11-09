@@ -7,7 +7,7 @@ using InvestmentGame.Rules.Information;
 namespace BlackWhale.Rules.Information
 {
     // A and D use Shared DTOs. C's domain models remain inside this server adapter.
-    public sealed partial class SharedInformationService : IInformationService, IProgressionService
+    public sealed partial class SharedInformationService : IInformationService, IProgressionService, IWindowInformationService
     {
         // 방 하나에 속한 C 정보 서비스의 상태를 묶는다. 방별로 Service를 따로 만들기
         // 때문에 같은 플레이어 ID가 다른 방에서 사용되어도 코인과 구매 내역이 섞이지 않는다.
@@ -65,7 +65,7 @@ namespace BlackWhale.Rules.Information
                     if (room.Players.Add(id)) room.Service.AddPlayer(new PlayerInformationSeed(id, 0));
 
                 // 실제 코인 지급의 규칙과 턴 멱등성은 InformationService가 담당한다.
-                room.Service.GrantTurnCoins(context.Turn, playerIds);
+                room.Service.GrantTurnCoins(context.Turn, playerIds, UsesWindowInformation);
                 room.CurrentTurn = context.Turn;
             }
         }
@@ -75,6 +75,7 @@ namespace BlackWhale.Rules.Information
         // BOT 전용 우회 규칙은 없으며, 능력에 따른 무료 구매권은 사람과 BOT에 동일하게 적용한다.
         public RuleResult BuyInformation(RequestContext context, string companyId, int bundleIndex)
         {
+            if (UsesWindowInformation) return new RuleResult("USE_WINDOW_REQUEST");
             lock (gate)
             {
                 var room = rooms[context.RoomId];
@@ -104,11 +105,11 @@ namespace BlackWhale.Rules.Information
             lock (gate)
             {
                 var view = rooms[context.RoomId].Service.BuildPlayerView(context.PlayerId, context.Turn);
-                return new PlayerView
+                var result = new PlayerView
                 {
                     // 수신자와 턴/phase를 함께 넣어 A/UI가 이 뷰의 대상과 시점을 확인하게 한다.
                     recipientPlayerId = context.PlayerId, turn = context.Turn, phase = context.Phase,
-                    coins = view.Coins, assets = ownState.TotalAssets,
+                    coins = view.Coins, assets = ownState.TotalAssets, entryAtOpen = UsesWindowInformation,
 
                     // B가 관리하는 개인 자산 입력은 새 배열과 새 Investment/Interval 객체로
                     // 복사한다. 응답을 받은 클라이언트가 값을 바꿔도 원본 상태가 오염되지 않는다.
@@ -132,6 +133,8 @@ namespace BlackWhale.Rules.Information
                         }).ToArray()
                     }).ToArray()
                 };
+                if (UsesWindowInformation) PopulateWindows(context, result);
+                return result;
             }
         }
 

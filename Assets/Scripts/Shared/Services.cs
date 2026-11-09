@@ -63,10 +63,33 @@ namespace BlackWhale.Shared
         PlayerView BuildPlayerView(RequestContext context, OwnInvestmentState ownState);
     }
     public interface IServerClock { double Seconds { get; } }
+    // Explicit v3 capability: fixed v2 fixtures retain their original bundle contract.
+    public interface IWindowMarketDataSource
+    {
+        bool UsesWindowInformation { get; }
+        int[] GetWindow(int turn, string companyId, int startDay, int length = 5);
+        int[] GetOpenWindow(int turn, string companyId, int startDay, int length = 5);
+    }
+    public interface IWindowInformationService
+    {
+        bool UsesWindowInformation { get; }
+        RuleResult RevealWindow(RequestContext context, string companyId, int startDay, bool automatic);
+        RuleResult BuyWindow(RequestContext context, string companyId, int startDay, int endDay = 0);
+        RuleResult UseInformationItem(RequestContext context, string itemId, string companyId, int startDay, string targetPlayerId, double now);
+        PublicInformationChoice[] GetPublicInformation(RequestContext context);
+        bool ExpireDistortions(RequestContext context, double now);
+    }
     public interface IMarketHistory
     {
         OwnInvestmentState GetOwnInvestmentState(string playerId, int requestedTurn);
         Scoreboard GetScoreboard(int requestedTurn);
+    }
+    // Private editable reservations. They become orders only at the investment deadline.
+    public interface IMarketReservations
+    {
+        RuleResult SaveReservations(RequestContext context, Investment[] reservations);
+        Investment[] GetReservations(string playerId);
+        Investment[] BuildAutomaticInvestments(string playerId);
     }
     // B owns the cost ledger and final asset/performance comparison.
     public interface IMarketProgression

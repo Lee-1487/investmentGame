@@ -16,7 +16,7 @@ namespace BlackWhale.Rules
     {
         public string companyId;
         public int[] dailyChangesBps;      // day 0..30, change vs day 0 in bps, [0] == 0
-        public int[] publicBundleIndices;  // two free bundles (0..5)
+        public int[] publicBundleIndices;  // v3: empty; v2 fixtures: two free bundles (0..5)
     }
 
     // Validated, read-only view over one turn's market.
@@ -38,10 +38,10 @@ namespace BlackWhale.Rules
                     throw new ArgumentException("Unknown or duplicate company: " + c.companyId);
                 if (c.dailyChangesBps == null || c.dailyChangesBps.Length != rules.daysPerTurn + 1 || c.dailyChangesBps[0] != 0)
                     throw new ArgumentException(c.companyId + ": need " + (rules.daysPerTurn + 1) + " daily values with day 0 = 0.");
-                if (c.publicBundleIndices == null || c.publicBundleIndices.Length != InvestmentRules.PublicBundlesPerCompany
-                    || c.publicBundleIndices[0] == c.publicBundleIndices[1]
+                if (c.publicBundleIndices == null || (c.publicBundleIndices.Length != 0 && (c.publicBundleIndices.Length != InvestmentRules.PublicBundlesPerCompany
+                    || c.publicBundleIndices[0] == c.publicBundleIndices[1]))
                     || Array.Exists(c.publicBundleIndices, b => b < 0 || b >= InvestmentRules.BundlesPerCompany))
-                    throw new ArgumentException(c.companyId + ": need two distinct free bundles in 0..5.");
+                    throw new ArgumentException(c.companyId + ": need an empty v3 public list or two distinct v2 free bundles in 0..5.");
                 companies.Add(c.companyId, new CompanyMarketData
                 {
                     companyId = c.companyId,

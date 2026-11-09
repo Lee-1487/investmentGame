@@ -32,11 +32,21 @@ namespace BlackWhale.UI.State
             _client = client ?? throw new ArgumentNullException(nameof(client));
             Store = store ?? new ClientStateStore();
             _client.MessageReceived += OnMessage;
+            Store.TradePlans.ReservationsChanged += SyncReservations;
         }
 
-        public void Dispose() => _client.MessageReceived -= OnMessage;
+        public void Dispose()
+        { _client.MessageReceived -= OnMessage; Store.TradePlans.ReservationsChanged -= SyncReservations; }
 
         private void OnMessage(ServerMessage message) => Store.Apply(message);
+
+        private void SyncReservations()
+        {
+            var s = Store.Public;
+            if (s == null || !s.windowInformation || s.paused || Store.OrderLocked ||
+                (s.phase != Protocol.Info && s.phase != Protocol.Selection && s.phase != Protocol.Investment)) return;
+            Send(CommandTypes.SaveTradePlan, new CommandPayload { investments = Store.TradePlans.ToReservations() }, notify: false);
+        }
 
         // ------------------------------------------------------------------
         // 대기실
@@ -149,7 +159,7 @@ namespace BlackWhale.UI.State
         public bool CanFinishPhase()
         {
             var s = Store.Public;
-            if (s == null || s.paused || IsDoneForCurrentPhase) return false;
+            if (s == null || s.paused || s.publicSelectionActive || IsDoneForCurrentPhase) return false;
             return s.phase == Protocol.Info || s.phase == Protocol.Reveal || s.phase == Protocol.Result ||
                 (s.phase == Protocol.AbilitySelection && IsHost);
         }
@@ -177,11 +187,36 @@ namespace BlackWhale.UI.State
             => Store.View?.companies?.FirstOrDefault(c => c.companyId == companyId)?
                    .visibleBundles?.Any(b => b.bundleIndex == bundleIndex) ?? false;
 
+        public CommandStatus SelectInformationWindow(string companyId, int startDay, int endDay = 0)
+        {
+            var s = Store.Public;
+            if (s == null || Store.View == null) return CommandStatus.NoState;
+            if (s.paused) return Block(ErrorCodes.GamePaused);
+            if (s.phase != Protocol.Info) return Block(ErrorCodes.WrongPhase);
+            if (endDay == 0) endDay = startDay + 4;
+            if (startDay < 1 || endDay > 30 || endDay < startDay || (s.publicSelectionActive && endDay - startDay != 4)) return Block("INVALID_WINDOW");
+            if (s.publicSelectionActive && s.publicSelectionPlayerId != LocalPlayerId) return Block(ErrorCodes.NotYourTurn);
+            string type = s.publicSelectionActive ? CommandTypes.RevealInformationWindow : CommandTypes.BuyInformationWindow;
+            if (Store.HasPending(type)) return CommandStatus.AlreadyPending;
+            Send(type, new CommandPayload { companyId = companyId, startDay = startDay, endDay = endDay });
+            return CommandStatus.Sent;
+        }
+        public CommandStatus UseInformationItem(string itemId, string companyId = "", int startDay = 1, string targetPlayerId = "")
+        {
+            var s = Store.Public;
+            if (s == null) return CommandStatus.NoState;
+            if (s.paused) return Block(ErrorCodes.GamePaused);
+            if (s.phase != Protocol.Info || s.publicSelectionActive) return Block("PUBLIC_SELECTION_PENDING");
+            if (Store.HasPending(CommandTypes.UseInformationItem)) return CommandStatus.AlreadyPending;
+            Send(CommandTypes.UseInformationItem, new CommandPayload { itemId = itemId, companyId = companyId,
+                startDay = startDay, targetPlayerId = targetPlayerId }); return CommandStatus.Sent;
+        }
+
         // ------------------------------------------------------------------
         // 내부
         // ------------------------------------------------------------------
 
-        private string Send(string type, CommandPayload payload, string pendingKey = "")
+        private string Send(string type, CommandPayload payload, string pendingKey = "", bool notify = true)
         {
             int turn = Store.CurrentTurn;
             var command = new Command
@@ -191,7 +226,7 @@ namespace BlackWhale.UI.State
                 turn = turn,
                 payload = payload
             };
-            Store.MarkPending(command.requestId, type, turn, pendingKey);
+            Store.MarkPending(command.requestId, type, turn, pendingKey, notify);
             _client.SendCommand(command);
             return command.requestId;
         }

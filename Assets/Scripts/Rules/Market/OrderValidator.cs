@@ -23,20 +23,29 @@ namespace BlackWhale.Rules
 
             foreach (Investment inv in investments)
             {
-                Interval[] periods = inv.intervals ?? new Interval[0];
-                if (periods.Length > rules.maxIntervalsPerCompany) return ErrorCodes.TooManyIntervals;
-                if (periods.Length == 0) return ErrorCodes.MissingInterval;
-                foreach (Interval p in periods)
-                {
-                    if (p == null || !(rules.minEntryDay <= p.entryDay && p.entryDay < p.exitDay && p.exitDay <= rules.maxExitDay))
-                        return ErrorCodes.InvalidDay;
-                    int holding = p.exitDay - p.entryDay;
-                    if (holding < rules.minHoldingDays || holding > rules.maxHoldingDays) return ErrorCodes.InvalidHoldingDays;
-                }
-                Interval[] sorted = periods.OrderBy(p => p.entryDay).ToArray();
-                for (int k = 1; k < sorted.Length; k++)
-                    if (sorted[k - 1].exitDay > sorted[k].entryDay) return ErrorCodes.OverlappingIntervals; // touching is allowed
+                string error = ValidateIntervals(inv.intervals, rules);
+                if (error.Length > 0) return error;
             }
+            return "";
+        }
+
+        public static string ValidateIntervals(Interval[] intervals, InvestmentRules rules)
+        {
+            Interval[] periods = intervals ?? new Interval[0];
+            if (rules.maxIntervalsPerCompany > 0 && periods.Length > rules.maxIntervalsPerCompany) return ErrorCodes.TooManyIntervals;
+            if (periods.Length == 0) return ErrorCodes.MissingInterval;
+            foreach (Interval p in periods)
+            {
+                if (p == null || !(rules.minEntryDay <= p.entryDay &&
+                    (p.entryDay < p.exitDay || (rules.entryAtOpen && rules.minHoldingDays == 1 && p.entryDay > 0 && p.entryDay == p.exitDay)) && p.exitDay <= rules.maxExitDay))
+                    return ErrorCodes.InvalidDay;
+                int holding = p.exitDay - p.entryDay + (rules.entryAtOpen && p.entryDay > 0 ? 1 : 0);
+                if (holding < rules.minHoldingDays || holding > rules.maxHoldingDays) return ErrorCodes.InvalidHoldingDays;
+            }
+            Interval[] sorted = periods.OrderBy(p => p.entryDay).ToArray();
+            for (int k = 1; k < sorted.Length; k++)
+                if (sorted[k - 1].exitDay > sorted[k].entryDay || (rules.entryAtOpen && sorted[k - 1].exitDay == sorted[k].entryDay))
+                    return ErrorCodes.OverlappingIntervals;
             return "";
         }
     }

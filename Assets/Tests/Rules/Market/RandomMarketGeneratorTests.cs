@@ -124,7 +124,7 @@ namespace BlackWhale.Rules.Tests
             {
                 s.BeginTurn(Ctx(Protocol.Info, turn: turn), Players);
                 s.BeginTurn(Ctx(Protocol.Info, turn: turn), Players); // repeated start: no re-roll
-                MarketData expected = RandomMarketGenerator.Generate(2026, turn);
+                MarketData expected = PatternMarketGenerator.Generate(2026, turn);
                 foreach (CompanyMarketData c in expected.companies)
                     for (int b = 0; b < 6; b++)
                     {
@@ -135,7 +135,7 @@ namespace BlackWhale.Rules.Tests
                 PlayTurn(s, turn);
             }
             // Past turn still readable and unchanged after 10 turns.
-            CollectionAssert.AreEqual(RandomMarketGenerator.Generate(2026, 1).companies[0].dailyChangesBps.Skip(1).Take(5).ToArray(),
+            CollectionAssert.AreEqual(PatternMarketGenerator.Generate(2026, 1).companies[0].dailyChangesBps.Skip(1).Take(5).ToArray(),
                 s.GetBundle(1, RandomMarketGenerator.Generate(2026, 1).companies[0].companyId, 0).DailyChangesBps);
             Assert.AreEqual(11, s.GetScoreboard(10).rows[0].returnHistory.Length); // turn 0 + 10 turns
             Assert.IsTrue(s.GetScoreboard(10).rows.All(r => r.totalAssets >= 0));

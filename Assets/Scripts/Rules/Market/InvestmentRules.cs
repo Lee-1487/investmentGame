@@ -11,7 +11,8 @@ namespace BlackWhale.Rules
         public long initialAssets = 10000;
         public int maxPlayersPerCompany = 2;
         public int[] firstCompanyWeightOptionsBps = { 5000, 6000, 7000 };
-        public int maxIntervalsPerCompany = 2;
+        public int maxIntervalsPerCompany = 2; // v2 fixture default; 0 means unlimited in normal play.
+        public bool entryAtOpen;
         public int minHoldingDays = 5;
         public int maxHoldingDays = 10;
         public int minEntryDay = 0;

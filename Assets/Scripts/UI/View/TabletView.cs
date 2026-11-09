@@ -4,7 +4,7 @@
 //  - 아래 가장자리: 서버가 지급한 보유 아이템
 //  - 상단 중앙: 전광판 주요 알림(5초 표시 후 사라짐)
 //  - 왼쪽 열: 1~4등 칸. 마우스를 올리면 그 플레이어의 이번 턴 수익률·누적 손익·추이(주변 암전)
-//  - 오른쪽: 남은 시간 + 완료 버튼 / 오른쪽 아래: 내 능력 상태 카드
+//  - 상단 오른쪽: 남은 시간 / 오른쪽: 완료 버튼 / 오른쪽 아래: 내 능력 상태 카드
 // 화면은 저장소(ClientStateStore) 값만 표시하고, 버튼은 GameClientController로 의도만 보낸다.
 using System.Collections.Generic;
 using System.Linq;
@@ -51,6 +51,10 @@ namespace BlackWhale.UI.View
         private readonly PhaseClock _clock = new PhaseClock();
         private string _clockKey = "";
         private Text _timerText;
+        private RectTransform _turnHighlight, _turnNotice;
+        private Text _turnNoticeText;
+        private Image _turnNoticeBackground;
+        private string _lastPublicSelector = "";
         private Button _doneButton;
         private Button _pauseButton;
         private RectTransform _pauseOverlay;
@@ -115,8 +119,10 @@ namespace BlackWhale.UI.View
             BuildRankColumn();
             BuildPages();
             BuildRightColumn();
+            BuildTimer();
             BuildBanner();
             BuildOverlays();
+            BuildTurnIndicator();
             _features = ProgressionPanel.Create(Root, _c, _lobby);
             BuildPauseControls();
             if (_lobby?.Leave != null)
@@ -211,7 +217,7 @@ namespace BlackWhale.UI.View
             UiKit.Anchor(info, 0.5f, 0, 1, 1, 4, 0);
 
             _investmentPage = new InvestmentPage(invest, _c, _lobby);
-            // 후보 확정 바의 남은 초: 서버 마감(현재 차례 4초)을 PhaseClock으로 추정한 값. 진행 판정은 서버.
+            // 기업 선택 차례의 서버 마감으로 남은 시간을 표시한다. 진행 판정은 서버.
             _investmentPage.RemainingSeconds = () => _clock.RemainingSeconds(Store.Public, Time.realtimeSinceStartup);
             _infoPage = new InfoPurchasePage(info, _c, ScreenRect);
 
@@ -231,12 +237,6 @@ namespace BlackWhale.UI.View
             col.offsetMin = new Vector2(-160, 12);
             col.offsetMax = new Vector2(-12, -76);
 
-            // 남은 시간
-            var timerBox = UiKit.Panel(col, "Timer", Palette.Card, rounded: true);
-            UiKit.Place(timerBox.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, 70), new Vector2(140, 110));
-            _timerText = UiKit.Label(timerBox.transform, "", 14, Palette.Text);
-            UiKit.Stretch(_timerText.rectTransform, 6, 6, 6, 6);
-
             _doneButton = UiKit.Button(col, "완료", 16, Palette.Accent, Color.white, OnDoneClicked);
             UiKit.Place((RectTransform)_doneButton.transform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, -12), new Vector2(140, 44));
 
@@ -251,6 +251,14 @@ namespace BlackWhale.UI.View
             UiKit.Stretch(_abilityLabel.rectTransform, 4, 4, 4, 4);
             UiKit.Hover(job.gameObject, () => ShowAllPlayersPopup(job.rectTransform), HidePopup);
             UiKit.Click(job.gameObject, () => { HidePopup(); _features?.OpenAbility(); });
+        }
+
+        private void BuildTimer()
+        {
+            var timerBox = UiKit.Panel(ScreenRect, "Timer", Palette.Card, rounded: true);
+            UiKit.Place(timerBox.rectTransform, Vector2.one, Vector2.one, new Vector2(-12, -8), new Vector2(148, 60));
+            _timerText = UiKit.Label(timerBox.transform, "", 14, Palette.Text);
+            UiKit.Stretch(_timerText.rectTransform, 6, 4, 6, 4);
         }
 
         private void BuildBanner()
@@ -285,6 +293,44 @@ namespace BlackWhale.UI.View
             _popup.gameObject.SetActive(false);
         }
 
+        private void BuildTurnIndicator()
+        {
+            _turnHighlight = UiKit.Rect(ScreenRect, "MyTurnHighlight"); UiKit.Stretch(_turnHighlight);
+            foreach (bool horizontal in new[] { true, false })
+                foreach (int side in new[] { 0, 1 })
+                {
+                    var edge = UiKit.Panel(_turnHighlight, "TurnEdge", Palette.Accent).rectTransform;
+                    edge.anchorMin = horizontal ? new Vector2(0, side) : new Vector2(side, 0);
+                    edge.anchorMax = horizontal ? new Vector2(1, side) : new Vector2(side, 1);
+                    edge.pivot = horizontal ? new Vector2(.5f, side) : new Vector2(side, .5f);
+                    edge.sizeDelta = horizontal ? new Vector2(0, 5) : new Vector2(5, 0);
+                    edge.anchoredPosition = Vector2.zero;
+                }
+            _turnNoticeBackground = UiKit.Panel(ScreenRect, "PublicTurnNotice", Palette.Accent, rounded: true);
+            _turnNotice = _turnNoticeBackground.rectTransform;
+            _turnNotice.anchorMin = new Vector2(0, 1); _turnNotice.anchorMax = Vector2.one;
+            _turnNotice.offsetMin = new Vector2(116, -68); _turnNotice.offsetMax = new Vector2(-168, -8);
+            _turnNoticeText = UiKit.Label(_turnNotice, "", 20, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
+            _turnNoticeText.name = "PublicTurnNoticeText";
+            UiKit.Stretch(_turnNoticeText.rectTransform, 12, 4, 12, 4);
+            _turnHighlight.gameObject.SetActive(false); _turnNotice.gameObject.SetActive(false);
+        }
+
+        private void RefreshTurnIndicator()
+        {
+            var state = Store.Public;
+            bool active = state?.publicSelectionActive == true && !state.paused && string.IsNullOrEmpty(Store.EndReason);
+            bool mine = active && state.publicSelectionPlayerId == _c.LocalPlayerId;
+            _turnHighlight.gameObject.SetActive(mine); _turnNotice.gameObject.SetActive(active);
+            if (!active) return;
+            _turnNoticeBackground.color = mine ? Palette.Accent : Palette.AccentSoft;
+            _turnNoticeText.color = mine ? Color.white : Palette.Text;
+            _turnNoticeText.text = mine
+                ? "<size=23>지금 내 차례입니다!</size>  공용 정보 선택\n<size=13>공개할 기업과 연속 5일을 선택하세요.</size>"
+                : "<size=20>" + state.publicSelectionPlayerId + " 님의 공용 정보 선택 차례</size>\n<size=13>다음 차례까지 공개되는 정보를 확인하세요.</size>";
+            _turnHighlight.SetAsLastSibling(); _turnNotice.SetAsLastSibling();
+        }
+
         // ------------------------------------------------------------------
         // 갱신
         // ------------------------------------------------------------------
@@ -292,6 +338,16 @@ namespace BlackWhale.UI.View
         public void Refresh()
         {
             var s = Store.Public;
+            // Sync before rebuilding clickable cards so a new turn uses its current deadline.
+            if (s != null)
+            {
+                string key = s.turn + "|" + s.phase + "|" + s.selectionIndex + "|" + s.publicSelectionIndex + "|" + s.serverElapsedSeconds + "|" + s.paused;
+                if (key != _clockKey)
+                {
+                    _clockKey = key;
+                    _clock.Sync(s.serverElapsedSeconds, Time.realtimeSinceStartup);
+                }
+            }
             DetectNotifications();
             bool paused = s?.paused == true && string.IsNullOrEmpty(Store.EndReason) && s.phase != Protocol.Ended;
             _pauseOverlay.gameObject.SetActive(paused);
@@ -305,18 +361,10 @@ namespace BlackWhale.UI.View
             RefreshRanks();
             _investmentPage.Refresh();
             _infoPage.Refresh();
+            RefreshTurnIndicator();
             var ability = LiveScreenModels.AbilityId(Store.View?.ability?.selectedId);
             _abilityLabel.text = "<b>내 고유능력</b>\n\n" + (AbilityCatalog.Get(ability)?.Name ?? "선택 대기") + "\n<size=11>클릭하여 상태 보기</size>";
 
-            if (s != null)
-            {
-                string key = s.turn + "|" + s.phase + "|" + s.selectionIndex + "|" + s.serverElapsedSeconds + "|" + s.paused;
-                if (key != _clockKey)
-                {
-                    _clockKey = key;
-                    _clock.Sync(s.serverElapsedSeconds, Time.realtimeSinceStartup);
-                }
-            }
         }
 
         private void DetectNotifications()
@@ -343,6 +391,16 @@ namespace BlackWhale.UI.View
                     ClearBanners();
                     _lastSelector = s.currentPlayerId;
                     if (s.currentPlayerId == _c.LocalPlayerId) ShowBanner("<color=#DC2626><b>내 차례입니다.</b></color> 기업을 선택하세요.");
+                }
+                string publicSelector = s.publicSelectionActive ? s.turn + "|" + s.publicSelectionIndex + "|" + s.publicSelectionPlayerId : "";
+                if (publicSelector != _lastPublicSelector)
+                {
+                    _lastPublicSelector = publicSelector;
+                    if (s.publicSelectionActive)
+                    {
+                        ClearBanners();
+                        if (s.publicSelectionPlayerId == _c.LocalPlayerId) ShowPage(1);
+                    }
                 }
             }
 
@@ -381,7 +439,7 @@ namespace BlackWhale.UI.View
             if (resultType == CommandTypes.ResultOf(CommandTypes.SelectCompany) && Store.Public?.phase == Protocol.Selection)
                 ShowBanner("<color=#B45309>시간이 초과되어 기업이 자동 선택되었습니다.</color>");
             else if (resultType == CommandTypes.ResultOf(CommandTypes.SubmitInvestment) && (Store.Public?.phase == Protocol.Investment || Store.Public?.phase == Protocol.Reveal))
-                ShowBanner("<color=#B45309>시간이 초과되어 기본 주문(50:50 · 각 0→5일)으로 확정되었습니다.</color>");
+                ShowBanner("<color=#B45309>투자 시간이 끝나 주문이 자동 확정되었습니다. 적용된 구간과 비중은 확정 주문에서 확인하세요.</color>");
         }
 
         private void OnError(ClientError error)
@@ -459,7 +517,7 @@ namespace BlackWhale.UI.View
 
             if (!PhaseClock.HasDeadline(s))
             {
-                _timerText.text = "<size=12>" + PhaseNames.Korean(s.phase) + "</size>\n<size=26><b>-</b></size>\n<size=11>시간 제한 없음</size>";
+                _timerText.text = "<size=11>" + PhaseNames.Korean(s.phase) + " · 시간 제한 없음</size>\n<size=28><b>-</b></size>";
                 _timerText.color = Palette.Text;
                 UiKit.SetButton(_doneButton, "완료", false, Palette.Disabled, Palette.DisabledText);
                 return;
@@ -467,18 +525,18 @@ namespace BlackWhale.UI.View
 
             if (s.paused)
             {
-                _timerText.text = "일시정지\n<size=34><b>" + DisplayFormat.Clock(_clock.RemainingSeconds(s, Time.realtimeSinceStartup)) + "</b></size>\n<size=11>방장의 재개 대기</size>";
+                _timerText.text = "<size=11>일시정지</size>\n<size=28><b>" + DisplayFormat.Clock(_clock.RemainingSeconds(s, Time.realtimeSinceStartup)) + "</b></size>";
                 _timerText.color = Palette.Text;
                 UiKit.SetButton(_doneButton, "일시정지 중", false, Palette.Disabled, Palette.DisabledText);
                 return;
             }
 
             int remain = _clock.RemainingSeconds(s, Time.realtimeSinceStartup);
-            string what = s.phase == Protocol.Selection
+            string what = s.publicSelectionActive ? "공용 공개 " + (s.publicSelectionIndex + 1) + "/4 · " + s.publicSelectionPlayerId
+                : s.phase == Protocol.Selection
                 ? (string.IsNullOrEmpty(s.currentPlayerId) ? "선택" : s.currentPlayerId + " 차례")
                 : PhaseNames.Korean(s.phase);
-            _timerText.text = "<size=12>" + what + "</size>\n<size=34><b>" + DisplayFormat.Clock(remain) + "</b></size>\n<size=11>"
-                              + (remain == 0 ? "서버 진행 대기" : "남은 시간") + "</size>";
+            _timerText.text = "<size=11>" + (remain == 0 ? "서버 진행 대기" : what) + "</size>\n<size=28><b>" + DisplayFormat.Clock(remain) + "</b></size>";
             _timerText.color = remain <= 5 && remain > 0 ? Palette.Up : Palette.Text;
 
             bool can = _c.CanFinishPhase();

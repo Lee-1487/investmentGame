@@ -1,0 +1,70 @@
+using System;
+using System.Linq;
+using BlackWhale.Shared;
+using BlackWhale.UI.Presentation;
+using BlackWhale.UI.State;
+using UnityEngine;
+using UnityEngine.UI;
+
+namespace BlackWhale.UI.View
+{
+    // The chart supplies the range. Buttons are the only purchase/reservation actions.
+    public sealed class InformationWindowSelector
+    {
+        private readonly GameClientController controller;
+        private readonly Func<string> companyId;
+        private readonly Text status;
+        private readonly Button confirm, reserve;
+        public RectTransform Root { get; }
+        public ChartRangeSelection Selection { get; set; } = new ChartRangeSelection();
+        public int StartDay => Selection.Start;
+        public int EndDay => Selection.End;
+        public Action<int> Changed;
+        public Action Reserve;
+        public Func<bool> CanReserve;
+        public InformationWindowSelector(RectTransform parent, GameClientController controller, Func<string> companyId)
+        {
+            this.controller = controller; this.companyId = companyId;
+            Root = UiKit.Rect(parent, "InformationWindowSelector"); UiKit.Stretch(Root);
+            status = UiKit.Label(Root, "", 10, Palette.SubText, TextAnchor.UpperLeft);
+            status.name = "InformationRangeCost"; UiKit.Stretch(status.rectTransform, 0, 0, 0, 26);
+            confirm = UiKit.Button(Root, "정보 사기", 11, Palette.Accent, Color.white, () => {
+                if (Selection.HasSelection && EndDay >= Math.Max(1, StartDay)) controller.SelectInformationWindow(companyId(), Math.Max(1, StartDay), EndDay);
+            });
+            confirm.name = "ConfirmInformationWindow";
+            var rt = (RectTransform)confirm.transform; rt.anchorMin = Vector2.zero; rt.anchorMax = new Vector2(.5f, 0);
+            rt.offsetMin = Vector2.zero; rt.offsetMax = new Vector2(-3, 24);
+            reserve = UiKit.Button(Root, "예약하기", 11, Palette.AccentSoft, Palette.Accent, () => Reserve?.Invoke());
+            reserve.name = "ReserveRange";
+            rt = (RectTransform)reserve.transform; rt.anchorMin = new Vector2(.5f, 0); rt.anchorMax = new Vector2(1, 0);
+            rt.offsetMin = new Vector2(3, 0); rt.offsetMax = new Vector2(0, 24);
+        }
+        public void SetStart(int start) { Selection.SetRange(start, Math.Min(30, start + 4)); Changed?.Invoke(start); Refresh(); }
+        public void NotifyChanged() { Changed?.Invoke(StartDay); Refresh(); }
+        public void Refresh()
+        {
+            var state = controller.Store.Public;
+            Root.gameObject.SetActive(state?.windowInformation == true && (state.phase == Protocol.Info || state.phase == Protocol.Selection));
+            if (state?.windowInformation != true) return;
+            Selection.FixedPublicWindow = state.publicSelectionActive;
+            string id = companyId();
+            var company = controller.Store.View?.companies?.FirstOrDefault(c => c.companyId == id);
+            int start = Math.Max(1, StartDay), count = Selection.HasSelection ? InformationWindowRules.NewDays(company, start, EndDay) : 0;
+            bool choosing = state.publicSelectionActive, mine = choosing && state.publicSelectionPlayerId == controller.LocalPlayerId;
+            int free = Math.Min(count, controller.Store.View?.ability?.freeInformationCredits ?? 0), cost = count - free;
+            bool overlap = choosing && InformationWindowRules.OverlapsPublic(state, id, StartDay);
+            bool pending = controller.Store.HasPending(choosing ? CommandTypes.RevealInformationWindow : CommandTypes.BuyInformationWindow);
+            bool active = !state.paused && string.IsNullOrEmpty(controller.Store.EndReason);
+            bool validPublic = StartDay >= 1 && EndDay - StartDay == 4 && !overlap;
+            bool can = Selection.HasSelection && state.phase == Protocol.Info && active && !pending &&
+                (choosing ? mine && validPublic : count > 0 && cost <= (controller.Store.View?.coins ?? 0));
+            status.text = !Selection.HasSelection ? "차트에서 클릭 또는 드래그로 구간 선택" : StartDay + "~" + EndDay + "일 · 새 " + count + "일 · "
+                + (choosing ? overlap ? "공개 겹침" : mine ? "무료 공개" : "차례 대기" : cost + "코인" + (free > 0 ? " / 무료 " + free + "일" : ""));
+            UiKit.SetButton(confirm, pending ? "요청 중…" : choosing ? "공용 공개" : "정보 사기", can,
+                can ? Palette.Accent : Palette.Disabled, can ? Color.white : Palette.DisabledText);
+            bool reserveCan = active && !choosing && Selection.HasSelection && CanReserve?.Invoke() == true;
+            UiKit.SetButton(reserve, Selection.SelectedIndex >= 0 ? "예약 변경" : "예약하기", reserveCan,
+                reserveCan ? Palette.AccentSoft : Palette.Disabled, reserveCan ? Palette.Accent : Palette.DisabledText);
+        }
+    }
+}

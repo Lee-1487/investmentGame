@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace BlackWhale.Rules
 {
     /// <summary>
-    /// NEXT-B02: the real per-turn market for normal play (02_결정_사항 §10).
+    /// NEXT-B02 legacy random-walk comparison/fixture generator. Normal v3 play uses PatternMarketGenerator.
     /// One generator per room, owned by the server. A turn is generated once from (seed, turn) and then
     /// cached, so reconnects, purchases and lookups never re-roll it. The fixed fixture market stays
     /// available through <c>new MarketService(MarketData)</c> (fixture mode).

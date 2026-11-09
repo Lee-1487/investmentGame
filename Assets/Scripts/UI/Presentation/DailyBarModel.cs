@@ -6,7 +6,7 @@
 // - 0일차는 항상 알려진 0%(공개 기준값).
 // - 미열람 날짜는 Hidden(값 없음). 0%로 바꾸지 않는다.
 // - 공개(MARKET_REVEAL) 전에는 PlayerView의 visibleBundles만 쓴다. 공개 후에만 RevealedCompany 전체를 쓴다.
-// - 축은 공개 설정(UiRules.AbsoluteChangeCapBps)으로 정하고, 비공개 원본을 보지 않는다.
+// - 축은 현재 열람 가능한 시가·종가만으로 자동 맞춘다. 비공개 원본과 종목 상한은 쓰지 않는다.
 using System.Collections.Generic;
 using BlackWhale.Shared;
 using BlackWhale.UI.State;
@@ -72,12 +72,33 @@ namespace BlackWhale.UI.Presentation
                 }
             }
 
+            foreach (var w in company?.visibleWindows ?? System.Array.Empty<VisibleInformationWindow>())
+            {
+                if (w?.dailyChangesBps == null) continue;
+                for (int i = 0; i < w.dailyChangesBps.Length; i++)
+                {
+                    int day = w.startDay + i;
+                    if (day >= 1 && day < bars.Length)
+                    {
+                        string sources = bars[day].Source;
+                        if (!sources.Contains(w.source ?? "")) sources = sources.Length == 0 ? w.source : sources + " / " + w.source;
+                        Set(bars, day, w.dailyChangesBps[i], sources);
+                    }
+                }
+            }
             if (revealed?.dailyChangesBps != null)
             {
                 for (int d = 0; d < bars.Length && d < revealed.dailyChangesBps.Length; d++)
                     if (bars[d].State == DayBarState.Hidden) Set(bars, d, revealed.dailyChangesBps[d], RevealedSource);
             }
             FillCandles(bars);
+            var opens = InformationWindowRules.KnownOpens(company);
+            for (int d = 1; d < bars.Length; d++)
+                if (bars[d].Bps.HasValue && opens[d].HasValue)
+                {
+                    bars[d].OpenBps = opens[d];
+                    bars[d].Move = bars[d].Bps > opens[d] ? CandleMove.Rise : bars[d].Bps < opens[d] ? CandleMove.Fall : CandleMove.Flat;
+                }
             return bars;
         }
 
@@ -127,10 +148,10 @@ namespace BlackWhale.UI.Presentation
         }
 
         /// <summary>구간 수익률(진입→청산). 일별 막대 높이와 다른 값이다: 10일 -40%, 15일 +30% → +70%p.</summary>
-        public static int? IntervalReturnBps(DayBar[] bars, int entryDay, int exitDay)
+        public static int? IntervalReturnBps(DayBar[] bars, int entryDay, int exitDay, bool entryAtOpen = false)
         {
             if (bars == null || entryDay < 0 || exitDay >= bars.Length || entryDay >= bars.Length || exitDay < 0) return null;
-            var a = bars[entryDay].Bps;
+            var a = entryAtOpen ? bars[entryDay].OpenBps : bars[entryDay].Bps;
             var b = bars[exitDay].Bps;
             if (!a.HasValue || !b.HasValue) return null;
             return b.Value - a.Value;

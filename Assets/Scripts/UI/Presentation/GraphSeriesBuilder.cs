@@ -3,7 +3,7 @@
 // - 묶음 k의 날짜 = startDay + i (5개 배열의 인덱스 0은 0일차가 아니다)
 // - 보이지 않는 날짜는 '값 없음'(null). 0%로 채우지 않는다.
 // - 연속으로 값이 있는 날짜끼리만 선으로 잇는다. 숨은 구간을 건너뛰어 잇지 않는다.
-// - 축 범위는 비공개 원본이 아니라 규칙 설정값(기준 대비 상한) 또는 현재 열람값으로 정한다.
+// - 차트 축 범위는 현재 열람한 값만으로 자동 맞춘다. 종목 상한은 표시 범위에 쓰지 않는다.
 using System.Collections.Generic;
 using System.Linq;
 using BlackWhale.Shared;
@@ -36,20 +36,7 @@ namespace BlackWhale.UI.Presentation
         /// <summary>날짜(0~30)별 알려진 값. 모르면 null.</summary>
         public static int?[] KnownValues(VisibleCompany company)
         {
-            var values = new int?[DayCount];
-            values[0] = 0;
-            if (company?.visibleBundles == null) return values;
-
-            foreach (var b in company.visibleBundles)
-            {
-                if (b?.dailyChangesBps == null) continue;
-                for (int i = 0; i < b.dailyChangesBps.Length; i++)
-                {
-                    int day = b.startDay + i;
-                    if (day >= 0 && day < DayCount) values[day] = b.dailyChangesBps[i];
-                }
-            }
-            return values;
+            return InformationWindowRules.KnownDays(company);
         }
 
         /// <summary>선으로 이을 연속 구간 목록. 점이 1개뿐인 구간은 점으로만 그린다.</summary>
@@ -91,17 +78,25 @@ namespace BlackWhale.UI.Presentation
         /// <summary>잠금 표시할 묶음(아직 열람하지 않은 5일 구간).</summary>
         public static List<LockedRange> LockedRanges(VisibleCompany company)
         {
-            var visible = new HashSet<int>(company?.visibleBundles?.Select(b => b.bundleIndex) ?? Enumerable.Empty<int>());
-            var result = new List<LockedRange>();
-            for (int k = 0; k < UiRules.BundleCount; k++)
+            if (company?.visibleWindows == null)
             {
-                if (visible.Contains(k)) continue;
-                result.Add(new LockedRange { BundleIndex = k, StartDay = BundleStartDay(k), EndDay = BundleEndDay(k) });
+                var visible = new HashSet<int>(company?.visibleBundles?.Select(b => b.bundleIndex) ?? Enumerable.Empty<int>());
+                return Enumerable.Range(0, UiRules.BundleCount).Where(k => !visible.Contains(k)).Select(k =>
+                    new LockedRange { BundleIndex = k, StartDay = BundleStartDay(k), EndDay = BundleEndDay(k) }).ToList();
+            }
+            var values = KnownValues(company);
+            var result = new List<LockedRange>();
+            for (int d = 1; d < DayCount; d++)
+            {
+                if (values[d].HasValue) continue;
+                int start = d;
+                while (d + 1 < DayCount && !values[d + 1].HasValue) d++;
+                result.Add(new LockedRange { BundleIndex = -1, StartDay = start, EndDay = d });
             }
             return result;
         }
 
-        /// <summary>규칙 설정값 기준 Y축 범위(±상한 bps). 비공개 원본을 읽지 않는다.</summary>
+        /// <summary>v2 비교군의 공개 규칙 한도. 현재 차트 표시는 ChartVerticalRange의 열람값 자동 범위를 쓴다.</summary>
         public static int AxisLimitBps(string companyId) => UiRules.AbsoluteChangeCapBps(companyId);
 
         public static bool TryGetSource(VisibleCompany company, int bundleIndex, out string source)

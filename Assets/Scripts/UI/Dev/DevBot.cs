@@ -36,7 +36,7 @@ namespace BlackWhale.UI.Dev
         {
             var r = message.type == "COMMAND_RESULT" ? message.response : null;
             if (r == null || r.turn != currentTurn) return;
-            if (r.type == "BUY_INFORMATION_RESULT" && !r.success) failures++;
+            if ((r.type == "BUY_INFORMATION_RESULT" || r.type == "BUY_INFORMATION_WINDOW_RESULT") && !r.success) failures++;
         }
         public bool SetDifficulty(BotDifficulty value)
         {
@@ -70,15 +70,26 @@ namespace BlackWhale.UI.Dev
                     if (view.auction != null && !view.auction.confirmed && !controller.Store.HasPending("SUBMIT_BID")) controller.SubmitBid(0);
                     break;
                 case Protocol.Info:
-                    if (controller.Store.HasPending(CommandTypes.BuyInformation) || controller.IsDoneForCurrentPhase) break;
+                    if (s.publicSelectionActive)
+                    {
+                        if (s.publicSelectionPlayerId == controller.LocalPlayerId && !controller.Store.HasPending(CommandTypes.RevealInformationWindow))
+                        {
+                            var choice = strategy.NextPublicChoice(view, s);
+                            if (choice != null) controller.SelectInformationWindow(choice.CompanyId, choice.StartDay);
+                        }
+                        break;
+                    }
+                    if (controller.Store.HasPending(CommandTypes.BuyInformation) || controller.Store.HasPending(CommandTypes.BuyInformationWindow) || controller.IsDoneForCurrentPhase) break;
                     if (purchases < strategy.Policy.PurchaseBudget && failures < 3 &&
                         (!PhaseClock.HasDeadline(s) || clock.RemainingSeconds(s, now) > 2))
                     {
                         var buy = strategy.NextPurchase(view, attempted);
                         if (buy != null)
                         {
-                            attempted.Add(buy.CompanyId + ":" + buy.BundleIndex); purchases++;
-                            controller.BuyInformation(buy.CompanyId, buy.BundleIndex); break;
+                            attempted.Add(buy.CompanyId + ":" + (s.windowInformation ? buy.StartDay : buy.BundleIndex)); purchases++;
+                            if (s.windowInformation) controller.SelectInformationWindow(buy.CompanyId, buy.StartDay, buy.EndDay);
+                            else controller.BuyInformation(buy.CompanyId, buy.BundleIndex);
+                            break;
                         }
                     }
                     if (controller.CanFinishPhase()) controller.FinishPhase();
