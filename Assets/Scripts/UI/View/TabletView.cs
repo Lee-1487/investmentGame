@@ -543,7 +543,7 @@ namespace BlackWhale.UI.View
                 return;
             }
 
-            if (!PhaseClock.HasDeadline(s))
+            if (!PhaseClock.HasDeadline(s) && !s.developerMode)
             {
                 _timerText.text = "<size=11>" + PhaseNames.Korean(s.phase) + " · 시간 제한 없음</size>\n<size=28><b>-</b></size>";
                 _timerText.color = Palette.Text;
@@ -565,14 +565,16 @@ namespace BlackWhale.UI.View
                 ? (string.IsNullOrEmpty(s.currentPlayerId) ? "선택" : s.currentPlayerId + " 차례")
                 : PhaseNames.Korean(s.phase);
             _timerText.text = "<size=11>" + (remain == 0 ? "서버 진행 대기" : what) + "</size>\n<size=28><b>" + DisplayFormat.Clock(remain) + "</b></size>";
+            if (s.developerMode) _timerText.text = "<size=11>개발자 모드 · " + what + "</size>\n<size=22><b>수동 진행</b></size>";
             _timerText.color = remain <= 5 && remain > 0 ? Palette.Up : Palette.Text;
 
-            bool can = _c.CanFinishPhase();
+            bool can = _c.CanCompleteStep();
             bool done = _c.IsDoneForCurrentPhase;
             string label = done ? "완료함 · 대기 중"
                 : s.phase == Protocol.Investment ? (Store.OrderLocked ? "다른 참가자 대기" : "주문 확정 시 진행")
                 : s.phase == Protocol.Selection ? (s.stockSystem ? "매수 완료 시 진행" : "선택 시 자동 진행")
                 : "완료";
+            if (s.developerMode && can) label = "완료";
             UiKit.SetButton(_doneButton, label, can, can ? Palette.Accent : Palette.Disabled, can ? Color.white : Palette.DisabledText);
         }
 
@@ -629,7 +631,7 @@ namespace BlackWhale.UI.View
 
         private void OnDoneClicked()
         {
-            var status = _c.FinishPhase();
+            var status = _c.CompleteStep();
             if (status == CommandStatus.Sent) ShowBanner("완료했습니다. 다른 참가자를 기다립니다.");
         }
 

@@ -98,7 +98,7 @@ namespace BlackWhale.UI.View
                 var panel = UiKit.Panel(root, "StockDraftSlot_" + i, current ? Palette.AccentSoft : Palette.Card, rounded: true);
                 panel.rectTransform.anchorMin = new Vector2((i - first) / 4f, 1); panel.rectTransform.anchorMax = new Vector2((i - first + 1) / 4f, 1);
                 panel.rectTransform.offsetMin = new Vector2(3, -45); panel.rectTransform.offsetMax = new Vector2(-3, 0);
-                var text = UiKit.Label(panel.transform, ids[i] + "  <size=12>" + (i / 4 + 1) + "차 · 7초" + (current ? " · 지금" : "") + "</size>", 22, Palette.Player(ids[i]), TextAnchor.MiddleCenter, FontStyle.Bold);
+                var text = UiKit.Label(panel.transform, ids[i] + "  <size=12>" + (i / 4 + 1) + (State.developerMode ? "차 · 완료 시 진행" : "차 · 7초") + (current ? " · 지금" : "") + "</size>", 22, Palette.Player(ids[i]), TextAnchor.MiddleCenter, FontStyle.Bold);
                 text.name = "StockDraftPlayer_" + i; UiKit.Stretch(text.rectTransform, 4, 1, 4, 1);
             }
         }
@@ -161,7 +161,7 @@ namespace BlackWhale.UI.View
             if (summary != null) summary.text = State.phase == Protocol.Selection
                 ? (Editable ? "내 차례 · 남은 매수 " + Portfolio.draftSharesRemaining + "/15주" : pending ? "매수 처리 중" : State.currentPlayerId + " 차례") + " · 보유 " + Portfolio.usedSlots + "/30주 · BANK " + Portfolio.CashSlots + "주"
                 : State.phase == Protocol.Info ? "정보 탐색 중 구간 예약 가능 · 차트를 누르면 크게 볼 수 있습니다."
-                : State.phase == Protocol.Investment ? "예약 구간을 확인하고 확정하세요. 미투자 수량은 BANK에 자동 배정됩니다."
+                : State.phase == Protocol.Investment ? "예약 구간을 확인하고 확정하세요. BANK 구간 밖의 미투자 수량은 현금으로 유지됩니다."
                 : "확정된 기업별 주식 현황 · 차트를 눌러 확인하세요.";
             foreach (var pair in cards)
             {

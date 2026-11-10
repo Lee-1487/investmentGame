@@ -313,7 +313,7 @@ namespace BlackWhale.UI.Tests
                 client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state }); client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
                 var tablet = TabletView.Create((RectTransform)canvas.transform, controller);
                 yield return null; Canvas.ForceUpdateCanvases();
-                Assert.IsTrue(controller.CanPlanTrade("AI")); Assert.IsFalse(controller.CanPlanTrade("FOOD")); Assert.IsFalse(controller.CanPlanTrade("BANK"));
+                Assert.IsTrue(controller.CanPlanTrade("AI")); Assert.IsFalse(controller.CanPlanTrade("FOOD")); Assert.IsTrue(controller.CanPlanTrade("BANK"));
                 ClickPlanning(canvas, "ExpandShare_AI");
                 yield return new WaitForSecondsRealtime(.4f); Canvas.ForceUpdateCanvases();
                 var pointer = canvas.GetComponentsInChildren<ChartPointerLayer>().Single(p => p.name == "ZoomChart_AI");
@@ -324,9 +324,16 @@ namespace BlackWhale.UI.Tests
                 Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Any(b => b.name == "ConfirmInformationWindow"), "interval stage cannot buy more information");
                 CapturePlanningScreen(canvas.GetComponent<Canvas>(), "stock-interval-after-purchase");
                 tablet.ShowPage(0); yield return new WaitForSecondsRealtime(.4f);
+                ClickPlanning(canvas, "ExpandShare_BANK");
+                yield return new WaitForSecondsRealtime(.4f); Canvas.ForceUpdateCanvases();
+                var bankPointer = canvas.GetComponentsInChildren<ChartPointerLayer>().Single(p => p.name == "ZoomChart_BANK");
+                DragChart(bankPointer, 8, 12); ClickPlanning(canvas, "ReserveRange");
+                Assert.AreEqual(8, controller.CurrentTradeReservations().Single(i => i.companyId == "BANK").intervals[0].entryDay);
+                tablet.ShowPage(0); yield return new WaitForSecondsRealtime(.4f);
                 ClickPlanning(canvas, "ConfirmStockIntervals");
                 var submit = client.Sent.Single(c => c.type == CommandTypes.SubmitInvestment);
-                Assert.AreEqual(1, submit.payload.investments.Length); Assert.AreEqual("AI", submit.payload.investments[0].companyId);
+                Assert.AreEqual(2, submit.payload.investments.Length);
+                Assert.AreEqual(12, submit.payload.investments.Single(i => i.companyId == "BANK").intervals[0].exitDay);
                 client.Receive(new ServerMessage { type = "COMMAND_RESULT", response = new CommandResult { type = CommandTypes.ResultOf(CommandTypes.SubmitInvestment),
                     requestId = submit.requestId, turn = 1, success = true, payload = new ResultPayload { locked = true, investments = submit.payload.investments } } });
                 Assert.IsFalse(controller.CanPlanTrade("AI"));

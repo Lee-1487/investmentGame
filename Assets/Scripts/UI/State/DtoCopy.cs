@@ -70,7 +70,7 @@ namespace BlackWhale.UI.State
                 currentPlayerId = s.currentPlayerId,
                 turn = s.turn,
                 selectionIndex = s.selectionIndex,
-                paused = s.paused,
+                paused = s.paused, developerMode = s.developerMode,
                 serverElapsedSeconds = s.serverElapsedSeconds,
                 phaseEndsAtServerSeconds = s.phaseEndsAtServerSeconds,
                 selectionDeadlineAtServerSeconds = s.selectionDeadlineAtServerSeconds,

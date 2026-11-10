@@ -25,6 +25,7 @@ namespace BlackWhale.Rules
             public readonly Slot[] Slots = Enumerable.Range(0, StockRules.Slots).Select(i => new Slot()).ToArray();
             public readonly Dictionary<string, int[]> DailyQuantity = InvestmentRules.CompanyIds.ToDictionary(id => id, id => new int[31]);
             public readonly Dictionary<string, decimal> Gain = InvestmentRules.CompanyIds.ToDictionary(id => id, id => 0m);
+            public Interval[] BankPlan = Array.Empty<Interval>();
             public decimal DepositDays;
             public int Discount, OpportunityTurn, PendingDiscount;
             public int DraftSharesRemaining = StockRules.SharesPerPick;
@@ -77,6 +78,7 @@ namespace BlackWhale.Rules
                     p.Shares[company] = 0;
                     Array.Clear(p.DailyQuantity[company], 0, 31); p.Gain[company] = 0;
                 }
+                p.BankPlan = Array.Empty<Interval>();
                 p.DepositDays = 0;
                 p.DraftSharesRemaining = StockRules.SharesPerPick;
                 p.Chosen = true; p.Candidates = new string[0];
@@ -201,6 +203,8 @@ namespace BlackWhale.Rules
                 foreach (var slot in p.Slots)
                 {
                     string company = Invested(slot, day) ? slot.Claim : "BANK";
+                    // Outside the BANK reservation, idle slots remain cash without market returns.
+                    if (company == "BANK" && p.BankPlan.Length > 0 && !p.BankPlan.Any(i => i.entryDay <= day && day <= i.exitDay)) continue;
                     decimal open = 10000 + market.ChangeBps(company, day - 1);
                     decimal close = 10000 + market.ChangeBps(company, day);
                     decimal change = slot.Value * (close / open - 1);
@@ -250,11 +254,12 @@ namespace BlackWhale.Rules
                 companyId = v.Key,
                 intervals = plans.FirstOrDefault(i => i.companyId == v.Key)?.intervals is Interval[] ranges && ranges.Length > 0
                     ? ranges : Array.Empty<Interval>()
-            }).ToArray();
+            }).Concat(plans.Where(i => i.companyId == "BANK")).ToArray();
         }
         private void ApplyStockPlans(string playerId)
         {
             var plans = BuildStockInvestments(playerId);
+            stockPlayers[playerId].BankPlan = plans.FirstOrDefault(i => i.companyId == "BANK")?.intervals ?? Array.Empty<Interval>();
             foreach (var slot in stockPlayers[playerId].Slots.Where(s => s.Claim != null))
                 slot.Plan = plans.Single(i => i.companyId == slot.Claim).intervals;
         }

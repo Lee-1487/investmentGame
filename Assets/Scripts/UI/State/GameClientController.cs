@@ -55,7 +55,7 @@ namespace BlackWhale.UI.State
         {
             var plans = Store.TradePlans.ToReservations();
             if (Store.Public?.stockSystem != true) return plans;
-            return plans.Where(i => i.companyId != "BANK" && (Store.Public.phase != Protocol.Investment ||
+            return plans.Where(i => i.companyId == "BANK" ? i.intervals?.Length > 0 : (Store.Public.phase != Protocol.Investment ||
                 Store.View?.portfolio?.holdings?.Any(h => h.companyId == i.companyId && h.shares > 0) == true)).ToArray();
         }
 
@@ -63,9 +63,9 @@ namespace BlackWhale.UI.State
         {
             var s = Store.Public;
             if (s == null || !HasCurrentPlayerView || s.paused || s.publicSelectionActive || Store.OrderLocked || !string.IsNullOrEmpty(Store.EndReason)) return false;
-            if (s.stockSystem) return companyId != "BANK" && (s.phase == Protocol.Info ||
+            if (s.stockSystem) return (s.phase == Protocol.Info ||
                 s.phase == Protocol.Selection && IsMyTurnToSelect() || s.phase == Protocol.Investment &&
-                Store.View?.portfolio?.holdings?.Any(h => h.companyId == companyId && h.shares > 0) == true);
+                (companyId == "BANK" || Store.View?.portfolio?.holdings?.Any(h => h.companyId == companyId && h.shares > 0) == true));
             return s.phase == Protocol.Info || s.phase == Protocol.Selection;
         }
 
@@ -194,6 +194,27 @@ namespace BlackWhale.UI.State
             var requestId = Send(CommandTypes.CompletePhase, new CommandPayload());
             Store.MarkPhaseCompleted(requestId, s.turn, s.phase);
             return CommandStatus.Sent;
+        }
+
+        public bool CanCompleteStep()
+        {
+            var s = Store.Public;
+            if (s?.developerMode == true && s.stockSystem)
+            {
+                if (s.phase == Protocol.Selection) return CanDraftShares();
+                if (s.phase == Protocol.Investment) return HasCurrentPlayerView && !s.paused && !Store.OrderLocked &&
+                    !Store.HasPending(CommandTypes.SubmitInvestment);
+            }
+            return CanFinishPhase();
+        }
+
+        public CommandStatus CompleteStep()
+        {
+            if (!CanCompleteStep()) return Block(ErrorCodes.WrongPhase);
+            var s = Store.Public;
+            if (s.developerMode && s.stockSystem && s.phase == Protocol.Selection) return PassStockDraft();
+            if (s.developerMode && s.stockSystem && s.phase == Protocol.Investment) return SubmitInvestment(CurrentTradeReservations());
+            return FinishPhase();
         }
 
         public bool IsDoneForCurrentPhase
