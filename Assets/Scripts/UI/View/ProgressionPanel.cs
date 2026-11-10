@@ -150,7 +150,7 @@ namespace BlackWhale.UI.View
                     if (state.stockSystem)
                     {
                         Message("<b>기업별 주식 보유 현황</b>\n\n" + string.Join("\n\n", (state.shareMarket ?? new CompanyShareState[0]).Select(c =>
-                            "<b>" + c.companyId + "</b> · 잔여 " + (20 - c.owners.Sum(v => v.shares)) + "/20주\n" + string.Join("   ", c.owners.Select(v => v.playerId + " " + v.shares + "주")))));
+                            "<b>" + c.companyId + "</b>" + (c.companyId == "BANK" ? " · 자동 예금\n" : " · 잔여 ■ ×" + (c.totalShares - c.owners.Sum(v => v.shares + v.reserved)) + "\n") + string.Join("   ", c.owners.Select(v => v.playerId + " " + v.shares + "주")))));
                         break;
                     }
                     if (state.phase == Protocol.Auction)

@@ -10,7 +10,10 @@ namespace BlackWhale.Flow
         private bool StockMode => Stock?.StockEnabled == true;
         private static bool IsStockCommand(string type) => type == StockRules.Trade || type == StockRules.Pass || type == StockRules.Choose || type == StockRules.Priority;
         private void SendAllViews() { foreach (var m in members) SendView(m.Id); }
-        private void BeginStockDraft(double now) { Enter(Protocol.Selection, now, 96); SendAllViews(); }
+        private void BeginStockDraft(double now) {
+            Stock.BeginDraftPick(order[selectionIndex]);
+            Enter(Protocol.Selection, now, order.Length * StockRules.DraftSeconds); SendAllViews();
+        }
         private void RevealStockPortfolio(double now)
         {
             Stock.LockPortfolios(); ordersLocked = true;
@@ -26,7 +29,7 @@ namespace BlackWhale.Flow
                 if (command.payload == null) return CommandResult.Fail(command, "INVALID_REQUEST");
                 var result = Stock.ChooseAugment(Context(player, command.requestId), command.payload.augmentId, command.payload.companyId);
                 if (!result.Success) return CommandResult.Fail(command, result.ErrorCode);
-                if (Stock.AllAugmentsChosen) BeginStockDraft(now); else SendView(player);
+                if (Stock.AllAugmentsChosen) { Enter(Protocol.Info, now, settings.InfoSeconds); SendAllViews(); } else SendView(player);
                 return Success(command);
             }
             if (phase != Protocol.Selection) return CommandResult.Fail(command, "WRONG_PHASE");
@@ -44,8 +47,10 @@ namespace BlackWhale.Flow
                 if (command.payload == null) return CommandResult.Fail(command, "INVALID_REQUEST");
                 var result = Stock.TradeShares(Context(player, command.requestId), command.payload.shareOrders);
                 if (!result.Success) { SendView(player); return CommandResult.Fail(command, result.ErrorCode); }
+                PublishState(); SendAllViews();
+                return Success(command);
             }
-            Selected(now); PublishState(); SendAllViews();
+            Selected(now);
             return Success(command);
         }
     }

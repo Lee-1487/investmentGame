@@ -72,14 +72,24 @@ namespace BlackWhale.UI.Dev
                     var known = InformationWindowRules.KnownDays(visible).Where(v => v.HasValue).Select(v => v.Value).ToArray();
                     return known.Length > 1 ? known[known.Length - 1] - known[0] : 0;
                 });
-                foreach (var c in ranked)
+                int budget = Math.Min(p.CashSlots, p.draftSharesRemaining);
+                var shareOrders = new System.Collections.Generic.List<ShareOrder>();
+                foreach (var c in ranked.Where(company => company.companyId != "BANK"))
                 {
                     int own = p.holdings.First(v => v.companyId == c.companyId).shares;
-                    int remaining = StockRules.Supply - c.owners.Sum(v => v.shares);
-                    int target = Math.Min(p.LimitFor(c.companyId), Math.Min(own + remaining, own + p.CashSlots));
-                    if (target > own) { controller.TradeShares(new[] { new ShareOrder { companyId = c.companyId, targetShares = target } }); since = now; return; }
+                    int remaining = StockRules.Supply - c.owners.Sum(v => v.shares + v.reserved);
+                    int added = Math.Max(0, Math.Min(p.LimitFor(c.companyId) - own, Math.Min(remaining, budget)));
+                    if (added == 0) continue;
+                    shareOrders.Add(new ShareOrder { companyId = c.companyId, targetShares = own + added }); budget -= added;
                 }
+                if (shareOrders.Count > 0) { controller.TradeShares(shareOrders.ToArray()); since = now; return; }
                 controller.PassStockDraft(); since = now; return;
+            }
+            if (s.stockSystem && s.phase == Protocol.Investment)
+            {
+                if (!controller.Store.OrderLocked && !controller.Store.HasPending(CommandTypes.SubmitInvestment))
+                    controller.SubmitInvestment(controller.CurrentTradeReservations());
+                since = now; return;
             }
             switch (s.phase)
             {

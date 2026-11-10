@@ -314,12 +314,19 @@ namespace BlackWhale.UI.State
         private void BeginTurnIfNewer(int turn)
         {
             if (turn <= CurrentTurn) return;
+            // Public and private snapshots arrive separately. Never render a new turn with
+            // the preceding turn's holdings, visible prices or locked investment controls.
+            if (View != null && View.turn < turn) View = null;
+            if (Public != null && Public.turn < turn) Public = null;
             TradePlans.BeginTurn(turn);
             _pending.Clear();
             _ownSelections.Clear();
             OrderLockedByResult = false;
+            _completedPhases.Clear();
+            _completeRequestPhase.Clear();
             LastError = null;
             Revealed = null;
+            RevealedTurn = 0;
         }
 
         private void UpsertBundle(string companyId, VisibleBundle bundle)

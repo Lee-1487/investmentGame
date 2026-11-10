@@ -20,8 +20,10 @@ namespace BlackWhale.UI.View
         private readonly GameClientController _c;
         private readonly LobbyActions _lobby;
         private readonly Text _status;
+        private readonly Text _title;
         private readonly RectTransform _body;
         private readonly StockSystemPage _stockPage;
+        public System.Action<string> OpenStockPlan;
 
         private InvestmentDraft _draft;
         private int _draftTurn = -1;
@@ -45,6 +47,7 @@ namespace BlackWhale.UI.View
             _lobby = lobby;
 
             var title = UiKit.Label(page, "매수 창", 18, Palette.Text, TextAnchor.MiddleLeft, FontStyle.Bold);
+            _title = title;
             UiKit.Place(title.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(6, -2), new Vector2(200, 28));
 
             _status = UiKit.Label(page, "", 14, Palette.SubText, TextAnchor.MiddleRight);
@@ -52,11 +55,16 @@ namespace BlackWhale.UI.View
 
             _body = UiKit.Rect(page, "Body");
             UiKit.Stretch(_body, 0, 34, 0, 0);
-            _stockPage = new StockSystemPage(_body, _c);
+            _stockPage = new StockSystemPage(_body, _c) { OpenPlan = id => OpenStockPlan?.Invoke(id) };
         }
 
         public void Refresh()
         {
+            var current = _c.Store.Public;
+            bool stock = current?.stockSystem == true && current.phase != Protocol.Lobby;
+            _title.gameObject.SetActive(!stock); _status.gameObject.SetActive(!stock);
+            UiKit.Stretch(_body, 0, stock ? 0 : 34, 0, 0);
+            if (stock && _stockPage.TryRefresh()) return;
             UiKit.Clear(_body);
             var s = _c.Store.Public;
             if (s == null)

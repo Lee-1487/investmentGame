@@ -172,6 +172,8 @@ namespace BlackWhale.Rules
             if (input == null || input.Length > InvestmentRules.CompanyIds.Length || input.Any(i => i == null || !market.HasCompany(i.companyId)))
                 return new RuleResult(ErrorCodes.InvalidCompany);
             if (input.Select(i => i.companyId).Distinct().Count() != input.Length) return new RuleResult(ErrorCodes.DuplicateCompany);
+            if (StockEnabled && input.Any(i => i.companyId == "BANK" || context.Phase == Protocol.Investment && StockHoldings(context.PlayerId)[i.companyId] == 0))
+                return new RuleResult(ErrorCodes.InvalidCompany);
             foreach (var i in input)
             {
                 if ((i.intervals?.Length ?? 0) == 0) continue;
@@ -179,11 +181,13 @@ namespace BlackWhale.Rules
                 if (error.Length > 0) return new RuleResult(error);
             }
             var weighted = input.Where(i => i.weightBps != 0).ToArray();
+            if (StockEnabled && weighted.Length != 0) return new RuleResult(ErrorCodes.InvalidRatio);
             if (weighted.Length != 0 && (weighted.Length != 2 ||
                 Array.IndexOf(rules.firstCompanyWeightOptionsBps, weighted[0].weightBps) < 0 ||
                 weighted[0].weightBps + weighted[1].weightBps != InvestmentRules.FullWeightBps))
                 return new RuleResult(ErrorCodes.InvalidRatio);
             reservations[context.PlayerId] = Copy(input);
+            if (StockEnabled) ApplyStockPlans(context.PlayerId);
             return new RuleResult();
         }
 
@@ -192,6 +196,7 @@ namespace BlackWhale.Rules
 
         public Investment[] BuildAutomaticInvestments(string playerId)
         {
+            if (StockEnabled) return BuildStockInvestments(playerId);
             var saved = GetReservations(playerId);
             var companies = GetSelectedCompanies(playerId);
             var weighted = saved.Where(i => i.weightBps != 0).ToArray();
@@ -208,6 +213,14 @@ namespace BlackWhale.Rules
             string code = CheckContext(context, Protocol.Investment);
             if (code != "") return new RuleResult(code);
             if (allLocked || orders.ContainsKey(context.PlayerId)) return new RuleResult(ErrorCodes.OrderLocked);
+
+            if (StockEnabled)
+            {
+                var saved = SaveReservations(context, investments);
+                if (!saved.Success) return saved;
+                orders[context.PlayerId] = BuildStockInvestments(context.PlayerId);
+                return new RuleResult(payload: new ResultPayload { locked = true, investments = Copy(orders[context.PlayerId]) });
+            }
 
             code = OrderValidator.Validate(investments, selected[context.PlayerId], rules);
             if (code != "") return new RuleResult(code);
@@ -248,10 +261,10 @@ namespace BlackWhale.Rules
             return InvestmentRules.CompanyIds.Select(id => new RevealedCompany { companyId = id, dailyChangesBps = book.AllDays(id),
                 investments = players.Select(player => new { player, own = GetOwnInvestmentState(player, context.Turn) })
                     .SelectMany(p => p.own.Investments.Where(i => i.companyId == id).Select(i => new RevealedInvestment {
-                        playerId = p.player, returnBps = Settlement.CompanyReturnBps(book, i, rules),
+                        playerId = p.player, returnBps = StockEnabled ? StockHistoryRate(p.player, id, context.Turn) : Settlement.CompanyReturnBps(book, i, rules),
                         shares = StockEnabled ? StockSharesForHistory(p.player, id, context.Turn) : 0,
                         intervals = i.intervals.Select(v => new RevealedTrade { entryDay = v.entryDay, exitDay = v.exitDay,
-                            returnBps = book.ChangeBps(id, v.exitDay) - book.ChangeBps(id, rules.entryAtOpen ? Math.Max(0, v.entryDay - 1) : v.entryDay) }).ToArray()
+                            returnBps = StockEnabled ? Settlement.ReturnBps(10000 + book.ChangeBps(id, Math.Max(0, v.entryDay - 1)), 10000 + book.ChangeBps(id, v.exitDay)) : book.ChangeBps(id, v.exitDay) - book.ChangeBps(id, rules.entryAtOpen ? Math.Max(0, v.entryDay - 1) : v.entryDay) }).ToArray()
                     })).ToArray() }).ToArray();
         }
 

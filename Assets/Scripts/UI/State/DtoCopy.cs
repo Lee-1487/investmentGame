@@ -85,7 +85,7 @@ namespace BlackWhale.UI.State
                     companyId = c.companyId, startDay = c.startDay, automatic = c.automatic }).ToArray(),
                 stockSystem = s.stockSystem, totalTurns = s.totalTurns, draftOrder = (string[])s.draftOrder?.Clone(),
                 shareMarket = s.shareMarket?.Select(c => new CompanyShareState { companyId = c.companyId, totalShares = c.totalShares,
-                    owners = c.owners?.Select(p => new ShareOwner { playerId = p.playerId, shares = p.shares }).ToArray() }).ToArray()
+                    owners = c.owners?.Select(p => new ShareOwner { playerId = p.playerId, shares = p.shares, reserved = p.reserved }).ToArray() }).ToArray()
             };
 
         public static ReturnPoint Copy(ReturnPoint s)
@@ -132,7 +132,7 @@ namespace BlackWhale.UI.State
             recordId = s.recordId, source = s.source, companyId = s.companyId, startDay = s.startDay, paidCoins = s.paidCoins,
             dailyChangesBps = (int[])s.dailyChangesBps?.Clone(), dailyOpenBps = (int[])s.dailyOpenBps?.Clone() };
         public static PortfolioState Copy(PortfolioState s) => s == null ? null : new PortfolioState {
-            capacity = s.capacity, usedSlots = s.usedSlots, informationDiscount = s.informationDiscount,
+            capacity = s.capacity, usedSlots = s.usedSlots, informationDiscount = s.informationDiscount, draftSharesRemaining = s.draftSharesRemaining,
             augmentChosen = s.augmentChosen, priorityUsed = s.priorityUsed, concentrationCompany = s.concentrationCompany,
             augments = (string[])s.augments?.Clone(), candidates = (string[])s.candidates?.Clone(),
             holdings = s.holdings?.Select(v => new PortfolioHolding { companyId = v.companyId, shares = v.shares, consecutiveTurns = v.consecutiveTurns }).ToArray(),
