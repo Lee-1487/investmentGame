@@ -32,6 +32,7 @@ namespace BlackWhale.UI.View
 
         // 페이지
         private RectTransform _pager;
+        private RectTransform _pageViewport, _rightColumn;
         private float _pageT, _pageTarget;
         private InvestmentPage _investmentPage;
         private InfoPurchasePage _infoPage;
@@ -50,6 +51,10 @@ namespace BlackWhale.UI.View
         // 타이머
         private readonly PhaseClock _clock = new PhaseClock();
         private string _clockKey = "";
+        private PublicState _renderedPublic;
+        private PlayerView _renderedView;
+        private int _viewRefreshTurn;
+        private float _missingViewSince = -1;
         private Text _timerText;
         private RectTransform _turnHighlight, _turnNotice;
         private Text _turnNoticeText;
@@ -202,6 +207,7 @@ namespace BlackWhale.UI.View
         private void BuildPages()
         {
             var viewport = UiKit.Rect(ScreenRect, "PageViewport");
+            _pageViewport = viewport;
             UiKit.Stretch(viewport, 116, 76, 168, 10);
             viewport.gameObject.AddComponent<RectMask2D>();
 
@@ -220,6 +226,7 @@ namespace BlackWhale.UI.View
             // 기업 선택 차례의 서버 마감으로 남은 시간을 표시한다. 진행 판정은 서버.
             _investmentPage.RemainingSeconds = () => _clock.RemainingSeconds(Store.Public, Time.realtimeSinceStartup);
             _infoPage = new InfoPurchasePage(info, _c, ScreenRect);
+            _investmentPage.OpenStockPlan = id => { ShowPage(1); _infoPage.OpenCompany(id); };
 
             _pageHint = UiKit.Label(ScreenRect, "", 11, Palette.SubText, TextAnchor.LowerCenter);
             _pageHint.rectTransform.anchorMin = new Vector2(0, 0);
@@ -231,6 +238,7 @@ namespace BlackWhale.UI.View
         private void BuildRightColumn()
         {
             var col = UiKit.Rect(ScreenRect, "RightColumn");
+            _rightColumn = col;
             col.anchorMin = new Vector2(1, 0);
             col.anchorMax = new Vector2(1, 1);
             col.pivot = new Vector2(1, 0.5f);
@@ -338,6 +346,14 @@ namespace BlackWhale.UI.View
         public void Refresh()
         {
             var s = Store.Public;
+            bool stock = s?.stockSystem == true && s.phase != Protocol.Lobby;
+            bool stockDraft = stock && s.phase == Protocol.Selection;
+            UiKit.Stretch(_pageViewport, 116, stock ? 70 : 76, stockDraft ? 12 : stock ? 136 : 168, 10);
+            _rightColumn.gameObject.SetActive(!stockDraft);
+            _pageHint.gameObject.SetActive(!stockDraft);
+            _rightColumn.offsetMin = new Vector2(stock ? -140 : -160, 12);
+            _rightColumn.offsetMax = new Vector2(stock ? -2 : -12, -76);
+            ((RectTransform)_doneButton.transform).sizeDelta = new Vector2(stock ? 130 : 140, 44);
             // Sync before rebuilding clickable cards so a new turn uses its current deadline.
             if (s != null)
             {
@@ -357,14 +373,16 @@ namespace BlackWhale.UI.View
                 UiKit.SetButton(_pauseButton, paused ? "게임 재개" : "일시정지", can, paused ? Palette.AccentSoft : Palette.Card, Palette.Text);
             }
 
-            _turnLabel.text = s == null ? "" : s.turn + "턴\n<size=11>" + PhaseNames.Korean(s.phase) + "</size>";
+            _turnLabel.text = s == null ? "" : s.turn + (s.stockSystem ? "/" + s.totalTurns : "") + "턴\n<size=11>" + PhaseNames.ForState(s) + "</size>";
             RefreshRanks();
             _investmentPage.Refresh();
             _infoPage.Refresh();
             RefreshTurnIndicator();
             var ability = LiveScreenModels.AbilityId(Store.View?.ability?.selectedId);
             _abilityLabel.text = "<b>내 고유능력</b>\n\n" + (AbilityCatalog.Get(ability)?.Name ?? "선택 대기") + "\n<size=11>클릭하여 상태 보기</size>";
-
+            if (s?.stockSystem == true) _abilityLabel.text = "<b>내 증강</b>\n\n" + string.Join("\n", (Store.View?.portfolio?.augments ?? new string[0]).Select(StockRules.Name));
+            UpdateTimer();
+            _renderedPublic = Store.Public; _renderedView = Store.View;
         }
 
         private void DetectNotifications()
@@ -381,16 +399,16 @@ namespace BlackWhale.UI.View
                     _lastPhaseKey = phaseKey;
                     if (s.phase == Protocol.Lobby) ShowBanner("대기실에 입장했습니다. 준비를 누르세요.");
                     else if (s.phase == Protocol.Ended && !string.IsNullOrEmpty(Store.EndReason)) ShowBanner(ErrorMessages.ToKorean(Store.EndReason));
-                    else if (s.phase != Protocol.Ended) ShowBanner("<b>" + s.turn + "턴 · " + PhaseNames.Korean(s.phase) + "</b> 단계가 시작되었습니다.");
+                    else if (s.phase != Protocol.Ended) ShowBanner("<b>" + s.turn + "턴 · " + PhaseNames.ForState(s) + "</b> 단계가 시작되었습니다.");
                     if (s.phase == Protocol.Info || s.phase == Protocol.Reveal) ShowPage(1);
-                    if (s.phase == Protocol.Lobby || s.phase == Protocol.Selection || s.phase == Protocol.Investment || s.phase == Protocol.Result) ShowPage(0);
+                    if (s.phase == Protocol.Lobby || s.phase == Protocol.Selection || s.phase == StockRules.AugmentPhase || s.phase == Protocol.Investment || s.phase == Protocol.Result) ShowPage(0);
                 }
 
                 if (s.phase == Protocol.Selection && s.currentPlayerId != _lastSelector)
                 {
                     ClearBanners();
                     _lastSelector = s.currentPlayerId;
-                    if (s.currentPlayerId == _c.LocalPlayerId) ShowBanner("<color=#DC2626><b>내 차례입니다.</b></color> 기업을 선택하세요.");
+                    if (s.currentPlayerId == _c.LocalPlayerId) ShowBanner("<color=#DC2626><b>내 차례입니다.</b></color> " + (s.stockSystem ? "주식 보유량을 정하세요." : "기업을 선택하세요."));
                 }
                 string publicSelector = s.publicSelectionActive ? s.turn + "|" + s.publicSelectionIndex + "|" + s.publicSelectionPlayerId : "";
                 if (publicSelector != _lastPublicSelector)
@@ -427,7 +445,7 @@ namespace BlackWhale.UI.View
             {
                 _lastBoardTurn = board.turn;
                 var top = board.rows.OrderBy(r => r.rank).First();
-                ShowBanner(board.gameComplete ? "10턴 최종 승자 · " + board.winnerPlayerId :
+                ShowBanner(board.gameComplete ? (s.totalTurns > 0 ? s.totalTurns : 10) + "턴 최종 승자 · " + board.winnerPlayerId :
                     board.turn + "턴 정산 완료 · 1위 " + top.playerId + " (" + DisplayFormat.Percent(top.turnReturnBps) + ")");
             }
         }
@@ -491,6 +509,15 @@ namespace BlackWhale.UI.View
         private void Update()
         {
             if (_c == null) return;
+            // A missed change callback must not leave the new turn using an old timer/UI.
+            if (!ReferenceEquals(_renderedPublic, Store.Public) || !ReferenceEquals(_renderedView, Store.View)) Refresh();
+            if (Store.Public?.turn > 0 && !_c.HasCurrentPlayerView && string.IsNullOrEmpty(Store.EndReason))
+            {
+                if (_missingViewSince < 0) _missingViewSince = Time.realtimeSinceStartup;
+                if (Time.realtimeSinceStartup - _missingViewSince >= .5f && _viewRefreshTurn != Store.Public.turn)
+                { _viewRefreshTurn = Store.Public.turn; _c.RefreshPlayerView(); }
+            }
+            else _missingViewSince = -1;
             UpdateTimer();
             if (Store.Public?.phase == Protocol.Selection) _investmentPage.Tick();
             UpdateBanner();
@@ -512,6 +539,7 @@ namespace BlackWhale.UI.View
             if (s == null)
             {
                 _timerText.text = "접속 대기";
+                UiKit.SetButton(_doneButton, "상태 갱신 중", false, Palette.Disabled, Palette.DisabledText);
                 return;
             }
 
@@ -543,7 +571,7 @@ namespace BlackWhale.UI.View
             bool done = _c.IsDoneForCurrentPhase;
             string label = done ? "완료함 · 대기 중"
                 : s.phase == Protocol.Investment ? (Store.OrderLocked ? "다른 참가자 대기" : "주문 확정 시 진행")
-                : s.phase == Protocol.Selection ? "선택 시 자동 진행"
+                : s.phase == Protocol.Selection ? (s.stockSystem ? "매수 완료 시 진행" : "선택 시 자동 진행")
                 : "완료";
             UiKit.SetButton(_doneButton, label, can, can ? Palette.Accent : Palette.Disabled, can ? Color.white : Palette.DisabledText);
         }

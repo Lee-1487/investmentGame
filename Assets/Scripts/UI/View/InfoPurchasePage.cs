@@ -201,8 +201,8 @@ namespace BlackWhale.UI.View
             _zoom.gameObject.SetActive(false);
         }
 
-        private bool CanPlan => _zoomCompany != null && string.IsNullOrEmpty(_c.Store.EndReason) && !_c.Store.OrderLocked && _c.Store.Public?.paused != true && _c.Store.Public?.publicSelectionActive != true
-            && (_c.Store.Public?.phase == Protocol.Info || _c.Store.Public?.phase == Protocol.Selection);
+        private bool CanPlan => _zoomCompany != null && _c.CanPlanTrade(_zoomCompany);
+        public void OpenCompany(string company) => Enlarge(company);
         private void Enlarge(string company)
         {
             _zoomCompany = company; _zoomPhase = _c.Store.Public?.phase; _zoomTurn = _c.Store.CurrentTurn;
@@ -211,7 +211,7 @@ namespace BlackWhale.UI.View
             _zoomWindow.Selection = _cards.First(c => c.CompanyId == company).Selection;
             _zoomPointer.RangeSelection = _c.Store.Public?.windowInformation == true ? _zoomWindow.Selection : null;
             _zoomPointer.CanEditRange = () => string.IsNullOrEmpty(_c.Store.EndReason) && _c.Store.Public?.paused != true &&
-                (_c.Store.Public?.phase == Protocol.Info || _c.Store.Public?.phase == Protocol.Selection);
+                (_c.Store.Public?.phase == Protocol.Info || CanPlan);
             _zoomPointer.Intervals = () => CanPlan ? _c.Store.TradePlans.Get(_zoomCompany).Intervals : Array.Empty<Interval>();
             _zoomPointer.EditInterval = (index, entry, exit) => CanPlan ? _c.Store.TradePlans.TryReplaceInterval(_zoomCompany, index, entry, exit) : ErrorCodes.OrderLocked;
             _zoomPointer.DeleteInterval = index => { if (CanPlan) _c.Store.TradePlans.RemoveInterval(_zoomCompany, index); };
@@ -246,6 +246,9 @@ namespace BlackWhale.UI.View
         {
             if (_zoomCompany == null) return;
             var store = _c.Store; var plan = store.TradePlans.Get(_zoomCompany);
+            bool stockSystem = store.Public?.stockSystem == true;
+            _favorite.gameObject.SetActive(!stockSystem);
+            foreach (var rankButton in _rankButtons) rankButton.gameObject.SetActive(!stockSystem);
             bool windows = store.Public?.windowInformation == true;
             if (store.Public?.publicSelectionActive == true) _selectInformation = true;
             _interactionMode.gameObject.SetActive(windows && (store.View?.inventory?.Length ?? 0) > 0 && store.Public?.publicSelectionActive != true);
@@ -273,7 +276,7 @@ namespace BlackWhale.UI.View
                 allowed = _entryDay.HasValue ? new Vector2Int(_entryDay.Value + 5, Math.Min(30, _entryDay.Value + 10)) : new Vector2Int(0, 25);
             _zoomChart.SetAllowed(allowed);
             _zoomTitle.text = CompanyCatalog.Get(_zoomCompany).DisplayName + " · " + _zoomCompany + "  <size=13>"
-                + (revealed != null ? "전체 플레이어 투자 구간" : store.OrderLocked ? "확정 주문 진입·청산" : windows ? store.Public?.publicSelectionActive == true ? "공용 정보 선택" : "정보 구매 · 구간 예약" : "이번 턴 개인 투자 계획") + "</size>";
+                + (revealed != null ? "전체 플레이어 투자 구간" : stockSystem ? store.Public?.phase == Protocol.Investment ? "진입·청산 구간 결정" : "주식 분석 · 정보 구매" : store.OrderLocked ? "확정 주문 진입·청산" : windows ? store.Public?.publicSelectionActive == true ? "공용 정보 선택" : "정보 구매 · 구간 예약" : "이번 턴 개인 투자 계획") + "</size>";
             _zoomPurchaseStatus.text = store.Public?.publicSelectionActive == true
                 ? "공용 공개 " + (store.Public.publicSelectionIndex + 1) + "/4 · " + store.Public.publicSelectionPlayerId + " 차례"
                 : store.Public?.phase == Protocol.Info
@@ -284,7 +287,7 @@ namespace BlackWhale.UI.View
             for (int i = 0; i < _rankButtons.Length; i++)
                 UiKit.SetButton(_rankButtons[i], i == 0 ? "미정" : i + "순위", CanPlan, plan.Rank == i ? Palette.Accent : Palette.Card, plan.Rank == i ? Color.white : Palette.Text);
             _cancelEntry.interactable = CanPlan && _entryDay.HasValue;
-            string rowsKey = _zoomCompany + ":" + store.CurrentTurn + ":" + (revealed != null) + ":" + store.OrderLocked + ":" + CanPlan + ":" + string.Join(";", intervals.Select(i => i.entryDay + "," + i.exitDay));
+            string rowsKey = _zoomCompany + ":" + store.CurrentTurn + ":" + store.Public?.selectionIndex + ":" + (revealed != null) + ":" + store.OrderLocked + ":" + CanPlan + ":" + string.Join(";", intervals.Select(i => i.entryDay + "," + i.exitDay));
             if (_rowKey != rowsKey)
             {
                 _rowKey = rowsKey; UiKit.Clear(_planRows);
@@ -314,6 +317,10 @@ namespace BlackWhale.UI.View
                 : _note.Length > 0 ? _note : "선택한 기업의 예약은 투자 마감 때 자동 적용됩니다. 투자 화면에서 비중과 구간을 수정할 수 있습니다.";
             if (windows) _zoomMessage.text = revealed != null ? "플레이어 색 띠 = 확정 구간 · 아래 목록을 스크롤해 구간별 수익률을 확인하세요. 종목 합산은 해당 기업의 투자금 기준입니다."
                 : "진입일 시가 → 청산일 종가 · 예약은 투자 마감 때 자동 적용 · 양 끝 조절 / 몸통 이동 / Del 삭제";
+            if (stockSystem && revealed == null) _zoomMessage.text = store.Public?.phase == Protocol.Investment
+                ? "확보한 기업의 진입·청산 구간을 예약한 뒤 매수 창에서 구간 확정 버튼을 누르세요. 진입 전·청산 후 수량은 BANK에 자동 예금됩니다."
+                : "정보 탐색 중에도 진입·청산 구간을 예약할 수 있습니다. 매수 화면과 확대 차트에 예약 구간이 표시되며, 주식을 확보한 기업에만 적용됩니다.";
+            if (stockSystem && revealed != null) _zoomMessage.text = "그래프와 구간 수익률은 증강 적용 전 값입니다. 증강·현금을 포함한 최종 수익률은 전광판에서 확인하세요.";
             RefreshZoomHover();
         }
         private void BuildRevealedRows(RevealedCompany revealed)
@@ -409,7 +416,7 @@ namespace BlackWhale.UI.View
             var state = _c.Store.Public;
             bool windows = state?.windowInformation == true;
             bool showingResults = phase == Protocol.Reveal || phase == Protocol.Result;
-            _title.text = showingResults ? "시장 공개 · 투자 결과" : state?.publicSelectionActive == true ? "공용 정보 선택" : "정보 구매 창";
+            _title.text = showingResults ? "시장 공개 · 투자 결과" : phase == Protocol.Investment && state?.stockSystem == true ? "진입·청산 구간 결정" : state?.publicSelectionActive == true ? "공용 정보 선택" : "정보 구매 창";
             _publicHistory.gameObject.SetActive(windows);
             UiKit.Stretch(_grid, 0, windows ? 76 : 34, 0, 0);
             if (windows) _publicHistory.text = showingResults ? "플레이어 색 띠 = 확정 거래 구간 · 기업별 합산 수익률 표시 · 확대하면 구간별 수익률을 볼 수 있습니다."
@@ -420,6 +427,9 @@ namespace BlackWhale.UI.View
                 ? "개인 정보 수신 대기"
                 : "보유 코인 <b>" + v.coins + "개</b>   ·   자산 " + DisplayFormat.Money(v.assets)
                   + (phase == Protocol.Info ? state?.publicSelectionActive == true ? " · " + state.publicSelectionPlayerId + " 공개 차례" : "   ·   1코인 = 1일" : "   ·   구매는 정보 탐색 단계에서만");
+            if (state?.stockSystem == true && !showingResults && !state.publicSelectionActive)
+                _publicHistory.text = (phase == Protocol.Investment ? "보유 기업의 차트에서 구간을 예약하세요. 구간을 지정하지 않으면 전체 기간 보유합니다.\n" : "1코인 = 새 날짜 1일 · 정보 할인 " + (v?.portfolio?.informationDiscount ?? 0) + "일 · 매수는 각 7초씩 2회, 차례마다 최대 15주입니다.\n")
+                    + string.Join(" / ", (v?.portfolio?.insights ?? Array.Empty<StockInsight>()).Select(i => i.companyId + " 이벤트 성공 가능성 " + DisplayFormat.Percent(i.probabilityBps, false)));
             foreach (var card in _cards) card.Refresh();
             if (_zoomCompany != null)
             {
@@ -519,14 +529,13 @@ namespace BlackWhale.UI.View
             _window.CanReserve = () => CanPlan && _c.Store.TradePlans.RangeError(_companyId, Selection.SelectedIndex, Selection.Start, Selection.End) == "";
             _window.Reserve = () => { SaveReservation(); EventSystem.current?.SetSelectedGameObject(_pointer.gameObject); };
             pointer.CanEditRange = () => _c.Store.Public?.paused != true && string.IsNullOrEmpty(_c.Store.EndReason) &&
-                (_c.Store.Public?.phase == Protocol.Info || _c.Store.Public?.phase == Protocol.Selection);
+                (_c.Store.Public?.phase == Protocol.Info || CanPlan);
             pointer.Intervals = () => CanPlan ? _c.Store.TradePlans.Get(_companyId).Intervals : Array.Empty<Interval>();
             pointer.EditInterval = (index, entryDay, exitDay) => CanPlan ? _c.Store.TradePlans.TryReplaceInterval(_companyId, index, entryDay, exitDay) : ErrorCodes.OrderLocked;
             pointer.DeleteInterval = index => { if (CanPlan) _c.Store.TradePlans.RemoveInterval(_companyId, index); };
             pointer.RangeChanged = () => { DrawSelection(); _window.Refresh(); };
         }
-        private bool CanPlan => _c.Store.Public?.paused != true && _c.Store.Public?.publicSelectionActive != true && !_c.Store.OrderLocked && string.IsNullOrEmpty(_c.Store.EndReason)
-            && (_c.Store.Public?.phase == Protocol.Info || _c.Store.Public?.phase == Protocol.Selection);
+        private bool CanPlan => _c.CanPlanTrade(_companyId);
         public string SaveReservation()
         {
             if (!CanPlan || !Selection.HasSelection) return "지금은 예약할 수 없습니다.";

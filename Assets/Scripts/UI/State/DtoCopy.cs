@@ -50,6 +50,7 @@ namespace BlackWhale.UI.State
                 selectedCompanies = (string[])s.selectedCompanies?.Clone(),
                 ownInvestments = Copy(s.ownInvestments),
                 reservedInvestments = Copy(s.reservedInvestments),
+                portfolio = Copy(s.portfolio),
                 companies = s.companies?.Select(Copy).ToArray(),
                 ability = Copy(s.ability), auction = Copy(s.auction), inventory = (string[])s.inventory?.Clone()
             };
@@ -81,7 +82,10 @@ namespace BlackWhale.UI.State
                 publicSelectionIndex = s.publicSelectionIndex, publicSelectionPlayerId = s.publicSelectionPlayerId,
                 publicSelectionDeadlineAtServerSeconds = s.publicSelectionDeadlineAtServerSeconds,
                 publicInformation = s.publicInformation?.Select(c => new PublicInformationChoice { playerId = c.playerId,
-                    companyId = c.companyId, startDay = c.startDay, automatic = c.automatic }).ToArray()
+                    companyId = c.companyId, startDay = c.startDay, automatic = c.automatic }).ToArray(),
+                stockSystem = s.stockSystem, totalTurns = s.totalTurns, draftOrder = (string[])s.draftOrder?.Clone(),
+                shareMarket = s.shareMarket?.Select(c => new CompanyShareState { companyId = c.companyId, totalShares = c.totalShares,
+                    owners = c.owners?.Select(p => new ShareOwner { playerId = p.playerId, shares = p.shares, reserved = p.reserved }).ToArray() }).ToArray()
             };
 
         public static ReturnPoint Copy(ReturnPoint s)
@@ -112,7 +116,7 @@ namespace BlackWhale.UI.State
 
         public static RevealedCompany Copy(RevealedCompany s)
             => s == null ? null : new RevealedCompany { companyId = s.companyId, dailyChangesBps = (int[])s.dailyChangesBps?.Clone(),
-                investments = s.investments?.Select(i => new RevealedInvestment { playerId = i.playerId, returnBps = i.returnBps,
+                investments = s.investments?.Select(i => new RevealedInvestment { playerId = i.playerId, returnBps = i.returnBps, shares = i.shares,
                     intervals = i.intervals?.Select(v => new RevealedTrade { entryDay = v.entryDay, exitDay = v.exitDay, returnBps = v.returnBps }).ToArray() }).ToArray() };
         public static AbilityState Copy(AbilityState s) => s == null ? null : new AbilityState {
             candidates = (string[])s.candidates?.Clone(), selectedId = s.selectedId,
@@ -125,7 +129,13 @@ namespace BlackWhale.UI.State
         public static HistorySnapshot Copy(HistorySnapshot s) => s == null ? null : new HistorySnapshot {
             turn = s.turn, playerView = Copy(s.playerView), scoreboard = Copy(s.scoreboard) };
         public static VisibleInformationWindow Copy(VisibleInformationWindow s) => s == null ? null : new VisibleInformationWindow {
-            recordId = s.recordId, source = s.source, startDay = s.startDay, paidCoins = s.paidCoins,
+            recordId = s.recordId, source = s.source, companyId = s.companyId, startDay = s.startDay, paidCoins = s.paidCoins,
             dailyChangesBps = (int[])s.dailyChangesBps?.Clone(), dailyOpenBps = (int[])s.dailyOpenBps?.Clone() };
+        public static PortfolioState Copy(PortfolioState s) => s == null ? null : new PortfolioState {
+            capacity = s.capacity, usedSlots = s.usedSlots, informationDiscount = s.informationDiscount, draftSharesRemaining = s.draftSharesRemaining,
+            augmentChosen = s.augmentChosen, priorityUsed = s.priorityUsed, concentrationCompany = s.concentrationCompany,
+            augments = (string[])s.augments?.Clone(), candidates = (string[])s.candidates?.Clone(),
+            holdings = s.holdings?.Select(v => new PortfolioHolding { companyId = v.companyId, shares = v.shares, consecutiveTurns = v.consecutiveTurns }).ToArray(),
+            insights = s.insights?.Select(v => new StockInsight { companyId = v.companyId, message = v.message, probabilityBps = v.probabilityBps }).ToArray() };
     }
 }

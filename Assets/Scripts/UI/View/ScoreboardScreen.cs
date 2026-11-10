@@ -14,6 +14,9 @@ namespace BlackWhale.UI.View
     public sealed class ScoreboardScreen
     {
         private readonly RectTransform _root;
+        private int _turnCount = 10;
+        private bool _stockMode;
+        private bool IsSpecialTurn(int turn) => _stockMode ? turn == 1 || turn == 3 || turn == 5 : ScoreboardModel.IsAuctionTurn(turn);
 
         public ScoreboardScreen(RectTransform root) => _root = root;
 
@@ -21,6 +24,7 @@ namespace BlackWhale.UI.View
         {
             UiKit.Clear(_root);
             if (m == null) return;
+            _turnCount = m.GameTurns; _stockMode = m.StockSystem;
             if (m.Final) BuildFinal(m);
             else BuildLive(m);
         }
@@ -31,7 +35,7 @@ namespace BlackWhale.UI.View
 
         private void BuildLive(ScoreboardModel m)
         {
-            ScreenKit.Title(_root, "<b>전광판</b>   <size=15><color=#6B7280>" + m.Turn + "턴 / " + ScoreboardModel.TotalTurns + "턴</color></size>");
+            ScreenKit.Title(_root, "<b>전광판</b>   <size=15><color=#6B7280>" + m.Turn + "턴 / " + _turnCount + "턴</color></size>");
             BuildTurnStrip(m.Turn, false);
 
             var left = UiKit.Rect(_root, "Ranking");
@@ -57,8 +61,8 @@ namespace BlackWhale.UI.View
         {
             const float cell = 40f, gap = 4f;
             var strip = UiKit.Rect(_root, "TurnStrip");
-            UiKit.Place(strip, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-4, 0), new Vector2(ScoreboardModel.TotalTurns * (cell + gap), 42));
-            for (int t = 1; t <= ScoreboardModel.TotalTurns; t++)
+            UiKit.Place(strip, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-4, 0), new Vector2(_turnCount * (cell + gap), 42));
+            for (int t = 1; t <= _turnCount; t++)
             {
                 bool done = allDone || t < current;
                 bool now = !allDone && t == current;
@@ -68,9 +72,9 @@ namespace BlackWhale.UI.View
                 UiKit.Place(frame, new Vector2(0, 1), new Vector2(0, 1), new Vector2((t - 1) * (cell + gap), 0), new Vector2(cell, 28));
                 var label = UiKit.Label(inner, t.ToString(), 13, done ? Palette.DisabledText : Palette.Text, TextAnchor.MiddleCenter, now ? FontStyle.Bold : FontStyle.Normal);
                 UiKit.Stretch(label.rectTransform);
-                if (ScoreboardModel.IsAuctionTurn(t))
+                if (IsSpecialTurn(t))
                 {
-                    var tag = UiKit.Label(strip, "입찰", 9, ScreenKit.Gold, TextAnchor.UpperCenter, FontStyle.Bold);
+                    var tag = UiKit.Label(strip, _stockMode ? "증강" : "입찰", 9, ScreenKit.Gold, TextAnchor.UpperCenter, FontStyle.Bold);
                     UiKit.Place(tag.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2((t - 1) * (cell + gap), -29), new Vector2(cell, 12));
                 }
             }
@@ -169,8 +173,8 @@ namespace BlackWhale.UI.View
             var chartRt = UiKit.Rect(inner, "Chart");
             UiKit.Stretch(chartRt, 48, 34, 14, 40);
             var chart = chartRt.gameObject.AddComponent<LineChartGraphic>();
-            chart.SetRange(1, ScoreboardModel.TotalTurns, -limit, limit);
-            for (int t = 1; t <= ScoreboardModel.TotalTurns; t++) chart.AddVLine(t, ScoreboardModel.IsAuctionTurn(t) ? new Color32(0xFD, 0xE6, 0x8A, 0xFF) : new Color32(0xEE, 0xF0, 0xF3, 0xFF));
+            chart.SetRange(1, _turnCount, -limit, limit);
+            for (int t = 1; t <= _turnCount; t++) chart.AddVLine(t, IsSpecialTurn(t) ? new Color32(0xFD, 0xE6, 0x8A, 0xFF) : new Color32(0xEE, 0xF0, 0xF3, 0xFF));
             chart.AddHLine(0, Palette.Grid, 1.5f);
             foreach (var p in m.Players)
             {
@@ -182,10 +186,10 @@ namespace BlackWhale.UI.View
             Axis(inner, "+" + limit + "%", new Vector2(0, 1), new Vector2(4, -34));
             Axis(inner, "0%", new Vector2(0, 0.5f), new Vector2(4, 3));
             Axis(inner, "-" + limit + "%", new Vector2(0, 0), new Vector2(4, 48));
-            for (int t = 1; t <= ScoreboardModel.TotalTurns; t++)
+            for (int t = 1; t <= _turnCount; t++)
             {
                 var tick = UiKit.Label(chartRt, t + "턴", 9, Palette.SubText, TextAnchor.UpperCenter);
-                UiKit.Place(tick.rectTransform, new Vector2((t - 1) / (float)(ScoreboardModel.TotalTurns - 1), 0), new Vector2(0.5f, 1), new Vector2(0, -2), new Vector2(36, 12));
+                UiKit.Place(tick.rectTransform, new Vector2((t - 1) / (float)(_turnCount - 1), 0), new Vector2(0.5f, 1), new Vector2(0, -2), new Vector2(36, 12));
             }
 
             // 범례
@@ -250,8 +254,8 @@ namespace BlackWhale.UI.View
 
         private void BuildFinal(ScoreboardModel m)
         {
-            ScreenKit.Title(_root, "<b>최종 결과</b>   <size=15><color=#6B7280>" + ScoreboardModel.TotalTurns + "턴 종료</color></size>");
-            BuildTurnStrip(ScoreboardModel.TotalTurns, true);
+            ScreenKit.Title(_root, "<b>최종 결과</b>   <size=15><color=#6B7280>" + _turnCount + "턴 종료</color></size>");
+            BuildTurnStrip(_turnCount, true);
 
             var podium = UiKit.Rect(_root, "Podium");
             UiKit.Anchor(podium, 0, 0.42f, 1, 1);
@@ -300,7 +304,7 @@ namespace BlackWhale.UI.View
             UiKit.Anchor(trend, 0, 0, 1, 0.42f);
             trend.offsetMin = new Vector2(0, 22);
             trend.offsetMax = new Vector2(0, -8);
-            BuildTrend(trend, m, "10턴 동안의 턴 수익률");
+            BuildTrend(trend, m, _turnCount + "턴 동안의 턴 수익률");
 
             var note = UiKit.Label(_root, string.IsNullOrEmpty(m.FinalNote)
                     ? "동점이면 최종 자산 → 남은 코인 → 최고 단일 턴 수익률 → 시작 추첨 순서로 순위를 정합니다(판정은 서버)."

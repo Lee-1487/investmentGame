@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using BlackWhale.Bots;
 using BotDifficulty = BlackWhale.Bots.BotDifficulty;
 using BlackWhale.Shared;
@@ -56,6 +57,40 @@ namespace BlackWhale.UI.Dev
             if (now - since < thinkSeconds) return;
             var view = controller.Store.View;
             if (s.phase != Protocol.Lobby && (view == null || view.turn != s.turn)) return;
+            if (s.stockSystem && s.phase == StockRules.AugmentPhase)
+            {
+                if (view?.portfolio?.augmentChosen == false && view.portfolio.candidates?.Length > 0)
+                    controller.ChooseAugment(view.portfolio.candidates[0], "AI");
+                return;
+            }
+            if (s.stockSystem && s.phase == Protocol.Selection)
+            {
+                if (!controller.CanDraftShares()) return;
+                var p = view.portfolio;
+                var ranked = (s.shareMarket ?? new CompanyShareState[0]).OrderByDescending(c => {
+                    var visible = view.companies?.FirstOrDefault(v => v.companyId == c.companyId);
+                    var known = InformationWindowRules.KnownDays(visible).Where(v => v.HasValue).Select(v => v.Value).ToArray();
+                    return known.Length > 1 ? known[known.Length - 1] - known[0] : 0;
+                });
+                int budget = Math.Min(p.CashSlots, p.draftSharesRemaining);
+                var shareOrders = new System.Collections.Generic.List<ShareOrder>();
+                foreach (var c in ranked.Where(company => company.companyId != "BANK"))
+                {
+                    int own = p.holdings.First(v => v.companyId == c.companyId).shares;
+                    int remaining = StockRules.Supply - c.owners.Sum(v => v.shares + v.reserved);
+                    int added = Math.Max(0, Math.Min(p.LimitFor(c.companyId) - own, Math.Min(remaining, budget)));
+                    if (added == 0) continue;
+                    shareOrders.Add(new ShareOrder { companyId = c.companyId, targetShares = own + added }); budget -= added;
+                }
+                if (shareOrders.Count > 0) { controller.TradeShares(shareOrders.ToArray()); since = now; return; }
+                controller.PassStockDraft(); since = now; return;
+            }
+            if (s.stockSystem && s.phase == Protocol.Investment)
+            {
+                if (!controller.Store.OrderLocked && !controller.Store.HasPending(CommandTypes.SubmitInvestment))
+                    controller.SubmitInvestment(controller.CurrentTradeReservations());
+                since = now; return;
+            }
             switch (s.phase)
             {
                 case Protocol.Lobby:

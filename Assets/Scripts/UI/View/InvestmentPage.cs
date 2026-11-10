@@ -20,7 +20,10 @@ namespace BlackWhale.UI.View
         private readonly GameClientController _c;
         private readonly LobbyActions _lobby;
         private readonly Text _status;
+        private readonly Text _title;
         private readonly RectTransform _body;
+        private readonly StockSystemPage _stockPage;
+        public System.Action<string> OpenStockPlan;
 
         private InvestmentDraft _draft;
         private int _draftTurn = -1;
@@ -44,6 +47,7 @@ namespace BlackWhale.UI.View
             _lobby = lobby;
 
             var title = UiKit.Label(page, "매수 창", 18, Palette.Text, TextAnchor.MiddleLeft, FontStyle.Bold);
+            _title = title;
             UiKit.Place(title.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(6, -2), new Vector2(200, 28));
 
             _status = UiKit.Label(page, "", 14, Palette.SubText, TextAnchor.MiddleRight);
@@ -51,10 +55,16 @@ namespace BlackWhale.UI.View
 
             _body = UiKit.Rect(page, "Body");
             UiKit.Stretch(_body, 0, 34, 0, 0);
+            _stockPage = new StockSystemPage(_body, _c) { OpenPlan = id => OpenStockPlan?.Invoke(id) };
         }
 
         public void Refresh()
         {
+            var current = _c.Store.Public;
+            bool stock = current?.stockSystem == true && current.phase != Protocol.Lobby;
+            _title.gameObject.SetActive(!stock); _status.gameObject.SetActive(!stock);
+            UiKit.Stretch(_body, 0, stock ? 0 : 34, 0, 0);
+            if (stock && _stockPage.TryRefresh()) return;
             UiKit.Clear(_body);
             var s = _c.Store.Public;
             if (s == null)
@@ -65,6 +75,11 @@ namespace BlackWhale.UI.View
 
             string mine = _c.Store.OwnSelections.Count == 0 ? "없음" : string.Join(", ", _c.Store.OwnSelections);
             _status.text = s.turn + "턴 · " + PhaseNames.Korean(s.phase) + "   ·   내 선택: " + mine;
+            if (s.stockSystem && s.phase != Protocol.Lobby)
+            {
+                _status.text = s.turn + "/" + s.totalTurns + "턴 · " + PhaseNames.ForState(s) + " · 보유 " + (_c.Store.View?.portfolio?.usedSlots ?? 0) + "/30칸";
+                _stockPage.Build(); return;
+            }
 
             if (!string.IsNullOrEmpty(_c.Store.EndReason) || s.phase == Protocol.Ended)
             {
@@ -826,6 +841,7 @@ namespace BlackWhale.UI.View
 
     public static class PhaseNames
     {
+        public static string ForState(PublicState state) => state?.stockSystem == true && state.phase == Protocol.Selection ? "주식 경쟁" : Korean(state?.phase);
         public static string Korean(string phase)
         {
             switch (phase)
@@ -834,6 +850,7 @@ namespace BlackWhale.UI.View
                 case Protocol.Ended: return "종료";
                 case "AUCTION": return "입찰";
                 case Protocol.AbilitySelection: return "능력 선택";
+                case StockRules.AugmentPhase: return "증강 선택";
                 case Protocol.Info: return "정보 탐색";
                 case Protocol.Selection: return "기업 선택";
                 case Protocol.Investment: return "투자 결정";

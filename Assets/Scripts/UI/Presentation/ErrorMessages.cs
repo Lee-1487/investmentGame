@@ -9,6 +9,7 @@ namespace BlackWhale.UI.Presentation
         {
             switch (errorCode)
             {
+                case "DRAFT_SHARE_LIMIT": return "한 차례에는 새로 매수하는 수량을 합쳐 최대 15주까지 투자할 수 있습니다.";
                 case "INVALID_WINDOW": return "1~30일 안에서 시작일과 끝일을 선택하세요. 공용 공개는 연속 5일입니다.";
                 case "PUBLIC_SELECTION_PENDING": return "4명의 공용 공개를 마친 뒤 개인 탐색을 시작합니다.";
                 case "PUBLIC_SELECTION_COMPLETE": return "공용 공개가 모두 끝났습니다.";

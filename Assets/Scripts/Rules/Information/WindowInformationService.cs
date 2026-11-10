@@ -108,9 +108,14 @@ namespace BlackWhale.Rules.Information
                 // Read before charging, so unavailable data never consumes a coin/credit.
                 ((IWindowMarketDataSource)source).GetWindow(c.Turn, company, start, length);
                 var feature = FeaturePlayer(c.RoomId, c.PlayerId);
-                int free = Math.Min(newDays, feature?.FreeCredits ?? 0), cost = newDays - free;
+                var stock = source as IStockMarketSystem;
+                int stockDiscount = stock?.StockEnabled == true ? stock.InformationDiscount(c.PlayerId) : 0;
+                int featureFree = Math.Min(newDays, feature?.FreeCredits ?? 0);
+                int stockFree = Math.Min(newDays - featureFree, stockDiscount);
+                int free = featureFree + stockFree, cost = newDays - free;
                 if (!rooms[c.RoomId].Service.SpendWindowCoins(c.PlayerId, c.Turn, cost)) return new RuleResult("NOT_ENOUGH_COINS");
-                if (feature != null) feature.FreeCredits -= free;
+                if (feature != null) feature.FreeCredits -= featureFree;
+                if (stockFree > 0) stock.ConsumeInformationDiscount(c.PlayerId, stockFree);
                 return WindowResult(c, AddWindow(c, company, start, cost == 0 ? "ABILITY" : "PURCHASED", cost, length: length));
             });
         }
@@ -122,6 +127,10 @@ namespace BlackWhale.Rules.Information
         private void PopulateWindows(RequestContext c, PlayerView view)
         {
             var state = Windows(c);
+            if (source is IStockMarketSystem stock && stock.StockEnabled && c.Turn == rooms[c.RoomId].CurrentTurn)
+                foreach (var analysis in stock.AnalysisWindows(c.PlayerId))
+                    if (!state.Records.Any(r => r.Player == c.PlayerId && r.Company == analysis.companyId && r.Source == "AUGMENT"))
+                        AddWindow(c, analysis.companyId, analysis.startDay, "AUGMENT", 0, length: analysis.dailyChangesBps.Length);
             foreach (var company in view.companies)
             {
                 company.visibleBundles = Array.Empty<VisibleBundle>();

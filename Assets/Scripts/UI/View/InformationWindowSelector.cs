@@ -44,14 +44,19 @@ namespace BlackWhale.UI.View
         public void Refresh()
         {
             var state = controller.Store.Public;
-            Root.gameObject.SetActive(state?.windowInformation == true && (state.phase == Protocol.Info || state.phase == Protocol.Selection));
+            Root.gameObject.SetActive(state?.windowInformation == true && (state.phase == Protocol.Info || state.phase == Protocol.Selection || state.stockSystem && state.phase == Protocol.Investment));
             if (state?.windowInformation != true) return;
+            bool planning = state.stockSystem && state.phase == Protocol.Investment;
+            confirm.gameObject.SetActive(!planning);
+            reserve.gameObject.SetActive(!state.stockSystem || companyId() != "BANK");
+            ((RectTransform)reserve.transform).anchorMin = new Vector2(planning ? 0 : .5f, 0);
+            ((RectTransform)confirm.transform).anchorMax = new Vector2(state.stockSystem && companyId() == "BANK" ? 1 : .5f, 0);
             Selection.FixedPublicWindow = state.publicSelectionActive;
             string id = companyId();
             var company = controller.Store.View?.companies?.FirstOrDefault(c => c.companyId == id);
             int start = Math.Max(1, StartDay), count = Selection.HasSelection ? InformationWindowRules.NewDays(company, start, EndDay) : 0;
             bool choosing = state.publicSelectionActive, mine = choosing && state.publicSelectionPlayerId == controller.LocalPlayerId;
-            int free = Math.Min(count, controller.Store.View?.ability?.freeInformationCredits ?? 0), cost = count - free;
+            int free = Math.Min(count, (controller.Store.View?.ability?.freeInformationCredits ?? 0) + (controller.Store.View?.portfolio?.informationDiscount ?? 0)), cost = count - free;
             bool overlap = choosing && InformationWindowRules.OverlapsPublic(state, id, StartDay);
             bool pending = controller.Store.HasPending(choosing ? CommandTypes.RevealInformationWindow : CommandTypes.BuyInformationWindow);
             bool active = !state.paused && string.IsNullOrEmpty(controller.Store.EndReason);
@@ -60,6 +65,7 @@ namespace BlackWhale.UI.View
                 (choosing ? mine && validPublic : count > 0 && cost <= (controller.Store.View?.coins ?? 0));
             status.text = !Selection.HasSelection ? "차트에서 클릭 또는 드래그로 구간 선택" : StartDay + "~" + EndDay + "일 · 새 " + count + "일 · "
                 + (choosing ? overlap ? "공개 겹침" : mine ? "무료 공개" : "차례 대기" : cost + "코인" + (free > 0 ? " / 무료 " + free + "일" : ""));
+            if (planning && Selection.HasSelection) status.text = StartDay + "일 시가 → " + EndDay + "일 종가";
             UiKit.SetButton(confirm, pending ? "요청 중…" : choosing ? "공용 공개" : "정보 사기", can,
                 can ? Palette.Accent : Palette.Disabled, can ? Color.white : Palette.DisabledText);
             bool reserveCan = active && !choosing && Selection.HasSelection && CanReserve?.Invoke() == true;
