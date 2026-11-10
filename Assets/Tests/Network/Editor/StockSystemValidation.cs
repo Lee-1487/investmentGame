@@ -22,10 +22,10 @@ namespace BlackWhale.Tests
             public readonly SharedInformationService Info;
             public readonly GameRoom Room;
             private int sequence;
-            public Harness()
+            public Harness(TimerMode mode = TimerMode.Realtime)
             {
                 Info = new SharedInformationService(Market);
-                Room = new GameRoom("STOCK", Market, Info, Clock, fixedOrderForFixture: true,
+                Room = new GameRoom("STOCK", Market, Info, Clock, mode: mode, fixedOrderForFixture: true,
                     settings: new GameSettings(5, 6, 2, enableProgressionFeatures: false));
                 for (int i = 1; i <= 4; i++) { Room.Join("c" + i, "Player " + i); Send(i, "SET_READY", new CommandPayload { ready = true }); }
                 Send(1, "START_GAME");
@@ -74,6 +74,8 @@ namespace BlackWhale.Tests
             run("new-turn-snapshots-clear-old-private-data-and-periodic-state-keeps-deadlines", TurnSnapshots);
             run("all-unused-slots-automatically-fill-one-hundred-twenty-bank-shares", Bank);
             run("slot-weighted-multicompany-cash-and-settlement-replay", Settlement);
+            run("developer-mode-waits-for-human-and-bots-complete-without-timeouts", DeveloperMode);
+            run("bank-reservations-limit-interest-and-idle-slots-return-to-cash", BankIntervals);
             run("augment-candidates-discounts-focus-flexibility-and-priority", Augments);
             run("six-turns-augmentation-schedule-reset-timeouts-and-final-ranking", SixTurns);
             run("turn-start-restores-all-stock-supply-and-bank-preserving-assets-and-history", ResetHoldings);
@@ -235,6 +237,93 @@ namespace BlackWhale.Tests
             decimal expected=10000m*(mixed/3m+price("BANK",30)/10000m*2m/3m);
             Check(Math.Abs(board.rows.Single(v=>v.playerId=="P1").totalAssets-expected)<=1, "actual entry/exit and BANK valuation");
             Check(m.GetWindow(1,"BANK",1,30).All(v=>Math.Abs(v)<=200),"bounded BANK series");
+        }
+        private sealed class LocalClient : IGameClient
+        {
+            private readonly Harness harness;
+            private readonly int player;
+            public event Action<ServerMessage> MessageReceived;
+            public LocalClient(Harness harness, int player) { this.harness = harness; this.player = player; }
+            public void SendCommand(Command command)
+            { Check(harness.Room.ProcessCommand("c" + player, command).success, "developer client command " + command.type); }
+            public void Receive(ServerMessage message) => MessageReceived?.Invoke(message);
+            public void Pump() { }
+            public void Dispose() { }
+        }
+        private static void DeveloperMode()
+        {
+            var h = new Harness(TimerMode.Developer);
+            var clients = Enumerable.Range(1, 4).Select(p => new LocalClient(h, p)).ToArray();
+            var human = new GameClientController(clients[0]);
+            var bots = Enumerable.Range(1, 3).Select(i => new BlackWhale.UI.Dev.DevBot(clients[i], 0, i)).ToArray();
+            Action pump = () => {
+                foreach (var delivery in h.Room.DrainMessages())
+                    clients[int.Parse(delivery.PlayerId.Substring(1)) - 1].Receive(delivery.Message);
+            };
+            Action wait = () => { h.Clock.Seconds += 1000; h.Room.Tick(); pump(); };
+            try
+            {
+                pump(); wait();
+                Check(h.Room.Snapshot().phase == StockRules.AugmentPhase, "developer augment does not time out");
+                Check(human.Store.Public.developerMode && !BlackWhale.UI.Presentation.PhaseClock.HasDeadline(human.Store.Public), "developer state survives client copy without deadline");
+                human.ChooseAugment(h.Market.GetPortfolio("P1").candidates[0]); pump();
+                for (int n = 0; n < 300 && h.Room.Snapshot().phase != Protocol.Result; n++)
+                {
+                    foreach (var bot in bots) { bot.Update(n); pump(); }
+                    var state = h.Room.Snapshot();
+                    wait();
+                    Check(h.Room.Snapshot().phase == state.phase && h.Room.Snapshot().selectionIndex == state.selectionIndex,
+                        "elapsed time alone cannot advance developer phase");
+                    if (state.publicSelectionActive && state.publicSelectionPlayerId == "P1")
+                    {
+                        Check(h.Send(1, "REVEAL_INFORMATION_WINDOW", new CommandPayload { companyId = "SPACE", startDay = Enumerable.Range(1, 26).First(start => !state.publicInformation.Any(v => v.companyId == "SPACE" && start < v.startDay + 5 && v.startDay < start + 5)) }).success, "human chooses public window after elapsed deadline");
+                        pump();
+                    }
+                    else if (state.phase == Protocol.Info && !state.publicSelectionActive ||
+                        state.phase == Protocol.Selection && state.currentPlayerId == "P1" || state.phase == Protocol.Investment || state.phase == Protocol.Reveal)
+                    {
+                        if (human.CanCompleteStep()) { Check(human.CompleteStep() == CommandStatus.Sent, "human side completion"); pump(); }
+                    }
+                }
+                Check(h.Room.Snapshot().phase == Protocol.Result, "three bots finish public picks, information, purchases, investments and reveal");
+                for (int n = 0; n < 5; n++) { foreach (var bot in bots) { bot.Update(400 + n); pump(); } }
+                wait(); Check(h.Room.Snapshot().phase == Protocol.Result, "result waits for human completion");
+                Check(human.CompleteStep() == CommandStatus.Sent, "human completes result"); pump();
+                Check(h.Room.Snapshot().turn == 2, "explicit human completion starts next turn");
+            }
+            finally { human.Dispose(); foreach (var bot in bots) bot.Dispose(); }
+        }
+        private static void BankIntervals()
+        {
+            var m = MarketService.CreateStockSystem(19);
+            m.BeginTurn(new RequestContext("B", 1, Protocol.Info), Players);
+            var ctx = new RequestContext("B", 1, Protocol.Investment, "P1");
+            var bank = new Investment { companyId = "BANK", intervals = new[] {
+                new Interval { entryDay = 3, exitDay = 5 }, new Interval { entryDay = 10, exitDay = 12 } } };
+            Check(m.SubmitInvestment(ctx, new[] { bank }).Success, "BANK may be reserved without purchasing shares");
+            Check(m.GetReservations("P1").Single().intervals.Length == 2, "multiple BANK ranges retained");
+            m.GetReservations("P1")[0].intervals[0].entryDay = 1;
+            Check(m.GetReservations("P1")[0].intervals[0].entryDay == 3, "BANK reservation copy isolated");
+            Check(m.TradeShares(new RequestContext("B", 1, Protocol.Selection, "P3"), new[] { new ShareOrder { companyId = "AI", targetShares = 10 } }).Success, "stock slots reserved alongside BANK");
+            Check(m.SubmitInvestment(new RequestContext("B", 1, Protocol.Investment, "P3"), new[] { bank,
+                new Investment { companyId = "AI", intervals = new[] { new Interval { entryDay = 3, exitDay = 5 } } } }).Success, "stock and BANK intervals may overlap for different slots");
+            var p4 = new RequestContext("B", 1, Protocol.Investment, "P4");
+            Check(!m.SaveReservations(p4, new[] { new Investment { companyId = "BANK", intervals = new[] { new Interval { entryDay = 8, exitDay = 3 } } } }).Success, "invalid BANK interval rejected");
+            Check(m.SaveReservations(p4, new[] { bank }).Success && m.SaveReservations(p4, Array.Empty<Investment>()).Success, "removing BANK reservation restores default");
+            m.LockPortfolios(); var board = m.SettleTurn(new RequestContext("B", 1, Protocol.Reveal));
+            Func<int, decimal> price = d => 10000m + m.GetWindow(1, "BANK", d, 1)[0];
+            decimal expected = 10000m * price(5) / price(2) * price(12) / price(9);
+            Check(Math.Abs(board.rows.Single(v => v.playerId == "P1").totalAssets - expected) <= 1, "BANK interest only accrues within reserved intervals");
+            Check(board.rows.Single(v => v.playerId == "P2").totalAssets == 10000 + m.GetWindow(1, "BANK", 30, 1)[0], "unconfigured BANK preserves full-period return");
+            long nextAssets = board.rows.Single(v => v.playerId == "P1").totalAssets;
+            decimal stockFactor = (10000m + m.GetWindow(1, "AI", 5, 1)[0]) / (10000m + m.GetWindow(1, "AI", 2, 1)[0]);
+            decimal mixed = 10000m * (stockFactor / 3 + price(5) / price(2) * 2 / 3) * price(12) / price(9);
+            Check(Math.Abs(board.rows.Single(v => v.playerId == "P3").totalAssets - mixed) <= 2, "BANK accrues only on idle slots, without double counting stock gains");
+            Check(board.rows.Single(v => v.playerId == "P4").totalAssets == board.rows.Single(v => v.playerId == "P2").totalAssets, "deleted BANK reservation restores full-period return");
+            m.BeginTurn(new RequestContext("B", 2, Protocol.Info), Players);
+            Check(m.GetReservations("P1").Length == 0, "new turn clears BANK reservation");
+            m.LockPortfolios(); board = m.SettleTurn(new RequestContext("B", 2, Protocol.Reveal));
+            Check(Math.Abs(board.rows.Single(v => v.playerId == "P1").totalAssets - nextAssets * (1 + m.GetWindow(2, "BANK", 30, 1)[0] / 10000m)) <= 1, "next turn restores full-period BANK");
         }
         private static List<string> OwnedAugments(MarketService market, string id)
         {

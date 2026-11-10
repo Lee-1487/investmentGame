@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.NetworkInformation;
@@ -6,6 +6,7 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 using BlackWhale.Network;
+using BlackWhale.Flow;
 using BlackWhale.Bots;
 using BotDifficulty = BlackWhale.Bots.BotDifficulty;
 using BlackWhale.Rules;
@@ -28,7 +29,9 @@ namespace BlackWhale.UI.Dev
         [SerializeField] private float botThinkSeconds = 1.2f;
         private RectTransform canvasRoot, connectionPanel;
         private InputField nickname, address, port;
-        private Button hostButton, joinButton, cancelButton;
+        private Button hostButton, joinButton, cancelButton, normalTab, developerTab;
+        private Text modeHint;
+        private bool developerMode;
         private Text connectionStatus;
         private NetworkSession session;
         private GameClientController controller;
@@ -74,24 +77,40 @@ namespace BlackWhale.UI.Dev
             connectionPanel = UiKit.Panel(canvasRoot, "ConnectionScreen", Palette.Background, raycast: true).rectTransform;
             UiKit.Stretch(connectionPanel);
             var card = UiKit.Panel(connectionPanel, "ConnectionCard", Palette.Card, rounded: true).rectTransform;
-            UiKit.Place(card, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(640, 570));
+            UiKit.Place(card, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(640, 650));
             Label(card, "BLACK WHALE", 30, -26, 50, Palette.Text);
             Label(card, "함께 플레이할 방을 만들거나 방장 주소로 참가하세요.", 16, -84, 30, Palette.SubText);
-            nickname = Field(card, "Nickname", "이름", "플레이어", -140, 32);
-            address = Field(card, "HostAddress", "방장 주소 (참가할 때)", "127.0.0.1", -212, 253);
-            port = Field(card, "Port", "포트", "7777", -284, 5);
+            normalTab = UiKit.Button(card, "일반 플레이", 15, Palette.Accent, Color.white, () => SelectMode(false));
+            normalTab.name = "NormalPlayTab";
+            developerTab = UiKit.Button(card, "개발자", 15, Palette.AccentSoft, Palette.Accent, () => SelectMode(true));
+            developerTab.name = "DeveloperPlayTab";
+            UiKit.Place((RectTransform)normalTab.transform, new Vector2(.5f, 1), new Vector2(.5f, 1), new Vector2(-135, -126), new Vector2(250, 32));
+            UiKit.Place((RectTransform)developerTab.transform, new Vector2(.5f, 1), new Vector2(.5f, 1), new Vector2(135, -126), new Vector2(250, 32));
+            modeHint = Label(card, "", 12, -162, 28, Palette.SubText);
+            SelectMode(false);
+            nickname = Field(card, "Nickname", "이름", "플레이어", -206, 32);
+            address = Field(card, "HostAddress", "방장 주소 (참가할 때)", "127.0.0.1", -278, 253);
+            port = Field(card, "Port", "포트", "7777", -350, 5);
             port.contentType = InputField.ContentType.IntegerNumber;
             hostButton = UiKit.Button(card, "방 만들기", 18, Palette.Accent, Color.white, () => BeginConnection(true));
             hostButton.name = "Host";
-            UiKit.Place((RectTransform)hostButton.transform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(-135, -370), new Vector2(250, 48));
+            UiKit.Place((RectTransform)hostButton.transform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(-135, -436), new Vector2(250, 48));
             joinButton = UiKit.Button(card, "참가", 18, Palette.AccentSoft, Palette.Accent, () => BeginConnection(false));
             joinButton.name = "Join";
-            UiKit.Place((RectTransform)joinButton.transform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(135, -370), new Vector2(250, 48));
-            connectionStatus = Label(card, "", 14, -432, 66, Palette.SubText);
+            UiKit.Place((RectTransform)joinButton.transform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(135, -436), new Vector2(250, 48));
+            connectionStatus = Label(card, "", 14, -498, 66, Palette.SubText);
             cancelButton = UiKit.Button(card, "연결 취소", 13, Palette.Card, Palette.Text, Leave);
             cancelButton.name = "CancelConnection";
             UiKit.Place((RectTransform)cancelButton.transform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 22), new Vector2(180, 32));
             cancelButton.gameObject.SetActive(false);
+        }
+
+        private void SelectMode(bool developer)
+        {
+            developerMode = developer;
+            UiKit.SetButton(normalTab, "일반 플레이", true, developer ? Palette.AccentSoft : Palette.Accent, developer ? Palette.Accent : Color.white);
+            UiKit.SetButton(developerTab, "개발자", true, developer ? Palette.Accent : Palette.AccentSoft, developer ? Color.white : Palette.Accent);
+            modeHint.text = developer ? "방 생성: 시간 제한 없이 완료 버튼으로 진행 · BOT 자동 진행" : "방 생성: 타이머로 진행 · 참가 시 방장의 모드 적용";
         }
 
         private static Text Label(RectTransform parent, string text, int size, float y, float height, Color color)
@@ -120,6 +139,7 @@ namespace BlackWhale.UI.Dev
             connecting = value;
             hostButton.interactable = joinButton.interactable = !value;
             nickname.interactable = address.interactable = port.interactable = !value;
+            normalTab.interactable = developerTab.interactable = !value;
             cancelButton.gameObject.SetActive(value);
         }
 
@@ -142,7 +162,8 @@ namespace BlackWhale.UI.Dev
                 if (host)
                 {
                     var service = MarketService.CreateStockSystem(RandomMarketGenerator.NewSeed());
-                    await active.Host(service, new SharedInformationService(service), nickname.text.Trim(), number, allowLan: true);
+                    await active.Host(service, new SharedInformationService(service), nickname.text.Trim(), number, allowLan: true,
+                        mode: developerMode ? TimerMode.Developer : TimerMode.Realtime);
                     endpoint = "접속 주소: " + HostAddresses() + "  ·  포트 " + active.ListeningPort;
                 }
                 else

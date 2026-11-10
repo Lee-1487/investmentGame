@@ -14,7 +14,7 @@ namespace BlackWhale.Flow
         private readonly Stopwatch watch = Stopwatch.StartNew();
         public double Seconds { get { return watch.Elapsed.TotalSeconds; } }
     }
-    public enum TimerMode { Realtime, ManualForFixture }
+    public enum TimerMode { Realtime, ManualForFixture, Developer }
     public sealed class Delivery
     {
         public readonly string PlayerId;
@@ -258,10 +258,10 @@ namespace BlackWhale.Flow
                 if (count >= 256) return Reply(member.Id, CommandResult.Fail(command, "RATE_LIMITED"));
                 counts[quotaKey] = count + 1;
                 double received = receivedAtServerSeconds - origin - pausedSeconds;
-                bool expired = phase != Protocol.Lobby && phase != Protocol.Ended && phaseEnd > 0 &&
+                bool expired = mode != TimerMode.Developer && phase != Protocol.Lobby && phase != Protocol.Ended && phaseEnd > 0 &&
                     received >= (PublicPicking && command.type == "REVEAL_INFORMATION_WINDOW" ? publicPickEnd :
                         phase == Protocol.Selection ? pickEnd : phaseEnd);
-                if (mode == TimerMode.Realtime) AdvanceTo(received);
+                if (mode != TimerMode.ManualForFixture) AdvanceTo(received);
                 CommandResult result;
                 if (command.turn != turn) result = CommandResult.Fail(command, "STALE_TURN");
                 else if (phase == Protocol.Ended && command.type != "GET_HISTORY") result = CommandResult.Fail(command, "ROOM_ENDED");
@@ -476,7 +476,7 @@ namespace BlackWhale.Flow
         }
         public void Tick()
         {
-            lock (gate) if (!paused && mode == TimerMode.Realtime)
+            lock (gate) if (!paused && mode != TimerMode.ManualForFixture)
             {
                 AdvanceTo(Now);
                 if (WindowMode && turn > 0 && WindowInfo.ExpireDistortions(Context(), Now))
@@ -487,6 +487,7 @@ namespace BlackWhale.Flow
         private void AdvanceTo(double now)
         {
             while (PublicPicking && members.Any(m => m.Id == order[publicPickIndex] && m.Connection == null)) AutoPublicSelect(Math.Min(now, publicPickEnd));
+            if (mode == TimerMode.Developer) return;
             while (phase != Protocol.Lobby && phase != Protocol.Ended && phaseEnd > 0 &&
                 now >= NextDeadline)
             {
@@ -626,16 +627,16 @@ namespace BlackWhale.Flow
         public PublicState Snapshot()
         {
             lock (gate) return new PublicState { roomId = roomId, turn = turn, phase = phase,
-                selectionIndex = selectionIndex, currentPlayerId = CurrentPlayer, paused = paused,
-                serverElapsedSeconds = phase != Protocol.Lobby ? Now : 0, phaseEndsAtServerSeconds = phaseEnd,
-                selectionDeadlineAtServerSeconds = pickEnd,
+                selectionIndex = selectionIndex, currentPlayerId = CurrentPlayer, paused = paused, developerMode = mode == TimerMode.Developer,
+                serverElapsedSeconds = phase != Protocol.Lobby ? Now : 0, phaseEndsAtServerSeconds = mode == TimerMode.Developer ? 0 : phaseEnd,
+                selectionDeadlineAtServerSeconds = mode == TimerMode.Developer ? 0 : pickEnd,
                 initialPlayerOrder = (string[])initialOrder.Clone(), seatPlayerIds = order.Take(4).ToArray(),
                 botDifficulty = botDifficulty, events = progression?.GetPublicEvents(roomId) ?? new PublicEvent[0],
                 stockSystem = StockMode, totalTurns = settings.Turns, draftOrder = (string[])order.Clone(),
                 shareMarket = StockMode && turn > 0 ? Stock.GetShareMarket() : new CompanyShareState[0],
                 windowInformation = WindowMode, publicSelectionActive = PublicPicking, publicSelectionIndex = publicPickIndex,
                 publicSelectionPlayerId = PublicPicking ? order[publicPickIndex] : "",
-                publicSelectionDeadlineAtServerSeconds = PublicPicking ? publicPickEnd : 0,
+                publicSelectionDeadlineAtServerSeconds = PublicPicking && mode != TimerMode.Developer ? publicPickEnd : 0,
                 publicInformation = WindowMode && turn > 0 ? WindowInfo.GetPublicInformation(Context()) : new PublicInformationChoice[0],
                 players = members.OrderBy(m => m.Id, StringComparer.Ordinal).Select(m => new Player { playerId = m.Id, displayName = m.Name,
                     connected = m.Connection != null, ready = m.Ready, isBot = m.IsBot }).ToArray(),

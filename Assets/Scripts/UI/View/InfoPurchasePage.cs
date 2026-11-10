@@ -318,7 +318,7 @@ namespace BlackWhale.UI.View
             if (windows) _zoomMessage.text = revealed != null ? "플레이어 색 띠 = 확정 구간 · 아래 목록을 스크롤해 구간별 수익률을 확인하세요. 종목 합산은 해당 기업의 투자금 기준입니다."
                 : "진입일 시가 → 청산일 종가 · 예약은 투자 마감 때 자동 적용 · 양 끝 조절 / 몸통 이동 / Del 삭제";
             if (stockSystem && revealed == null) _zoomMessage.text = store.Public?.phase == Protocol.Investment
-                ? "확보한 기업의 진입·청산 구간을 예약한 뒤 매수 창에서 구간 확정 버튼을 누르세요. 진입 전·청산 후 수량은 BANK에 자동 예금됩니다."
+                ? "확보한 기업의 진입·청산 구간을 예약한 뒤 매수 창에서 구간 확정 버튼을 누르세요. 진입 전·청산 후 수량은 BANK 설정 구간에 예금됩니다. BANK 미설정 시 전체 기간 예금됩니다."
                 : "정보 탐색 중에도 진입·청산 구간을 예약할 수 있습니다. 매수 화면과 확대 차트에 예약 구간이 표시되며, 주식을 확보한 기업에만 적용됩니다.";
             if (stockSystem && revealed != null) _zoomMessage.text = "그래프와 구간 수익률은 증강 적용 전 값입니다. 증강·현금을 포함한 최종 수익률은 전광판에서 확인하세요.";
             RefreshZoomHover();

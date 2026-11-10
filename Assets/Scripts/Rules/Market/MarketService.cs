@@ -172,7 +172,7 @@ namespace BlackWhale.Rules
             if (input == null || input.Length > InvestmentRules.CompanyIds.Length || input.Any(i => i == null || !market.HasCompany(i.companyId)))
                 return new RuleResult(ErrorCodes.InvalidCompany);
             if (input.Select(i => i.companyId).Distinct().Count() != input.Length) return new RuleResult(ErrorCodes.DuplicateCompany);
-            if (StockEnabled && input.Any(i => i.companyId == "BANK" || context.Phase == Protocol.Investment && StockHoldings(context.PlayerId)[i.companyId] == 0))
+            if (StockEnabled && input.Any(i => i.companyId != "BANK" && context.Phase == Protocol.Investment && StockHoldings(context.PlayerId)[i.companyId] == 0))
                 return new RuleResult(ErrorCodes.InvalidCompany);
             foreach (var i in input)
             {

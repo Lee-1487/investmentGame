@@ -48,9 +48,9 @@ namespace BlackWhale.UI.View
             if (state?.windowInformation != true) return;
             bool planning = state.stockSystem && state.phase == Protocol.Investment;
             confirm.gameObject.SetActive(!planning);
-            reserve.gameObject.SetActive(!state.stockSystem || companyId() != "BANK");
+            reserve.gameObject.SetActive(true);
             ((RectTransform)reserve.transform).anchorMin = new Vector2(planning ? 0 : .5f, 0);
-            ((RectTransform)confirm.transform).anchorMax = new Vector2(state.stockSystem && companyId() == "BANK" ? 1 : .5f, 0);
+            ((RectTransform)confirm.transform).anchorMax = new Vector2(.5f, 0);
             Selection.FixedPublicWindow = state.publicSelectionActive;
             string id = companyId();
             var company = controller.Store.View?.companies?.FirstOrDefault(c => c.companyId == id);
