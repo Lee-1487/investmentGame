@@ -37,11 +37,12 @@ namespace BlackWhale.UI.View
 
             var cards = UiKit.Rect(_root, "Candidates");
             UiKit.Stretch(cards, 0, 48, 0, status != null ? 150 : 72);
-            int n = Mathf.Max(1, m.Candidates.Length);
-            for (int i = 0; i < m.Candidates.Length; i++)
+            // 카탈로그에 없는 후보는 빼고, 남은 카드끼리 빈칸 없이 붙여서 나눈다
+            var defs = m.Candidates.Select(AbilityCatalog.Get).Where(d => d != null).ToArray();
+            int n = Mathf.Max(1, defs.Length);
+            for (int i = 0; i < defs.Length; i++)
             {
-                var def = AbilityCatalog.Get(m.Candidates[i]);
-                if (def == null) continue;
+                var def = defs[i];
                 bool selected = m.Selected == def.Id;
                 bool dimmed = m.Confirmed && !selected;
 

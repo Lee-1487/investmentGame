@@ -348,11 +348,13 @@ namespace BlackWhale.UI.View
             Label(root, "증강 선택 · 1·3·5턴에 하나씩 선택합니다", 0, 40, 20);
             Label(root, "선택한 증강: " + string.Join(" / ", Portfolio.augments.Select(StockRules.Name)), 42, 35, 13);
             if (Portfolio.augmentChosen) { Label(root, "선택 완료 · 다른 플레이어를 기다리는 중입니다.", 100, 100, 18); return; }
-            var choices = Portfolio.candidates ?? new string[0];
+            var choices = (Portfolio.candidates ?? new string[0]).Where(c => !string.IsNullOrEmpty(c)).ToArray();
+            // 후보 수만큼 칸을 나눈다(3칸 고정이면 후보가 2개일 때 한 칸이 비어 보임)
+            float columns = Mathf.Max(1, choices.Length);
             for (int i = 0; i < choices.Length; i++)
             {
                 string id = choices[i];
-                var cell = UiKit.Rect(root, "Augment_" + id); UiKit.Anchor(cell, i / 3f, 0, (i + 1) / 3f, 1, 6, 90);
+                var cell = UiKit.Rect(root, "Augment_" + id); UiKit.Anchor(cell, i / columns, 0, (i + 1) / columns, 1, 6, 90);
                 var panel = UiKit.Panel(cell, "Card", Palette.Card, rounded: true); UiKit.Stretch(panel.rectTransform);
                 var name = UiKit.Label(panel.transform, StockRules.Name(id), 20, Palette.Accent, TextAnchor.UpperCenter, FontStyle.Bold); UiKit.Stretch(name.rectTransform, 12, 20, 12, 0);
                 var description = UiKit.Label(panel.transform, StockRules.Description(id), 15, Palette.Text, TextAnchor.UpperLeft); UiKit.Stretch(description.rectTransform, 16, 64, 16, 64);
