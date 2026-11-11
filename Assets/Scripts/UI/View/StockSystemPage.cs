@@ -311,6 +311,7 @@ namespace BlackWhale.UI.View
                 var visible = controller.Store.View?.companies?.FirstOrDefault(c => c.companyId == id);
                 var revealed = controller.Store.RevealedTurn == State.turn ? controller.Store.Revealed?.FirstOrDefault(c => c.companyId == id) : null;
                 card.Chart.SetData(DailyBarModel.Build(visible, revealed));
+                card.Chart.SetOwnedWindows(MyInformationWindows.For(State, controller.Store.View, controller.LocalPlayerId, id));
                 if (revealed?.investments != null) card.Chart.SetRevealedInvestments(revealed.investments);
                 else card.Chart.SetTradeIntervals(controller.Store.TradePlans.ChartIntervals(controller.Store.View, State.turn, id, controller.Store.OrderLocked), !controller.Store.OrderLocked);
                 if (card.BankUnits != null) RefreshBank(card);

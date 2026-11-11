@@ -76,6 +76,16 @@ namespace BlackWhale.UI.View
         private Vector2Int? _informationRange;
         public void SetInformationWindow(int? start) => SetInformationRange(start.HasValue ? new Vector2Int(start.Value, start.Value + 4) : (Vector2Int?)null);
         public void SetInformationRange(Vector2Int? range) { _informationRange = range; SetVerticesDirty(); }
+
+        // 내가 연 정보 구간(구매·공용 공개): 확정된 것이라 턴 내내 남는다(선택 초안과 별개)
+        private readonly List<Vector2Int> _ownedWindows = new List<Vector2Int>();
+        public static readonly Color32 OwnedWindowColor = new Color32(0x25, 0x63, 0xEB, 0xFF);
+        public void SetOwnedWindows(IEnumerable<Vector2Int> windows)
+        {
+            _ownedWindows.Clear();
+            if (windows != null) _ownedWindows.AddRange(windows);
+            SetVerticesDirty();
+        }
         private RectTransform _tradeMarkerRoot;
         private string _tradeMarkerKey;
 
@@ -227,6 +237,18 @@ namespace BlackWhale.UI.View
             }
 
             // 시가 진입부터 종가 청산까지 양 끝 날짜의 칸 전체를 포함한다.
+            foreach (var w in _ownedWindows)
+            {
+                // 옅은 파란 바탕 + 위쪽 굵은 띠 + 아래쪽 얇은 띠(선택 중 구간보다 옅게)
+                float wl = DayAxis.LeftX(Mathf.Clamp(w.x, 0, DayAxis.Count - 1), r.xMin, r.width);
+                float wr = DayAxis.LeftX(Mathf.Clamp(w.y, 0, DayAxis.Count - 1), r.xMin, r.width) + slot;
+                var fill = OwnedWindowColor; fill.a = 0x14;
+                var bar = OwnedWindowColor; bar.a = 0xB4;
+                Quad(vh, wl, r.yMin, wr, r.yMax, fill);
+                Quad(vh, wl, r.yMax - 4, wr, r.yMax, bar);
+                Quad(vh, wl, r.yMin, wr, r.yMin + 2, bar);
+            }
+
             if (_informationRange.HasValue)
             {
                 float left = DayAxis.LeftX(_informationRange.Value.x, r.xMin, r.width);

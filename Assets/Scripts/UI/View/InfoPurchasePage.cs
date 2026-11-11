@@ -268,6 +268,7 @@ namespace BlackWhale.UI.View
             var revealed = store.RevealedTurn == store.CurrentTurn ? store.Revealed?.FirstOrDefault(c => c.companyId == _zoomCompany) : null;
             _zoomBars = DailyBarModel.Build(company, revealed);
             _zoomChart.SetData(_zoomBars);
+            _zoomChart.SetOwnedWindows(MyInformationWindows.For(store.Public, store.View, _c.LocalPlayerId, _zoomCompany));
             var intervals = store.TradePlans.ChartIntervals(store.View, store.CurrentTurn, _zoomCompany, store.OrderLocked);
             if (revealed?.investments != null) _zoomChart.SetRevealedInvestments(revealed.investments);
             else _zoomChart.SetTradeIntervals(intervals, !store.OrderLocked);
@@ -604,6 +605,7 @@ namespace BlackWhale.UI.View
             // 시장 공개(주문 잠금) 이후에만 31일 전체, 그 전에는 열람한 날짜만.
             _bars = DailyBarModel.Build(company, revealed);
             _chart.SetData(_bars);
+            _chart.SetOwnedWindows(MyInformationWindows.For(_c.Store.Public, _c.Store.View, _c.LocalPlayerId, _companyId));
             if (revealed?.investments != null) _chart.SetRevealedInvestments(revealed.investments);
             else _chart.SetTradeIntervals(_c.Store.TradePlans.ChartIntervals(_c.Store.View, _c.Store.CurrentTurn, _companyId, _c.Store.OrderLocked), !_c.Store.OrderLocked);
         }
