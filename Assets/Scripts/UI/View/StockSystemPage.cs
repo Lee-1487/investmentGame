@@ -22,6 +22,8 @@ namespace BlackWhale.UI.View
             public Text Count, Stamp;          // 손잡이 위 '내 n주', 매진 도장
             public Color[] LastColors;         // 직전 칸 색(새로 채워진 칸만 튀어 오르게)
             public bool WasSoldOut;
+            public Image[] BankUnits;          // BANK: 내 30칸 중 자동 예금 칸
+            public Text BankLabel;
         }
         // 연출(D): 현재 차례 시간 막대·긴박감·내 차례 알림
         private Image currentBar, urgency;
@@ -201,10 +203,11 @@ namespace BlackWhale.UI.View
             card.Heading = expand.GetComponentInChildren<Text>();
             card.Owners = Label(r, "", 29, 20, 12); card.Owners.name = "ShareOwners_" + id;
             card.Owners.horizontalOverflow = HorizontalWrapMode.Overflow;
-            var chartRoot = UiKit.Rect(r, "TradeChart_" + id); UiKit.Stretch(chartRoot, 8, 53, 8, id == "BANK" || State.phase != Protocol.Selection ? 8 : 54);
+            var chartRoot = UiKit.Rect(r, "TradeChart_" + id); UiKit.Stretch(chartRoot, 8, 53, 8, State.phase != Protocol.Selection ? 8 : 54);
             card.Chart = chartRoot.gameObject.AddComponent<BarChartGraphic>(); card.Chart.SetInteractive(true);
             UiKit.Click(chartRoot.gameObject, () => OpenPlan?.Invoke(id));
-            if (id == "BANK" || State.phase != Protocol.Selection) return;
+            if (State.phase != Protocol.Selection) return;
+            if (id == "BANK") { BuildBankSlots(r, card); return; }
             card.Inventory = UiKit.Rect(r, "ShareInventory_" + id);
             card.Inventory.anchorMin = Vector2.zero; card.Inventory.anchorMax = new Vector2(1, 0);
             card.Inventory.offsetMin = new Vector2(8, 22); card.Inventory.offsetMax = new Vector2(-8, 44);
@@ -257,6 +260,42 @@ namespace BlackWhale.UI.View
                 if (draggingCompany != id) Commit(id);
             });
         }
+        /// <summary>BANK는 직접 사지 않는다(자동 예금). 내 30칸 중 기업에 쓰지 않은 칸이 BANK로 들어가는 모습을 보여 준다.</summary>
+        private void BuildBankSlots(RectTransform r, Card card)
+        {
+            int total = Math.Max(1, (Portfolio?.usedSlots ?? 0) + (Portfolio?.CashSlots ?? StockRules.Slots));
+            var bar = UiKit.Rect(r, "BankSlots");
+            bar.anchorMin = Vector2.zero; bar.anchorMax = new Vector2(1, 0);
+            bar.offsetMin = new Vector2(8, 22); bar.offsetMax = new Vector2(-8, 40);
+            card.BankUnits = new Image[total];
+            for (int i = 0; i < total; i++)
+            {
+                card.BankUnits[i] = UiKit.Panel(bar, "BankUnit_" + i, Palette.Disabled);
+                UiKit.Anchor(card.BankUnits[i].rectTransform, i / (float)total, 0, (i + 1) / (float)total, 1, 1, 1);
+                card.BankUnits[i].raycastTarget = false;
+            }
+            card.BankLabel = UiKit.Label(r, "", 12, Palette.Text, TextAnchor.MiddleLeft);
+            card.BankLabel.name = "BankAutoDeposit";
+            card.BankLabel.rectTransform.anchorMin = Vector2.zero; card.BankLabel.rectTransform.anchorMax = new Vector2(1, 0);
+            card.BankLabel.rectTransform.offsetMin = new Vector2(10, 3); card.BankLabel.rectTransform.offsetMax = new Vector2(-8, 21);
+        }
+
+        private void RefreshBank(Card card)
+        {
+            if (card.BankUnits == null || Portfolio == null) return;
+            int total = card.BankUnits.Length;
+            // 드래그 중이면 고르는 수량을 바로 반영(서버 확정 전 미리보기)
+            int used = 0;
+            foreach (var pair in targets) if (pair.Key != "BANK") used += pair.Value;
+            used = Math.Max(0, Math.Min(total, used));
+            int cash = total - used;
+            Color gold = new Color32(0xCA, 0x8A, 0x04, 0xFF);
+            Color invested = Palette.Player(controller.LocalPlayerId);
+            invested.a = 0.35f;
+            for (int i = 0; i < total; i++) card.BankUnits[i].color = i < used ? invested : gold;
+            card.BankLabel.text = "<color=#CA8A04><b>자동 예금</b></color> · 내 BANK <b>" + cash + "</b>/" + total + "칸  <size=11><color=#6B7280>기업을 덜 살수록 늘어납니다</color></size>";
+        }
+
         private int OtherShares(string id) => State.shareMarket?.FirstOrDefault(c => c.companyId == id)?.owners?.Where(v => v.playerId != controller.LocalPlayerId)
             .Sum(v => v.shares + v.reserved) ?? 0;
         private void Commit(string id)
@@ -288,6 +327,7 @@ namespace BlackWhale.UI.View
                 card.Chart.SetData(DailyBarModel.Build(visible, revealed));
                 if (revealed?.investments != null) card.Chart.SetRevealedInvestments(revealed.investments);
                 else card.Chart.SetTradeIntervals(controller.Store.TradePlans.ChartIntervals(controller.Store.View, State.turn, id, controller.Store.OrderLocked), !controller.Store.OrderLocked);
+                if (card.BankUnits != null) RefreshBank(card);
                 if (card.Slider == null) continue;
                 var colors = owners.Where(o => o.playerId != controller.LocalPlayerId).SelectMany(o => Enumerable.Repeat(Palette.Player(o.playerId), Math.Max(0, o.shares + o.reserved))).ToList();
                 int other = Math.Min(20, colors.Count);
@@ -295,12 +335,9 @@ namespace BlackWhale.UI.View
                 Color empty = new Color32(185, 190, 199, 255);
                 bool first = card.LastColors == null;
                 if (first) card.LastColors = new Color[card.Units.Length];
-                int popped = 0;
                 for (int i = 0; i < card.Units.Length; i++)
                 {
                     var c = i < colors.Count ? colors[i] : empty;
-                    // 새로 채워진 칸만 순서대로 톡톡 튀어 오르게(드래그 중 내 칸 포함)
-                    if (!first && card.LastColors[i] != c && c != empty) UiAnim.Pulse(card.Units[i].rectTransform, popped++ * 0.03f, 1.45f);
                     card.Units[i].color = c; card.LastColors[i] = c;
                 }
                 bool soldOut = used >= total;

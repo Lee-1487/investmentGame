@@ -50,6 +50,8 @@ namespace BlackWhale.UI.View
 
         // 타이머
         private readonly PhaseClock _clock = new PhaseClock();
+        private UrgencyEdges _urgency;
+        private readonly Dictionary<string, long> _fxAssets = new Dictionary<string, long>(); // 정산 연출용 직전 총자산
         private string _clockKey = "";
         private PublicState _renderedPublic;
         private PlayerView _renderedView;
@@ -126,6 +128,7 @@ namespace BlackWhale.UI.View
             BuildRightColumn();
             BuildTimer();
             BuildBanner();
+            _urgency = new UrgencyEdges(ScreenRect); // 마감 10초 전 붉은 가장자리(팝업보다 아래)
             BuildOverlays();
             BuildTurnIndicator();
             _features = ProgressionPanel.Create(Root, _c, _lobby);
@@ -446,6 +449,13 @@ namespace BlackWhale.UI.View
             {
                 _lastBoardTurn = board.turn;
                 var top = board.rows.OrderBy(r => r.rank).First();
+                var mine = board.rows.FirstOrDefault(r => r.playerId == _c.LocalPlayerId);
+                if (mine != null)
+                {
+                    long before = _fxAssets.TryGetValue(mine.playerId, out var b) ? b : mine.totalAssets - mine.cumulativeProfit;
+                    SettlementFx.Play(ScreenRect, board.turn, board.gameComplete, mine.rank, mine.turnReturnBps, before, mine.totalAssets);
+                }
+                foreach (var row in board.rows) if (row != null) _fxAssets[row.playerId] = row.totalAssets;
                 ShowBanner(board.gameComplete ? (s.totalTurns > 0 ? s.totalTurns : 10) + "턴 최종 승자 · " + board.winnerPlayerId :
                     board.turn + "턴 정산 완료 · 1위 " + top.playerId + " (" + DisplayFormat.Percent(top.turnReturnBps) + ")");
             }
@@ -520,6 +530,7 @@ namespace BlackWhale.UI.View
             }
             else _missingViewSince = -1;
             UpdateTimer();
+            UpdateUrgency();
             if (Store.Public?.phase == Protocol.Selection) _investmentPage.Tick();
             UpdateBanner();
 
@@ -532,6 +543,22 @@ namespace BlackWhale.UI.View
                 : "왼쪽 가장자리를 누르면 매수 창으로 넘어갑니다";
 
 
+        }
+
+        /// <summary>단계 마감 10초 전부터 가장자리를 붉게(남을수록 진하게). 시장 공개·정산·대기실·종료·일시정지는 제외.</summary>
+        private void UpdateUrgency()
+        {
+            if (_urgency == null) return;
+            var s = Store.Public;
+            float level = 0f;
+            if (s != null && !s.paused && s.phaseEndsAtServerSeconds > 0
+                && s.phase != Protocol.Lobby && s.phase != Protocol.Ended && s.phase != Protocol.Reveal && s.phase != Protocol.Result)
+            {
+                double remain = s.phaseEndsAtServerSeconds - _clock.EstimatedServerSeconds(Time.realtimeSinceStartup);
+                if (remain > 0 && remain <= 10) level = 0.45f + 0.55f * (float)(1 - remain / 10);
+            }
+            _urgency.SetLevel(level);
+            _urgency.Update();
         }
 
         private void UpdateTimer()
