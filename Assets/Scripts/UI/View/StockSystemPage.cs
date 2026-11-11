@@ -62,10 +62,8 @@ namespace BlackWhale.UI.View
             if (State.phase == StockRules.AugmentPhase) { BuildAugments(); return; }
             foreach (string id in UiRules.CompanyIds) targets[id] = Holding(id);
             BuildOrderStrip();
-            summary = Label(root, "", 49, 32, 13); summary.name = "StockPurchaseSummary";
-            bool hasAction = State.phase == Protocol.Selection || State.phase == Protocol.Investment;
-            if (hasAction) summary.rectTransform.offsetMax = new Vector2(-330, -49); // 오른쪽은 완료 버튼 자리
-            var grid = UiKit.Rect(root, "ShareMarketGrid"); UiKit.Stretch(grid, 0, 86, 0, 4);
+            summary = Label(root, "", 49, 29, 13); summary.name = "StockPurchaseSummary";
+            var grid = UiKit.Rect(root, "ShareMarketGrid"); UiKit.Stretch(grid, 0, 82, 0, 44);
             for (int i = 0; i < UiRules.CompanyIds.Length; i++)
             {
                 string id = UiRules.CompanyIds[i];
@@ -75,15 +73,14 @@ namespace BlackWhale.UI.View
             }
             if (State.phase == Protocol.Selection)
             {
-                // 매수 완료 버튼: 매수 화면 위쪽 오른쪽(차례 줄 바로 아래)에 항상 보이게
-                finish = UiKit.Button(root, "매수 완료 · 다음 차례", 15, Palette.Accent, Color.white, () => controller.PassStockDraft());
+                finish = UiKit.Button(root, "매수 완료 · 다음 차례", 14, Palette.Accent, Color.white, () => controller.PassStockDraft());
                 finish.name = "PassShareDraft";
-                UiKit.Place((RectTransform)finish.transform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-4, -48), new Vector2(200, 34));
+                UiKit.Place((RectTransform)finish.transform, new Vector2(1, 0), new Vector2(1, 0), new Vector2(-4, 3), new Vector2(190, 34));
                 if (Portfolio.augments.Contains("PRIORITY") && !Portfolio.priorityUsed)
                 {
                     var priority = UiKit.Button(root, "선점 사용", 12, Palette.AccentSoft, Palette.Accent, () => controller.UseDraftPriority());
                     priority.name = "UseDraftPriority";
-                    UiKit.Place((RectTransform)priority.transform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-212, -48), new Vector2(110, 34));
+                    UiKit.Place((RectTransform)priority.transform, new Vector2(0, 0), new Vector2(0, 0), new Vector2(4, 3), new Vector2(110, 34));
                     int next = Array.FindIndex(State.draftOrder ?? Array.Empty<string>(), Math.Min(State.selectionIndex + 1, State.draftOrder?.Length ?? 0), id => id == controller.LocalPlayerId);
                     priority.interactable = !State.paused && next > State.selectionIndex + 1 && !controller.Store.HasPending(StockRules.Priority);
                 }
@@ -93,7 +90,7 @@ namespace BlackWhale.UI.View
                 finish = UiKit.Button(root, "진입·청산 구간 확정", 14, Palette.Accent, Color.white,
                     () => controller.SubmitInvestment(controller.CurrentTradeReservations()));
                 finish.name = "ConfirmStockIntervals";
-                UiKit.Place((RectTransform)finish.transform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-4, -48), new Vector2(220, 34));
+                UiKit.Place((RectTransform)finish.transform, new Vector2(1, 0), new Vector2(1, 0), new Vector2(-4, 3), new Vector2(220, 34));
             }
             else finish = null;
             RefreshCards();
@@ -349,9 +346,6 @@ namespace BlackWhale.UI.View
             if (finish != null)
             {
                 finish.interactable = State.phase == Protocol.Selection ? Editable : !State.paused && !controller.Store.OrderLocked && !controller.Store.HasPending(CommandTypes.SubmitInvestment);
-                if (State.phase == Protocol.Selection)
-                    UiKit.SetButton(finish, Editable ? "매수 완료 · 다음 차례" : State.currentPlayerId == controller.LocalPlayerId ? "처리 중…" : "다른 플레이어 차례",
-                        finish.interactable, finish.interactable ? Palette.Accent : Palette.Disabled, finish.interactable ? Color.white : Palette.DisabledText);
                 if (State.phase == Protocol.Investment) UiKit.SetButton(finish, controller.Store.OrderLocked ? "구간 확정 완료 · 대기" : "진입·청산 구간 확정", finish.interactable, Palette.Accent, Color.white);
             }
         }

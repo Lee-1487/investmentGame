@@ -93,8 +93,9 @@ namespace BlackWhale.UI.View
             var title = _title = UiKit.Label(page, "정보 구매 창", 18, Palette.Text, TextAnchor.MiddleLeft, FontStyle.Bold);
             UiKit.Place(title.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(6, -2), new Vector2(300, 28));
 
-            _header = UiKit.Label(page, "", 14, Palette.SubText, TextAnchor.MiddleRight);
-            UiKit.Place(_header.rectTransform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-6, -2), new Vector2(600, 28));
+            _header = UiKit.Label(page, "", 18, Palette.Text, TextAnchor.MiddleRight); // 보유 코인·자산: 크게
+            UiKit.Place(_header.rectTransform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-6, 0), new Vector2(640, 32));
+            _header.resizeTextForBestFit = true; _header.resizeTextMinSize = 13; _header.resizeTextMaxSize = 18; // 길면 칸 안에 맞게
             _publicHistory = UiKit.Label(page, "", 11, Palette.SubText, TextAnchor.MiddleLeft);
             _publicHistory.name = "PublicInformationHistory";
             _publicHistory.rectTransform.anchorMin = new Vector2(0, 1); _publicHistory.rectTransform.anchorMax = Vector2.one;
