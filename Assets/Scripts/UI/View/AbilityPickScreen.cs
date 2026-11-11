@@ -72,6 +72,9 @@ namespace BlackWhale.UI.View
                     "<size=24><b>" + def.Name + "</b></size>\n<size=14><color=#7C3AED>" + def.Short + "</color></size>\n\n" + def.Effect + "\n\n" + state,
                     14, dimmed ? Palette.DisabledText : Palette.Text, TextAnchor.UpperCenter);
                 UiKit.Stretch(text.rectTransform, 18, 124, 18, 12);
+
+                // 후보가 처음 뜰 때 한 장씩 뒤집히며 공개(확정 화면에서는 생략)
+                if (!m.Confirmed) UiAnim.FlipIn(frame, "ability:" + string.Join(",", m.Candidates) + ":" + i, 0.15f + i * 0.22f);
             }
 
             if (!m.Confirmed)

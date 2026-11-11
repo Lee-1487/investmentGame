@@ -311,7 +311,6 @@ namespace BlackWhale.UI.View
                 var visible = controller.Store.View?.companies?.FirstOrDefault(c => c.companyId == id);
                 var revealed = controller.Store.RevealedTurn == State.turn ? controller.Store.Revealed?.FirstOrDefault(c => c.companyId == id) : null;
                 card.Chart.SetData(DailyBarModel.Build(visible, revealed));
-                card.Chart.SetOwnedWindows(MyInformationWindows.For(State, controller.Store.View, controller.LocalPlayerId, id));
                 if (revealed?.investments != null) card.Chart.SetRevealedInvestments(revealed.investments);
                 else card.Chart.SetTradeIntervals(controller.Store.TradePlans.ChartIntervals(controller.Store.View, State.turn, id, controller.Store.OrderLocked), !controller.Store.OrderLocked);
                 if (card.BankUnits != null) RefreshBank(card);
@@ -361,6 +360,8 @@ namespace BlackWhale.UI.View
                 button.name = "ChooseAugment_" + id;
                 UiKit.Place((RectTransform)button.transform, new Vector2(.5f, 0), new Vector2(.5f, 0), new Vector2(0, 14), new Vector2(160, 36));
                 button.interactable = !State.paused && !controller.Store.HasPending(StockRules.Choose);
+                // 증강 후보가 처음 뜰 때 카드가 한 장씩 뒤집히며 공개
+                UiAnim.FlipIn(cell, "augment:" + State.turn + ":" + string.Join(",", choices) + ":" + i, 0.15f + i * 0.22f);
             }
             var targetLabel = Label(root, "집중 투자자 적용 기업: " + focus, 0, 0, 12);
             targetLabel.rectTransform.anchorMin = Vector2.zero; targetLabel.rectTransform.anchorMax = new Vector2(1, 0);
