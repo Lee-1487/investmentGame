@@ -353,6 +353,13 @@ namespace BlackWhale.UI.View
             if (stockSystem && revealed == null) _zoomMessage.text = store.Public?.phase == Protocol.Investment
                 ? (_note.Length > 0 ? _note + " · " : "") + "차트에서 드래그하면 바로 진입·청산 구간으로 정해집니다. 다 정했으면 오른쪽 '주문 확정 · 진행'을 누르세요. 진입 전·청산 후 수량은 BANK 구간에 예금됩니다."
                 : "정보 탐색 중에도 진입·청산 구간을 예약할 수 있습니다. 매수 화면과 확대 차트에 예약 구간이 표시되며, 주식을 확보한 기업에만 적용됩니다.";
+            if (stockSystem && revealed == null && store.Public?.phase == Protocol.Investment && !store.OrderLocked)
+            {
+                int held = store.View?.portfolio?.holdings?.Where(h => h.companyId == _zoomCompany).Sum(h => h.shares) ?? 0;
+                _zoomTitle.text += held > 0 || _zoomCompany == "BANK"
+                    ? "   <size=14><color=#2563EB>● " + (_zoomCompany == "BANK" ? "예금" : "보유 " + held + "주") + " · 매매 가능</color></size>"
+                    : "   <size=14><color=#DC2626>● 미보유 · 이번 턴 매매 불가</color></size>";
+            }
             if (stockSystem && revealed != null) _zoomMessage.text = "그래프와 구간 수익률은 증강 적용 전 값입니다. 증강·현금을 포함한 최종 수익률은 전광판에서 확인하세요.";
             RefreshZoomHover();
         }
@@ -492,6 +499,9 @@ namespace BlackWhale.UI.View
         private readonly string _companyId;
         private readonly GameClientController _c;
         private readonly Text _seats;
+        private readonly Image _border, _tradeShade;
+        private readonly RectTransform _tradeBadge;
+        private readonly Text _tradeBadgeText, _tradeShadeText;
         private readonly BarChartGraphic _chart;
         private readonly Text _tip;
         private readonly Text _planLabel;
@@ -512,7 +522,7 @@ namespace BlackWhale.UI.View
             _companyId = companyId;
             _c = controller;
 
-            var bg = UiKit.Panel(cell, "Bg", Palette.CardBorder, rounded: true);
+            var bg = _border = UiKit.Panel(cell, "Bg", Palette.CardBorder, rounded: true);
             UiKit.Stretch(bg.rectTransform);
             var inner = UiKit.Panel(bg.transform, "Inner", Palette.Card, rounded: true);
             UiKit.Stretch(inner.rectTransform, 1, 1, 1, 1);
@@ -591,6 +601,37 @@ namespace BlackWhale.UI.View
             pointer.DeleteInterval = index => { if (CanPlan) _c.Store.TradePlans.RemoveInterval(_companyId, index); };
             pointer.RangeChanged = () => { DrawSelection(); _window.Refresh(); };
             pointer.RangeFinished = () => { if (AutoReserve) SaveReservation(); };
+
+            // 투자 결정(진입·청산) 단계: 매매할 수 있는 기업(주식 보유)은 파란 테두리 + '보유 N주' 배지,
+            // 보유하지 않은 기업은 흐리게 덮고 '미보유'로 표시해 한눈에 구분되게 한다.
+            _tradeShade = UiKit.Panel(root, "TradeLockShade", new Color(0.96f, 0.97f, 0.98f, 0.72f), rounded: true);
+            UiKit.Stretch(_tradeShade.rectTransform);
+            _tradeShadeText = UiKit.Label(_tradeShade.transform, "미보유 · 이번 턴 매매 불가", 13, Palette.SubText, TextAnchor.MiddleCenter, FontStyle.Bold);
+            UiKit.Stretch(_tradeShadeText.rectTransform, 8, 30, 8, 30);
+            _tradeShade.gameObject.SetActive(false);
+            var badge = UiKit.Panel(root, "TradeBadge", Palette.Accent, rounded: true);
+            _tradeBadge = badge.rectTransform;
+            UiKit.Place(_tradeBadge, Vector2.one, Vector2.one, new Vector2(-6, -31), new Vector2(96, 18));
+            _tradeBadgeText = UiKit.Label(badge.transform, "", 11, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
+            UiKit.Stretch(_tradeBadgeText.rectTransform);
+            _tradeBadge.gameObject.SetActive(false);
+            _expand.transform.SetAsLastSibling(); // 흐린 덮개 위에서도 '확대하기'는 보이고 눌리게
+        }
+
+        /// <summary>진입·청산 단계에서 이 기업을 매매할 수 있는지(보유 주식 수) 표시.</summary>
+        private void RefreshTradeMark()
+        {
+            var s = _c.Store.Public;
+            bool investing = s?.stockSystem == true && s.phase == Protocol.Investment && !_c.Store.OrderLocked;
+            int shares = _c.Store.View?.portfolio?.holdings?.Where(h => h.companyId == _companyId).Sum(h => h.shares) ?? 0;
+            bool tradable = investing && (shares > 0 || _companyId == "BANK");
+            _border.color = tradable ? Palette.Accent : Palette.CardBorder;
+            _border.transform.GetChild(0).GetComponent<RectTransform>().offsetMin = Vector2.one * (tradable ? 3f : 1f);
+            _border.transform.GetChild(0).GetComponent<RectTransform>().offsetMax = -Vector2.one * (tradable ? 3f : 1f);
+            _tradeBadge.gameObject.SetActive(tradable);
+            _tradeBadgeText.text = _companyId == "BANK" ? "예금 · 매매 가능" : "보유 " + shares + "주 · 매매 가능";
+            _tradeShade.gameObject.SetActive(investing && !tradable);
+            if (tradable) _seats.text = "";
         }
         private bool CanPlan => _c.CanPlanTrade(_companyId);
 
@@ -663,6 +704,7 @@ namespace BlackWhale.UI.View
             if (revealed != null) _planLabel.text = CompanyInfo.RevealedSummary(revealed);
             DrawChart(company, revealed);
             RefreshButtons();
+            RefreshTradeMark();
         }
 
         private void DrawChart(VisibleCompany company, RevealedCompany revealed)
