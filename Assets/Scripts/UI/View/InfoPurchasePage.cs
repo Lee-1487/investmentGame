@@ -203,6 +203,23 @@ namespace BlackWhale.UI.View
         }
 
         private bool CanPlan => _zoomCompany != null && _c.CanPlanTrade(_zoomCompany);
+
+        /// <summary>예약 취소: 버튼을 만든 뒤 목록이 바뀌었어도 같은 구간(진입·청산 값)을 찾아 지운다.
+        /// 선택 표시·진입 후보도 함께 정리하고 결과를 안내한다.</summary>
+        private void CancelReservation(int index, int entry, int exit)
+        {
+            if (!CanPlan) { _note = "지금은 예약을 바꿀 수 없습니다."; RefreshZoom(); return; }
+            var plans = _c.Store.TradePlans.Get(_zoomCompany).Intervals;
+            int at = index >= 0 && index < plans.Length && plans[index].entryDay == entry && plans[index].exitDay == exit
+                ? index : Array.FindIndex(plans, p => p.entryDay == entry && p.exitDay == exit);
+            _zoomWindow.Selection.Clear();
+            _entryDay = null;
+            bool removed = at >= 0 && _c.Store.TradePlans.RemoveInterval(_zoomCompany, at);
+            _note = removed ? entry + "→" + exit + "일 예약을 취소했습니다." : "이미 취소된 예약입니다.";
+            _rowKey = null;
+            _cards.FirstOrDefault(c => c.CompanyId == _zoomCompany)?.Refresh();
+            RefreshZoom();
+        }
         public void OpenCompany(string company) => Enlarge(company);
         private void Enlarge(string company)
         {
@@ -313,7 +330,8 @@ namespace BlackWhale.UI.View
                     UiKit.Stretch(label.rectTransform, 0, 0, 90, 0);
                     if (CanPlan)
                     {
-                        var remove = UiKit.Button(row, "삭제", 12, Palette.Card, Palette.SubText, () => { if (CanPlan) { _zoomWindow.Selection.Clear(); store.TradePlans.RemoveInterval(_zoomCompany, index); } });
+                        int entry = interval.entryDay, exit = interval.exitDay;
+                        var remove = UiKit.Button(row, "예약 취소", 12, Palette.Card, Palette.Up, () => CancelReservation(index, entry, exit));
                         remove.name = "RemovePlan_" + i;
                         UiKit.Place((RectTransform)remove.transform, new Vector2(1, .5f), new Vector2(1, .5f), Vector2.zero, new Vector2(76, 28));
                     }
@@ -326,7 +344,7 @@ namespace BlackWhale.UI.View
             if (windows) _zoomMessage.text = revealed != null ? "플레이어 색 띠 = 확정 구간 · 아래 목록을 스크롤해 구간별 수익률을 확인하세요. 종목 합산은 해당 기업의 투자금 기준입니다."
                 : "진입일 시가 → 청산일 종가 · 예약은 투자 마감 때 자동 적용 · 양 끝 조절 / 몸통 이동 / Del 삭제";
             if (stockSystem && revealed == null) _zoomMessage.text = store.Public?.phase == Protocol.Investment
-                ? "확보한 기업의 진입·청산 구간을 예약한 뒤 매수 창에서 구간 확정 버튼을 누르세요. 진입 전·청산 후 수량은 BANK 설정 구간에 예금됩니다. BANK 미설정 시 전체 기간 예금됩니다."
+                ? (_note.Length > 0 ? _note + " · " : "") + "차트에서 드래그하면 바로 진입·청산 구간으로 정해집니다. 다 정했으면 오른쪽 '주문 확정 · 진행'을 누르세요. 진입 전·청산 후 수량은 BANK 구간에 예금됩니다."
                 : "정보 탐색 중에도 진입·청산 구간을 예약할 수 있습니다. 매수 화면과 확대 차트에 예약 구간이 표시되며, 주식을 확보한 기업에만 적용됩니다.";
             if (stockSystem && revealed != null) _zoomMessage.text = "그래프와 구간 수익률은 증강 적용 전 값입니다. 증강·현금을 포함한 최종 수익률은 전광판에서 확인하세요.";
             RefreshZoomHover();
@@ -510,19 +528,25 @@ namespace BlackWhale.UI.View
 
             // 그래프 영역
             var chartRt = UiKit.Rect(root, "Chart");
-            UiKit.Stretch(chartRt, 10, 54, 10, 82);
+            UiKit.Stretch(chartRt, 10, 54, 10, 94); // 아래쪽은 날짜 눈금·예약 요약 글자 자리(그래프와 겹치지 않게)
             _chart = chartRt.gameObject.AddComponent<BarChartGraphic>();
             var pointer = _pointer = chartRt.gameObject.AddComponent<ChartPointerLayer>(); // 마우스 위치 날짜의 값 툴팁
             pointer.Hovered = OnHover;
             pointer.Clicked = (day, right) => { if (!right && _c.Store.Public?.windowInformation == true) _window?.SetStart(day); };
 
-            _tip = UiKit.Label(root, "", 10, Palette.Text, TextAnchor.MiddleRight);
-            UiKit.Place(_tip.rectTransform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-8, -40), new Vector2(220, 14));
+            _tip = UiKit.Label(root, "", 10, Palette.Text, TextAnchor.MiddleLeft);
+            _tip.rectTransform.anchorMin = new Vector2(0, 1); _tip.rectTransform.anchorMax = Vector2.one;
+            _tip.rectTransform.offsetMin = new Vector2(10, -52); _tip.rectTransform.offsetMax = new Vector2(-104, -36); // 오른쪽 '내 선택' 표시와 안 겹치게
+            _tip.horizontalOverflow = HorizontalWrapMode.Wrap; _tip.verticalOverflow = VerticalWrapMode.Truncate;
+            _tip.resizeTextForBestFit = true; _tip.resizeTextMinSize = 8; _tip.resizeTextMaxSize = 10;
 
             _planLabel = UiKit.Label(root, "", 10, Palette.Accent, TextAnchor.MiddleLeft);
             _planLabel.name = "PlanBadge_" + companyId;
             _planLabel.rectTransform.anchorMin = Vector2.zero; _planLabel.rectTransform.anchorMax = new Vector2(1, 0);
-            _planLabel.rectTransform.offsetMin = new Vector2(8, 40); _planLabel.rectTransform.offsetMax = new Vector2(-8, 68);
+            _planLabel.rectTransform.offsetMin = new Vector2(8, 44); _planLabel.rectTransform.offsetMax = new Vector2(-8, 76);
+            // 예약 구간이 많아도 이 칸 안에서만(넘치면 글자 크기를 줄임) — 그래프 위로 번지지 않게
+            _planLabel.horizontalOverflow = HorizontalWrapMode.Wrap; _planLabel.verticalOverflow = VerticalWrapMode.Truncate;
+            _planLabel.resizeTextForBestFit = true; _planLabel.resizeTextMinSize = 8; _planLabel.resizeTextMaxSize = 10;
 
             foreach (int day in new[] { 0, 10, 20, 30 })
             {
