@@ -618,7 +618,7 @@ namespace BlackWhale.UI.View
             bool can = _c.CanCompleteStep();
             bool done = _c.IsDoneForCurrentPhase;
             string label = done ? "완료함 · 대기 중"
-                : s.phase == Protocol.Investment ? (Store.OrderLocked ? "다른 참가자 대기" : "주문 확정 시 진행")
+                : s.phase == Protocol.Investment ? (Store.OrderLocked ? "다른 참가자 대기" : s.stockSystem ? "주문 확정 · 진행" : "주문 확정 시 진행")
                 : s.phase == Protocol.Selection ? (s.stockSystem ? "매수 완료 시 진행" : "선택 시 자동 진행")
                 : "완료";
             if (s.developerMode && can) label = "완료";
@@ -679,7 +679,7 @@ namespace BlackWhale.UI.View
         private void OnDoneClicked()
         {
             var status = _c.CompleteStep();
-            if (status == CommandStatus.Sent) ShowBanner("완료했습니다. 다른 참가자를 기다립니다.");
+            if (status == CommandStatus.Sent) ShowBanner(Store.Public?.phase == Protocol.Investment ? "주문을 확정했습니다." : "완료했습니다. 다른 참가자를 기다립니다.");
         }
 
         // ------------------------------------------------------------------
