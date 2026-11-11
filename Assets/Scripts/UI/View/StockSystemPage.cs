@@ -26,7 +26,8 @@ namespace BlackWhale.UI.View
             public Text BankLabel;
         }
         // 연출(D): 현재 차례 시간 막대·긴박감·내 차례 알림
-        private Image currentBar, urgency;
+        private Image currentBar;
+        private UrgencyEdges urgency;
         private RectTransform currentSlot;
         private Text currentSlotText;
         private int lastPulseSecond = -1;
@@ -103,7 +104,7 @@ namespace BlackWhale.UI.View
             BuildEffects();
         }
 
-        /// <summary>내 차례가 되면 배너가 올라왔다 사라지고, 마지막 3초에는 화면 가장자리가 붉게 깜박인다.</summary>
+        /// <summary>내 차례가 되면 배너가 올라왔다 사라지고, 마지막 3초에는 매수 화면 가장자리만 붉게 깜박인다.</summary>
         private void BuildEffects()
         {
             myTurnNow = State.phase == Protocol.Selection && State.currentPlayerId == controller.LocalPlayerId;
@@ -111,10 +112,8 @@ namespace BlackWhale.UI.View
             urgency = null;
             if (State.phase != Protocol.Selection) return;
 
-            var glow = UiKit.Panel(root, "UrgencyGlow", new Color(0.86f, 0.15f, 0.15f, 0f), rounded: true);
-            UiKit.Stretch(glow.rectTransform, -4, -4, -4, -4);
-            glow.raycastTarget = false;
-            urgency = glow;
+            // 가장자리만 붉게(가운데 내용은 가리지 않음)
+            urgency = new UrgencyEdges(root, new Color(0.86f, 0.12f, 0.12f), 0.32f, 4f);
 
             if (!myTurnNow) return;
             var banner = UiKit.Panel(root, "MyTurnBanner", Palette.Accent, rounded: true);
@@ -133,7 +132,7 @@ namespace BlackWhale.UI.View
             if (currentBar == null && urgency == null) return;
             if (State == null || State.phase != Protocol.Selection || State.developerMode || State.paused)
             {
-                if (urgency != null) urgency.color = new Color(0.86f, 0.15f, 0.15f, 0f);
+                if (urgency != null) { urgency.SetLevel(0f); urgency.Update(); }
                 return;
             }
             double remain = RemainingExact?.Invoke() ?? 0;
@@ -158,8 +157,8 @@ namespace BlackWhale.UI.View
             }
             if (urgency != null)
             {
-                float wave = hurry && myTurnNow ? (Mathf.Sin(Time.unscaledTime * Mathf.PI * 4f) * .5f + .5f) : 0f;
-                urgency.color = new Color(0.86f, 0.15f, 0.15f, wave * 0.10f);
+                urgency.SetLevel(hurry && myTurnNow ? 1f : 0f);
+                urgency.Update();
             }
         }
         private void BuildOrderStrip()

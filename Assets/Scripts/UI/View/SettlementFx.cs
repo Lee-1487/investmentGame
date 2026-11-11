@@ -1,6 +1,6 @@
 // 정산·마감 연출(D). 값·진행은 서버 결과 그대로이고, 보이는 효과만 담당한다.
 // - SettlementFx.Play: 턴 정산 결과가 오면 가운데 카드가 튀어나와 내 수익률·자산 변화를 세어 올리고,
-//   수익이면 색종이가 터지고(1위면 더 많이), 손실이면 카드가 흔들리며 붉게 번쩍인다. 약 3초 뒤 사라진다.
+//   수익이면 화면 가장자리가 금빛으로, 손실이면 붉게 번쩍이고 카드가 흔들린다. 약 3초 뒤 사라진다.
 // - UrgencyEdges: 단계 마감 10초 전부터 화면 가장자리가 살짝 붉게 숨 쉬듯 물든다(시장 공개·정산·대기실·종료 제외).
 using System.Collections.Generic;
 using BlackWhale.UI.Presentation;
@@ -24,11 +24,9 @@ namespace BlackWhale.UI.View
             bool gain = turnReturnBps > 0, loss = turnReturnBps < 0;
             Color tone = gain ? Palette.Up : loss ? Palette.Down : Palette.SubText;
 
-            // 화면 번쩍임(수익: 금빛, 손실: 붉은빛)
-            var flash = UiKit.Panel(root, "Flash", gain ? new Color(1f, 0.85f, 0.3f, 0.28f) : loss ? new Color(0.9f, 0.1f, 0.1f, 0.22f) : new Color(1, 1, 1, 0.15f));
-            UiKit.Stretch(flash.rectTransform);
-            flash.raycastTarget = false;
-            UiAnim.FadeOut(flash.rectTransform, 0.05f, 0.6f);
+            // 가장자리 번쩍임(수익: 금빛, 손실: 붉은빛). 화면 전체는 덮지 않는다.
+            if (gain || loss)
+                EdgeFlash.Play(root, gain ? new Color(0.98f, 0.75f, 0.14f) : new Color(0.86f, 0.12f, 0.12f), 0.9f);
 
             // 가운데 카드
             var card = UiKit.Panel(root, "Card", ScreenKit.Ink, rounded: true);
@@ -53,12 +51,6 @@ namespace BlackWhale.UI.View
             UiAnim.Rise(card.rectTransform, 0f, 50f, 0.35f);
             UiAnim.Pulse(card.rectTransform, 0.35f, gain ? 1.12f : 1.05f);
             if (loss) Shake.Play(card.rectTransform, 0.4f, 0.45f, 9f);
-
-            if (gain)
-            {
-                int pieces = rank == 1 || final ? 90 : 50;
-                ConfettiBurst.Spawn(root, pieces, new Vector2(0, 20));
-            }
 
             UiAnim.FadeOut(card.rectTransform, Seconds - 0.5f, 0.5f);
             if (Application.isPlaying) Object.Destroy(root.gameObject, Seconds + 0.3f);
@@ -90,77 +82,23 @@ namespace BlackWhale.UI.View
         }
     }
 
-    /// <summary>색종이: 가운데에서 위로 터졌다가 중력으로 떨어지며 사라진다.</summary>
-    public sealed class ConfettiBurst : MonoBehaviour
-    {
-        private static readonly Color32[] Colors =
-        {
-            new Color32(0xEF, 0x44, 0x44, 0xFF), new Color32(0xF5, 0x9E, 0x0B, 0xFF), new Color32(0xFB, 0xBF, 0x24, 0xFF),
-            new Color32(0x10, 0xB9, 0x81, 0xFF), new Color32(0x25, 0x63, 0xEB, 0xFF), new Color32(0x7C, 0x3A, 0xED, 0xFF)
-        };
-
-        private readonly List<RectTransform> _pieces = new List<RectTransform>();
-        private readonly List<Vector2> _velocity = new List<Vector2>();
-        private readonly List<float> _spin = new List<float>();
-        private float _age;
-        private const float Life = 2.6f;
-
-        public static void Spawn(RectTransform parent, int count, Vector2 origin)
-        {
-            if (parent == null || !Application.isPlaying) return;
-            var holder = UiKit.Rect(parent, "Confetti");
-            UiKit.Stretch(holder);
-            var burst = holder.gameObject.AddComponent<ConfettiBurst>();
-            var group = holder.gameObject.AddComponent<CanvasGroup>();
-            group.blocksRaycasts = false; group.interactable = false;
-            for (int i = 0; i < count; i++)
-            {
-                var img = UiKit.Panel(holder, "Piece", Colors[i % Colors.Length]);
-                img.raycastTarget = false;
-                var rt = img.rectTransform;
-                rt.anchorMin = rt.anchorMax = new Vector2(.5f, .5f);
-                rt.sizeDelta = new Vector2(Random.Range(6f, 11f), Random.Range(10f, 16f));
-                rt.anchoredPosition = origin + Random.insideUnitCircle * 20f;
-                rt.localRotation = Quaternion.Euler(0, 0, Random.Range(0f, 360f));
-                float angle = Random.Range(20f, 160f) * Mathf.Deg2Rad;
-                float speed = Random.Range(380f, 820f);
-                burst._pieces.Add(rt);
-                burst._velocity.Add(new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * speed);
-                burst._spin.Add(Random.Range(-540f, 540f));
-            }
-        }
-
-        private void Update()
-        {
-            float dt = Time.unscaledDeltaTime;
-            _age += dt;
-            for (int i = 0; i < _pieces.Count; i++)
-            {
-                if (_pieces[i] == null) continue;
-                var v = _velocity[i];
-                v.y -= 1100f * dt;      // 중력
-                v *= 1f - 0.9f * dt;    // 공기 저항
-                _velocity[i] = v;
-                _pieces[i].anchoredPosition += v * dt;
-                _pieces[i].Rotate(0, 0, _spin[i] * dt);
-            }
-            var group = GetComponent<CanvasGroup>();
-            if (group != null) group.alpha = Mathf.Clamp01((Life - _age) / 0.6f);
-            if (_age >= Life) Destroy(gameObject);
-        }
-    }
-
-    /// <summary>화면 가장자리 붉은 기운. SetLevel(0~1)로 세기를 정하면 부드럽게 따라가며 천천히 숨 쉰다.</summary>
+    /// <summary>가장자리만 물드는 효과(가운데는 그대로). SetLevel(0~1)로 세기를 정하면 부드럽게 따라가며 숨 쉰다.</summary>
     public sealed class UrgencyEdges
     {
         private const int Layers = 6;
         private const float LayerWidth = 7f;
         private readonly List<Image> _images = new List<Image>();
         private readonly RectTransform _root;
+        private readonly Color _color;
+        private readonly float _maxAlpha, _breathSpeed;
         private float _level, _target;
 
-        public UrgencyEdges(RectTransform screen)
+        public UrgencyEdges(RectTransform screen) : this(screen, new Color(0.86f, 0.12f, 0.12f), 0.16f, 1.2f) { }
+
+        /// <param name="breathSpeed">초당 깜박임 횟수 비슷한 값. 0이면 깜박이지 않음</param>
+        public UrgencyEdges(RectTransform screen, Color color, float maxAlpha, float breathSpeed)
         {
+            _color = color; _maxAlpha = maxAlpha; _breathSpeed = breathSpeed;
             _root = UiKit.Rect(screen, "UrgencyEdges");
             UiKit.Stretch(_root);
             for (int layer = 0; layer < Layers; layer++)
@@ -187,19 +125,48 @@ namespace BlackWhale.UI.View
         /// <summary>0이면 꺼짐, 1이면 가장 진함.</summary>
         public void SetLevel(float level) => _target = Mathf.Clamp01(level);
 
+        /// <summary>천천히 따라가지 않고 바로 이 세기로(번쩍임 연출용).</summary>
+        public void SetLevelNow(float level) { _target = _level = Mathf.Clamp01(level); }
+
         public void Update()
         {
             _level = Mathf.MoveTowards(_level, _target, Time.unscaledDeltaTime * 1.5f);
             bool on = _level > 0.001f;
             if (_root.gameObject.activeSelf != on) _root.gameObject.SetActive(on);
             if (!on) return;
-            float breath = 0.75f + 0.25f * Mathf.Sin(Time.unscaledTime * Mathf.PI * 1.2f);
+            float breath = _breathSpeed <= 0f ? 1f : 0.75f + 0.25f * Mathf.Sin(Time.unscaledTime * Mathf.PI * _breathSpeed);
             for (int i = 0; i < _images.Count; i++)
             {
                 int layer = i / 4;
                 float falloff = 1f - layer / (float)Layers;            // 바깥이 진하고 안쪽으로 옅어짐
-                _images[i].color = new Color(0.86f, 0.12f, 0.12f, 0.16f * falloff * falloff * _level * breath);
+                _images[i].color = new Color(_color.r, _color.g, _color.b, _maxAlpha * falloff * falloff * _level * breath);
             }
+        }
+    }
+
+    /// <summary>가장자리만 한 번 번쩍였다 사라지는 효과.</summary>
+    public sealed class EdgeFlash : MonoBehaviour
+    {
+        private UrgencyEdges _edges;
+        private float _t, _seconds;
+
+        public static void Play(RectTransform parent, Color color, float seconds)
+        {
+            if (parent == null || !Application.isPlaying) return;
+            var edges = new UrgencyEdges(parent, color, 0.45f, 0f);
+            var driver = edges.Root.gameObject.AddComponent<EdgeFlash>();
+            driver._edges = edges; driver._seconds = seconds;
+            edges.SetLevelNow(1f);
+            edges.Update();
+        }
+
+        private void Update()
+        {
+            if (_edges == null) return;
+            _t += Time.unscaledDeltaTime;
+            _edges.SetLevelNow(1f - _t / _seconds);
+            _edges.Update();
+            if (_t >= _seconds) Destroy(gameObject);
         }
     }
 }
