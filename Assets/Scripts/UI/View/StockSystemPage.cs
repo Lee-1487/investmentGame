@@ -62,8 +62,10 @@ namespace BlackWhale.UI.View
             if (State.phase == StockRules.AugmentPhase) { BuildAugments(); return; }
             foreach (string id in UiRules.CompanyIds) targets[id] = Holding(id);
             BuildOrderStrip();
-            summary = Label(root, "", 49, 29, 13); summary.name = "StockPurchaseSummary";
-            var grid = UiKit.Rect(root, "ShareMarketGrid"); UiKit.Stretch(grid, 0, 82, 0, 44);
+            summary = Label(root, "", 49, 32, 13); summary.name = "StockPurchaseSummary";
+            bool hasAction = State.phase == Protocol.Selection || State.phase == Protocol.Investment;
+            if (hasAction) summary.rectTransform.offsetMax = new Vector2(-330, -49); // 오른쪽은 완료 버튼 자리
+            var grid = UiKit.Rect(root, "ShareMarketGrid"); UiKit.Stretch(grid, 0, 86, 0, 4);
             for (int i = 0; i < UiRules.CompanyIds.Length; i++)
             {
                 string id = UiRules.CompanyIds[i];
@@ -73,20 +75,17 @@ namespace BlackWhale.UI.View
             }
             if (State.phase == Protocol.Selection)
             {
-                finish = UiKit.Button(root, "매수 완료 · 다음 차례", 14, Palette.Accent, Color.white, () => controller.PassStockDraft());
+                // 매수 완료 버튼: 매수 화면 위쪽 오른쪽(차례 줄 바로 아래)에 항상 보이게
+                finish = UiKit.Button(root, "매수 완료 · 다음 차례", 15, Palette.Accent, Color.white, () => controller.PassStockDraft());
                 finish.name = "PassShareDraft";
-                UiKit.Place((RectTransform)finish.transform, new Vector2(1, 0), new Vector2(1, 0), new Vector2(-4, 3), new Vector2(190, 34));
-                var help = Label(root, "회색 물량을 내 색으로 채우고 놓으면 바로 매수 · 차트 클릭으로 확대", 0, 0, 12);
-                help.rectTransform.anchorMin = Vector2.zero; help.rectTransform.anchorMax = new Vector2(1, 0);
-                help.rectTransform.offsetMin = new Vector2(4, 3); help.rectTransform.offsetMax = new Vector2(-202, 35);
+                UiKit.Place((RectTransform)finish.transform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-4, -48), new Vector2(200, 34));
                 if (Portfolio.augments.Contains("PRIORITY") && !Portfolio.priorityUsed)
                 {
                     var priority = UiKit.Button(root, "선점 사용", 12, Palette.AccentSoft, Palette.Accent, () => controller.UseDraftPriority());
                     priority.name = "UseDraftPriority";
-                    UiKit.Place((RectTransform)priority.transform, new Vector2(0, 0), new Vector2(0, 0), new Vector2(4, 3), new Vector2(110, 34));
+                    UiKit.Place((RectTransform)priority.transform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-212, -48), new Vector2(110, 34));
                     int next = Array.FindIndex(State.draftOrder ?? Array.Empty<string>(), Math.Min(State.selectionIndex + 1, State.draftOrder?.Length ?? 0), id => id == controller.LocalPlayerId);
                     priority.interactable = !State.paused && next > State.selectionIndex + 1 && !controller.Store.HasPending(StockRules.Priority);
-                    help.rectTransform.offsetMin = new Vector2(124, 3);
                 }
             }
             else if (State.phase == Protocol.Investment)
@@ -94,10 +93,7 @@ namespace BlackWhale.UI.View
                 finish = UiKit.Button(root, "진입·청산 구간 확정", 14, Palette.Accent, Color.white,
                     () => controller.SubmitInvestment(controller.CurrentTradeReservations()));
                 finish.name = "ConfirmStockIntervals";
-                UiKit.Place((RectTransform)finish.transform, new Vector2(1, 0), new Vector2(1, 0), new Vector2(-4, 3), new Vector2(220, 34));
-                var hint = Label(root, "차트를 눌러 예약 확인·수정 · 미설정 기업은 전체 기간 보유", 0, 0, 12);
-                hint.rectTransform.anchorMin = Vector2.zero; hint.rectTransform.anchorMax = new Vector2(1, 0);
-                hint.rectTransform.offsetMin = new Vector2(4, 3); hint.rectTransform.offsetMax = new Vector2(-230, 35);
+                UiKit.Place((RectTransform)finish.transform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-4, -48), new Vector2(220, 34));
             }
             else finish = null;
             RefreshCards();
@@ -353,6 +349,9 @@ namespace BlackWhale.UI.View
             if (finish != null)
             {
                 finish.interactable = State.phase == Protocol.Selection ? Editable : !State.paused && !controller.Store.OrderLocked && !controller.Store.HasPending(CommandTypes.SubmitInvestment);
+                if (State.phase == Protocol.Selection)
+                    UiKit.SetButton(finish, Editable ? "매수 완료 · 다음 차례" : State.currentPlayerId == controller.LocalPlayerId ? "처리 중…" : "다른 플레이어 차례",
+                        finish.interactable, finish.interactable ? Palette.Accent : Palette.Disabled, finish.interactable ? Color.white : Palette.DisabledText);
                 if (State.phase == Protocol.Investment) UiKit.SetButton(finish, controller.Store.OrderLocked ? "구간 확정 완료 · 대기" : "진입·청산 구간 확정", finish.interactable, Palette.Accent, Color.white);
             }
         }

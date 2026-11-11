@@ -538,9 +538,7 @@ namespace BlackWhale.UI.View
             float e = Mathf.SmoothStep(0, 1, _pageT);
             _pager.anchorMin = new Vector2(-e, 0);
             _pager.anchorMax = new Vector2(2 - e, 1);
-            _pageHint.text = _pageTarget < 0.5f
-                ? "오른쪽 가장자리를 누르면 정보 구매 창으로 넘어갑니다"
-                : "왼쪽 가장자리를 누르면 매수 창으로 넘어갑니다";
+            _pageHint.text = ""; // 화면 아래 안내 문구는 표시하지 않음(가장자리 클릭 이동은 그대로 동작)
 
 
         }
