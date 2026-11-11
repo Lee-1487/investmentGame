@@ -672,7 +672,7 @@ namespace BlackWhale.UI.View
             PositionNextTo(popup, slot, rightSide: true);
 
             var r = row.Score;
-            string title = "<b>" + row.PlayerId + (row.PlayerId == _c.LocalPlayerId ? " (나)" : "") + "</b>  <size=12>직업 미정</size>";
+            string title = "<b>" + row.PlayerId + (row.PlayerId == _c.LocalPlayerId ? " (나)" : "") + "</b>";
             string body = r == null
                 ? "\n<color=#6B7280>아직 정산 결과가 없습니다.</color>"
                 : "\n이번 턴 수익률  <b><color=#" + ColorUtility.ToHtmlStringRGB(Palette.ForBps(r.turnReturnBps)) + ">" + DisplayFormat.Percent(r.turnReturnBps) + "</color></b>"
@@ -795,7 +795,7 @@ namespace BlackWhale.UI.View
     {
         private readonly int _index;
         private readonly Image _border;
-        private readonly Text _text, _assets, _job;
+        private readonly Text _text, _assets;
         private readonly RectTransform _rt;
         private RankRow _row;
         private string _delta = "";
@@ -813,17 +813,17 @@ namespace BlackWhale.UI.View
             var inner = UiKit.Panel(_border.transform, "Inner", Palette.Card, rounded: true);
             UiKit.Stretch(inner.rectTransform, 3, 3, 3, 3);
             _text = UiKit.Label(inner.transform, "", 13, Palette.Text, TextAnchor.UpperCenter);
-            UiKit.Stretch(_text.rectTransform, 2, 5, 2, 30);
-            _assets = UiKit.Label(inner.transform, "", 11, Palette.Text, TextAnchor.MiddleCenter);
+            UiKit.Stretch(_text.rectTransform, 2, 5, 2, 36);
+            // 보유 금액(총자산): 크게 표시. '직업 미정' 줄은 없앴다.
+            _assets = UiKit.Label(inner.transform, "", 17, Palette.Text, TextAnchor.MiddleCenter, FontStyle.Bold);
+            _assets.name = "RankAssets";
             UiKit.Stretch(_assets.rectTransform, 2, 0, 2, 0);
             _assets.rectTransform.anchorMax = new Vector2(1, 0);
-            _assets.rectTransform.offsetMin = new Vector2(2, 15);
-            _assets.rectTransform.offsetMax = new Vector2(-2, 30);
-            _job = UiKit.Label(inner.transform, "직업 미정", 10, Palette.SubText, TextAnchor.MiddleCenter);
-            UiKit.Stretch(_job.rectTransform, 2, 0, 2, 0);
-            _job.rectTransform.anchorMax = new Vector2(1, 0);
-            _job.rectTransform.offsetMin = new Vector2(2, 2);
-            _job.rectTransform.offsetMax = new Vector2(-2, 15);
+            _assets.rectTransform.offsetMin = new Vector2(1, 6);
+            _assets.rectTransform.offsetMax = new Vector2(-1, 34);
+            _assets.resizeTextForBestFit = true; // 금액이 길어지면 칸 안에 맞게 자동으로 줄임
+            _assets.resizeTextMinSize = 11;
+            _assets.resizeTextMaxSize = 17;
 
             UiKit.Hover(bg.gameObject, () => owner.ShowPlayerPopup(_row, _rt), owner.HidePopup);
         }
