@@ -622,6 +622,8 @@ namespace BlackWhale.UI.View
                 : s.phase == Protocol.Selection ? (s.stockSystem ? "매수 완료 시 진행" : "선택 시 자동 진행")
                 : "완료";
             if (s.developerMode && can) label = "완료";
+            // 주식 투자 단계에서는 이 버튼이 구간(주문) 확정 버튼이다(매수 화면의 별도 확정 버튼은 없앰).
+            _doneButton.name = s.stockSystem && s.phase == Protocol.Investment ? "ConfirmStockIntervals" : "Button";
             UiKit.SetButton(_doneButton, label, can, can ? Palette.Accent : Palette.Disabled, can ? Color.white : Palette.DisabledText);
         }
 

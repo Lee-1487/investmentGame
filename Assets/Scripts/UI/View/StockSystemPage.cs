@@ -73,14 +73,9 @@ namespace BlackWhale.UI.View
             }
             if (State.phase == Protocol.Selection)
             {
-                // '매수 완료' 단계 없음: 차례는 시간(7초)이 끝나면 넘어간다. 개발자 모드(시간 제한 없음)에서만 넘기기 버튼을 둔다.
-                if (State.developerMode)
-                {
-                    finish = UiKit.Button(root, "매수 완료 · 다음 차례", 14, Palette.Accent, Color.white, () => controller.PassStockDraft());
-                    finish.name = "PassShareDraft";
-                    UiKit.Place((RectTransform)finish.transform, new Vector2(1, 0), new Vector2(1, 0), new Vector2(-4, 3), new Vector2(190, 34));
-                }
-                else finish = null;
+                finish = UiKit.Button(root, "매수 완료 · 다음 차례", 14, Palette.Accent, Color.white, () => controller.PassStockDraft());
+                finish.name = "PassShareDraft";
+                UiKit.Place((RectTransform)finish.transform, new Vector2(1, 0), new Vector2(1, 0), new Vector2(-4, 3), new Vector2(190, 34));
                 if (Portfolio.augments.Contains("PRIORITY") && !Portfolio.priorityUsed)
                 {
                     var priority = UiKit.Button(root, "선점 사용", 12, Palette.AccentSoft, Palette.Accent, () => controller.UseDraftPriority());
@@ -90,13 +85,7 @@ namespace BlackWhale.UI.View
                     priority.interactable = !State.paused && next > State.selectionIndex + 1 && !controller.Store.HasPending(StockRules.Priority);
                 }
             }
-            else if (State.phase == Protocol.Investment)
-            {
-                finish = UiKit.Button(root, "진입·청산 구간 확정", 14, Palette.Accent, Color.white,
-                    () => controller.SubmitInvestment(controller.CurrentTradeReservations()));
-                finish.name = "ConfirmStockIntervals";
-                UiKit.Place((RectTransform)finish.transform, new Vector2(1, 0), new Vector2(1, 0), new Vector2(-4, 3), new Vector2(220, 34));
-            }
+            // 투자 단계의 '진입·청산 구간 확정' 버튼은 없앴다. 오른쪽 '주문 확정 · 진행' 버튼이 같은 일을 한다.
             else finish = null;
             RefreshCards();
             BuildEffects();
