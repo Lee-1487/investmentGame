@@ -217,6 +217,13 @@ namespace BlackWhale.UI.View
             _zoomPointer.EditInterval = (index, entry, exit) => CanPlan ? _c.Store.TradePlans.TryReplaceInterval(_zoomCompany, index, entry, exit) : ErrorCodes.OrderLocked;
             _zoomPointer.DeleteInterval = index => { if (CanPlan) _c.Store.TradePlans.RemoveInterval(_zoomCompany, index); };
             _zoomPointer.RangeChanged = RefreshMouseRange;
+            _zoomPointer.RangeFinished = () =>
+            {
+                var card = _cards.FirstOrDefault(c => c.CompanyId == _zoomCompany);
+                if (card == null || !card.AutoReserve) return;
+                _note = card.SaveReservation();
+                RefreshZoom();
+            };
             _grid.gameObject.SetActive(false); _zoom.gameObject.SetActive(true); _zoom.SetAsLastSibling();
             _zoomChart.name = "ZoomChart_" + company; RefreshZoom();
         }
@@ -551,12 +558,24 @@ namespace BlackWhale.UI.View
             pointer.EditInterval = (index, entryDay, exitDay) => CanPlan ? _c.Store.TradePlans.TryReplaceInterval(_companyId, index, entryDay, exitDay) : ErrorCodes.OrderLocked;
             pointer.DeleteInterval = index => { if (CanPlan) _c.Store.TradePlans.RemoveInterval(_companyId, index); };
             pointer.RangeChanged = () => { DrawSelection(); _window.Refresh(); };
+            pointer.RangeFinished = () => { if (AutoReserve) SaveReservation(); };
         }
         private bool CanPlan => _c.CanPlanTrade(_companyId);
+
+        /// <summary>투자 결정 단계: 차트에서 구간을 고르면 '예약하기' 없이 바로 진입·청산으로 정한다(새 구간일 때).</summary>
+        public bool AutoReserve => _c.Store.Public?.stockSystem == true && _c.Store.Public.phase == Protocol.Investment
+            && CanPlan && Selection.HasSelection && Selection.SelectedIndex < 0 && Selection.End > Selection.Start;
         public string SaveReservation()
         {
             if (!CanPlan || !Selection.HasSelection) return "지금은 예약할 수 없습니다.";
             int index = Selection.SelectedIndex;
+            if (index >= 0)
+            {
+                // 이미 같은 구간으로 정해져 있으면 다시 저장하지 않는다(바로 정하기 뒤 '예약하기'를 또 눌러도 중복 전송 없음)
+                var saved = _c.Store.TradePlans.Get(_companyId).Intervals;
+                if (index < saved.Length && saved[index].entryDay == Selection.Start && saved[index].exitDay == Selection.End)
+                    return "이미 정해진 구간입니다.";
+            }
             if (index < 0) index = _c.Store.TradePlans.Get(_companyId).Intervals.Length;
             string error = Selection.SelectedIndex >= 0 ? _c.Store.TradePlans.TryReplaceInterval(_companyId, index, Selection.Start, Selection.End)
                 : _c.Store.TradePlans.TryAddInterval(_companyId, Selection.Start, Selection.End);
