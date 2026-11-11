@@ -410,11 +410,26 @@ namespace BlackWhale.UI.View
             }
         }
 
+        private string _draftPhaseKey = "";
+
+        /// <summary>확정(예약·구매)하지 않은 선택 표시를 지운다: 각 카드의 선택 구간, 확대 차트의 진입 후보.
+        /// 이미 예약·구매한 구간은 그대로 둔다.</summary>
+        public void ClearUnconfirmed()
+        {
+            bool changed = _entryDay.HasValue;
+            _entryDay = null;
+            foreach (var card in _cards) changed |= card.ClearDraft();
+            if (!changed) return;
+            if (_zoomCompany != null) { _note = ""; RefreshZoom(); }
+        }
+
         public void Refresh()
         {
             var v = _c.Store.View;
             var phase = _c.Store.Public?.phase;
             var state = _c.Store.Public;
+            string draftKey = (state?.turn ?? 0) + ":" + (state?.phase ?? "");
+            if (draftKey != _draftPhaseKey) { _draftPhaseKey = draftKey; ClearUnconfirmed(); } // 다음 단계로 넘어가면 확정 안 한 선택은 지움
             bool windows = state?.windowInformation == true;
             bool showingResults = phase == Protocol.Reveal || phase == Protocol.Result;
             _title.text = showingResults ? "시장 공개 · 투자 결과" : phase == Protocol.Investment && state?.stockSystem == true ? "진입·청산 구간 결정" : state?.publicSelectionActive == true ? "공용 정보 선택" : "정보 구매 창";
@@ -454,7 +469,7 @@ namespace BlackWhale.UI.View
         private readonly RectTransform _legacyBundles;
         private readonly InformationWindowSelector _window;
         private readonly ChartPointerLayer _pointer;
-        private int _selectionTurn = -1;
+        private string _selectionKey = "";
         public string CompanyId => _companyId;
         public int StartDay => _window.StartDay;
         public ChartRangeSelection Selection => _window.Selection;
@@ -547,6 +562,16 @@ namespace BlackWhale.UI.View
             if (error == "") { Selection.SelectInterval(index, Selection.Start, Selection.End); DrawSelection(); _window.Refresh(); }
             return error == "" ? "예약했습니다. 선택한 기업이면 투자 마감 때 자동 적용됩니다." : ErrorMessages.ToKorean(error);
         }
+        /// <summary>확정 안 한 선택 구간 표시를 지운다. 지운 것이 있으면 true.</summary>
+        public bool ClearDraft()
+        {
+            if (!Selection.HasSelection) return false;
+            Selection.Clear();
+            DrawSelection();
+            _window.Refresh();
+            return true;
+        }
+
         private void DrawSelection() => _chart.SetInformationRange(_c.Store.Public?.windowInformation == true && Selection.HasSelection
             ? new Vector2Int(Selection.Start, Selection.End) : (Vector2Int?)null);
 
@@ -558,7 +583,8 @@ namespace BlackWhale.UI.View
         public void Refresh()
         {
             // 남은 자리 수는 정보 구매 창에 표시하지 않는다(자리 선택 화면에서만 보임). 내가 고른 기업 표시만 남김.
-            if (_selectionTurn != _c.Store.CurrentTurn) { _selectionTurn = _c.Store.CurrentTurn; Selection.Clear(); }
+            string selectionKey = _c.Store.CurrentTurn + ":" + _c.Store.Public?.phase;
+            if (_selectionKey != selectionKey) { _selectionKey = selectionKey; Selection.Clear(); } // 턴·단계가 바뀌면 확정 안 한 선택 지움
             _seats.text = _c.Store.OwnSelections.Contains(_companyId) ? "<color=#2563EB><b>내 선택</b></color>" : "";
             _expand.interactable = _c.Store.View != null;
             var intervals = _c.Store.TradePlans.ChartIntervals(_c.Store.View, _c.Store.CurrentTurn, _companyId, _c.Store.OrderLocked);

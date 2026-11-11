@@ -28,9 +28,9 @@ namespace BlackWhale.UI.View
         public static readonly Color32 GridColor = new Color32(0xCB, 0xD0, 0xD8, 0xFF);
         public static readonly Color32 BandColor = new Color32(0x25, 0x63, 0xEB, 0x2E);
         public static readonly Color32 BandEdgeColor = new Color32(0x25, 0x63, 0xEB, 0xCC);
-        public static readonly Color32 CandidateColor = new Color32(0xF5, 0x9E, 0x0B, 0xFF);
-        public static readonly Color32 PreviewOkColor = new Color32(0x05, 0x96, 0x69, 0x30);
-        public static readonly Color32 PreviewBadColor = new Color32(0xDC, 0x26, 0x26, 0x26);
+        public static readonly Color32 CandidateColor = new Color32(0x25, 0x63, 0xEB, 0xFF); // 진입일 후보: 파란색
+        public static readonly Color32 PreviewOkColor = new Color32(0x25, 0x63, 0xEB, 0x30);   // 구간 미리보기: 파란색
+        public static readonly Color32 PreviewBadColor = new Color32(0x6B, 0x72, 0x80, 0x22);  // 불가 구간: 회색(빨간색 대신)
         public static readonly Color32 AllowedColor = new Color32(0x05, 0x96, 0x69, 0x1F);
         public static readonly Color32 AllowedEdgeColor = new Color32(0x05, 0x96, 0x69, 0x8C);
         public static readonly Color32 HoverColor = new Color32(0x11, 0x18, 0x27, 0x22);
@@ -231,11 +231,13 @@ namespace BlackWhale.UI.View
             {
                 float left = DayAxis.LeftX(_informationRange.Value.x, r.xMin, r.width);
                 float right = DayAxis.LeftX(_informationRange.Value.y, r.xMin, r.width) + slot;
-                var highlight = new Color32(0xD9, 0x77, 0x06, 0x35);
+                // 선택한 구간: 파란색(확정 전 초안)
+                var highlight = new Color32(0x25, 0x63, 0xEB, 0x30);
+                var edge = new Color32(0x25, 0x63, 0xEB, 0xFF);
                 Quad(vh, left, r.yMin, right, r.yMax, highlight);
-                Quad(vh, left, r.yMax - 3, right, r.yMax, new Color32(0xD9, 0x77, 0x06, 0xFF));
-                Quad(vh, left, r.yMin, left + 2, r.yMax, new Color32(0xD9, 0x77, 0x06, 0xFF));
-                Quad(vh, right - 2, r.yMin, right, r.yMax, new Color32(0xD9, 0x77, 0x06, 0xFF));
+                Quad(vh, left, r.yMax - 3, right, r.yMax, edge);
+                Quad(vh, left, r.yMin, left + 2, r.yMax, edge);
+                Quad(vh, right - 2, r.yMin, right, r.yMax, edge);
             }
             foreach (var b in _bands) Band(vh, r, b.x, b.y, BandColor, true);
             for (int p = 0; p < _revealedInvestments.Length; p++)

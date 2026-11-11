@@ -267,7 +267,7 @@ namespace BlackWhale.UI.View
 
                 bool current = slot.State == PickSlotState.Current;
                 bool done = slot.State == PickSlotState.Done;
-                Color frameColor = current ? (Color)BarChartGraphic.CandidateColor : slot.IsMine ? Palette.Accent : Palette.CardBorder;
+                Color frameColor = current ? ScreenKit.Amber : slot.IsMine ? Palette.Accent : Palette.CardBorder;
                 Color fill = current ? new Color32(0xFE, 0xF3, 0xC7, 0xFF) : done ? Palette.Disabled : slot.IsMine ? Palette.AccentSoft : Palette.Card;
                 var frame = UiKit.Panel(cell, "Frame", frameColor, rounded: true);
                 UiKit.Stretch(frame.rectTransform);

@@ -12,6 +12,7 @@ using BlackWhale.Shared;
 using BlackWhale.UI.Presentation;
 using BlackWhale.UI.State;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.UI;
 
 namespace BlackWhale.UI.View
@@ -531,6 +532,7 @@ namespace BlackWhale.UI.View
             else _missingViewSince = -1;
             UpdateTimer();
             UpdateUrgency();
+            ClearDraftsOnOutsideClick();
             if (Store.Public?.phase == Protocol.Selection) _investmentPage.Tick();
             UpdateBanner();
 
@@ -541,6 +543,25 @@ namespace BlackWhale.UI.View
             _pageHint.text = ""; // 화면 아래 안내 문구는 표시하지 않음(가장자리 클릭 이동은 그대로 동작)
 
 
+        }
+
+        private readonly List<RaycastResult> _clickHits = new List<RaycastResult>();
+
+        /// <summary>차트·버튼이 아닌 곳을 누르면 확정(예약·구매)하지 않은 구간 선택 표시를 지운다.</summary>
+        private void ClearDraftsOnOutsideClick()
+        {
+            var mouse = UnityEngine.InputSystem.Mouse.current;
+            if (_infoPage == null || mouse == null || !mouse.leftButton.wasPressedThisFrame || EventSystem.current == null) return;
+            var data = new PointerEventData(EventSystem.current) { position = mouse.position.ReadValue() };
+            _clickHits.Clear();
+            EventSystem.current.RaycastAll(data, _clickHits);
+            if (_clickHits.Count > 0 && _clickHits[0].gameObject != null)
+            {
+                var hit = _clickHits[0].gameObject;
+                if (hit.GetComponentInParent<Selectable>() != null || hit.GetComponentInParent<ChartPointerLayer>() != null
+                    || hit.GetComponentInParent<BarChartGraphic>() != null) return; // 차트·버튼·입력칸을 누른 것
+            }
+            _infoPage.ClearUnconfirmed();
         }
 
         /// <summary>단계 마감 10초 전부터 가장자리를 붉게(남을수록 진하게). 시장 공개·정산·대기실·종료·일시정지는 제외.</summary>
@@ -732,7 +753,8 @@ namespace BlackWhale.UI.View
             chart.AddHLine(0, Palette.Grid);
             foreach (var r in list)
             {
-                var pts = (r.returnHistory ?? new ReturnPoint[0]).OrderBy(p => p.turn).Select(p => new Vector2(p.turn, p.returnBps)).ToList();
+                var pts = (r.returnHistory ?? new ReturnPoint[0]).Where(p => p != null && p.turn > 0).OrderBy(p => p.turn).Select(p => new Vector2(p.turn, p.returnBps)).ToList();
+                pts.Insert(0, Vector2.zero); // 시작 지점: 0턴 0%
                 chart.AddSeries(pts, Palette.Player(r.playerId), 2.5f, 5f);
             }
 
