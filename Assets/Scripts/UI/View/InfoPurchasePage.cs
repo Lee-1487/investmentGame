@@ -187,6 +187,13 @@ namespace BlackWhale.UI.View
             _zoomWindow.Changed = start => RefreshMouseRange();
             _zoomWindow.CanReserve = () => CanPlan && _c.Store.TradePlans.RangeError(_zoomCompany,
                 _zoomWindow.Selection.SelectedIndex, _zoomWindow.StartDay, _zoomWindow.EndDay) == "";
+            _zoomWindow.CanCancel = () => CanPlan;
+            _zoomWindow.CancelReservation = () =>
+            {
+                var card = _cards.FirstOrDefault(c => c.CompanyId == _zoomCompany);
+                if (card == null) return;
+                _entryDay = null; _note = card.CancelSelected(); _rowKey = null; RefreshZoom();
+            };
             _zoomWindow.Reserve = () => {
                 if (!CanPlan) return;
                 _note = _cards.First(c => c.CompanyId == _zoomCompany).SaveReservation();
@@ -575,6 +582,8 @@ namespace BlackWhale.UI.View
             _window.Changed = start => DrawSelection();
             _window.CanReserve = () => CanPlan && _c.Store.TradePlans.RangeError(_companyId, Selection.SelectedIndex, Selection.Start, Selection.End) == "";
             _window.Reserve = () => { SaveReservation(); EventSystem.current?.SetSelectedGameObject(_pointer.gameObject); };
+            _window.CanCancel = () => CanPlan;
+            _window.CancelReservation = () => CancelSelected();
             pointer.CanEditRange = () => _c.Store.Public?.paused != true && string.IsNullOrEmpty(_c.Store.EndReason) &&
                 (_c.Store.Public?.phase == Protocol.Info || CanPlan);
             pointer.Intervals = () => CanPlan ? _c.Store.TradePlans.Get(_companyId).Intervals : Array.Empty<Interval>();
@@ -605,6 +614,20 @@ namespace BlackWhale.UI.View
             if (error == "") { Selection.SelectInterval(index, Selection.Start, Selection.End); DrawSelection(); _window.Refresh(); }
             return error == "" ? "예약했습니다. 선택한 기업이면 투자 마감 때 자동 적용됩니다." : ErrorMessages.ToKorean(error);
         }
+        /// <summary>고른 예약(매수·청산 구간)을 취소한다. 결과 문구를 돌려준다.</summary>
+        public string CancelSelected()
+        {
+            if (!CanPlan || Selection.SelectedIndex < 0) return "취소할 예약을 먼저 고르세요.";
+            int index = Selection.SelectedIndex, entry = Selection.Start, exit = Selection.End;
+            var plans = _c.Store.TradePlans.Get(_companyId).Intervals;
+            if (index >= plans.Length || plans[index].entryDay != entry || plans[index].exitDay != exit)
+                index = Array.FindIndex(plans, p => p.entryDay == entry && p.exitDay == exit);
+            Selection.Clear();
+            bool removed = index >= 0 && _c.Store.TradePlans.RemoveInterval(_companyId, index);
+            DrawSelection(); _window.Refresh();
+            return removed ? entry + "→" + exit + "일 예약을 취소했습니다." : "이미 취소된 예약입니다.";
+        }
+
         /// <summary>확정 안 한 선택 구간 표시를 지운다. 지운 것이 있으면 true.</summary>
         public bool ClearDraft()
         {

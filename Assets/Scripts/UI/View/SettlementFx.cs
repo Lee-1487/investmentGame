@@ -57,6 +57,79 @@ namespace BlackWhale.UI.View
         }
     }
 
+    /// <summary>결과 발표 예고(시장 공개 시작 때): 화면 가운데 큰 제목이 튀어나왔다가 사라진다.</summary>
+    public static class ResultAnnouncement
+    {
+        public static void Play(RectTransform screen, int turn, bool final)
+        {
+            if (screen == null) return;
+            var old = screen.Find("ResultAnnouncement");
+            if (old != null) Object.Destroy(old.gameObject);
+            var root = UiKit.Rect(screen, "ResultAnnouncement");
+            UiKit.Stretch(root);
+
+            EdgeFlash.Play(root, new Color(0.98f, 0.75f, 0.14f), 1.2f);
+            var band = UiKit.Panel(root, "Band", new Color(0.07f, 0.09f, 0.15f, 0.92f));
+            band.raycastTarget = false;
+            band.rectTransform.anchorMin = new Vector2(0, .5f); band.rectTransform.anchorMax = new Vector2(1, .5f);
+            band.rectTransform.sizeDelta = new Vector2(0, 150);
+            var title = UiKit.Label(band.transform, (final ? "최종" : turn + "턴") + " 결과 발표", 54, new Color32(0xFB, 0xBF, 0x24, 0xFF), TextAnchor.MiddleCenter, FontStyle.Bold);
+            UiKit.Stretch(title.rectTransform, 0, 0, 0, 34);
+            var sub = UiKit.Label(band.transform, "시장 가격이 공개됩니다…", 18, Color.white, TextAnchor.LowerCenter);
+            UiKit.Stretch(sub.rectTransform, 0, 0, 0, 16);
+
+            UiAnim.Pulse(title.rectTransform, 0.05f, 1.25f);
+            UiAnim.FadeOut(band.rectTransform, 1.8f, 0.45f);
+            if (Application.isPlaying) Object.Destroy(root.gameObject, 2.6f);
+        }
+    }
+
+    /// <summary>역전 표시: 정산 결과 순위가 바뀌면 화면 위쪽에 '역전!' 띠가 내려와 누가 누구를 제쳤는지 알린다.</summary>
+    public static class ReversalFx
+    {
+        public static void Play(RectTransform screen, string text, bool mine, float delay = 0.6f)
+        {
+            if (screen == null || string.IsNullOrEmpty(text)) return;
+            var root = UiKit.Rect(screen, "ReversalFx");
+            UiKit.Stretch(root);
+            var band = UiKit.Panel(root, "Band", mine ? new Color32(0xDC, 0x26, 0x26, 0xF0) : new Color32(0x7C, 0x3A, 0xED, 0xF0), rounded: true);
+            band.raycastTarget = false;
+            UiKit.Place(band.rectTransform, new Vector2(.5f, 1), new Vector2(.5f, 1), new Vector2(0, -90), new Vector2(560, 70));
+            var label = UiKit.Label(band.transform, "<size=30><b>역전!</b></size>   " + text, 18, Color.white, TextAnchor.MiddleCenter);
+            UiKit.Stretch(label.rectTransform, 10, 0, 10, 0);
+            UiAnim.Rise(band.rectTransform, delay, -40f, 0.35f); // 위에서 내려오기
+            UiAnim.Pulse(band.rectTransform, delay + 0.35f, 1.12f);
+            Shake.Play(band.rectTransform, delay + 0.5f, 0.35f, 6f);
+            UiAnim.FadeOut(band.rectTransform, delay + 3.0f, 0.4f);
+            if (Application.isPlaying) Object.Destroy(root.gameObject, delay + 3.6f);
+        }
+
+        /// <summary>직전 순위와 새 순위를 비교해 '누가 누구를 제쳤는지' 문구를 만든다. 역전이 없으면 null.
+        /// 가장 높은 순위에서 일어난 역전을 고른다.</summary>
+        public static string Describe(IDictionary<string, int> before, IEnumerable<KeyValuePair<string, int>> after, System.Func<string, string> name, out bool involvesMe, string me)
+        {
+            involvesMe = false;
+            if (before == null || before.Count == 0) return null;
+            var now = new Dictionary<string, int>();
+            foreach (var p in after) now[p.Key] = p.Value;
+            string bestUp = null, bestPassed = null; int bestRank = int.MaxValue;
+            foreach (var up in now)
+            {
+                if (!before.TryGetValue(up.Key, out int was) || up.Value >= was) continue;
+                foreach (var down in now)
+                {
+                    if (down.Key == up.Key || !before.TryGetValue(down.Key, out int downWas)) continue;
+                    // 전에는 down이 앞이었는데 이제 up이 앞
+                    if (downWas < was && down.Value > up.Value && up.Value < bestRank)
+                    { bestRank = up.Value; bestUp = up.Key; bestPassed = down.Key; }
+                }
+            }
+            if (bestUp == null) return null;
+            involvesMe = bestUp == me || bestPassed == me;
+            return name(bestUp) + " → " + bestRank + "위 · " + name(bestPassed) + " 추월 (" + before[bestUp] + "위→" + bestRank + "위)";
+        }
+    }
+
     /// <summary>흔들림(손실 연출).</summary>
     public sealed class Shake : MonoBehaviour
     {

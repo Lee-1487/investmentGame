@@ -53,6 +53,8 @@ namespace BlackWhale.UI.View
         private readonly PhaseClock _clock = new PhaseClock();
         private UrgencyEdges _urgency;
         private readonly Dictionary<string, long> _fxAssets = new Dictionary<string, long>(); // 정산 연출용 직전 총자산
+        private readonly Dictionary<string, int> _fxRanks = new Dictionary<string, int>();    // 역전 판단용 직전 순위
+        private int _announcedTurn = -1;
         private string _clockKey = "";
         private PublicState _renderedPublic;
         private PlayerView _renderedView;
@@ -445,6 +447,12 @@ namespace BlackWhale.UI.View
             _lastLocked = Store.OrderLocked;
 
             var board = Store.Scoreboard;
+            // 결과가 나오기 전(시장 공개 시작): 크게 '결과 발표' 한 번
+            if (s != null && s.phase == Protocol.Reveal && s.turn != _announcedTurn)
+            {
+                _announcedTurn = s.turn;
+                ResultAnnouncement.Play(ScreenRect, s.turn, s.totalTurns > 0 && s.turn >= s.totalTurns);
+            }
             if (board != null && board.turn != _lastBoardTurn && board.rows != null && board.rows.Length > 0
                 && board.turn == s?.turn && (s.phase == Protocol.Result || s.phase == Protocol.Ended))
             {
@@ -456,7 +464,11 @@ namespace BlackWhale.UI.View
                     long before = _fxAssets.TryGetValue(mine.playerId, out var b) ? b : mine.totalAssets - mine.cumulativeProfit;
                     SettlementFx.Play(ScreenRect, board.turn, board.gameComplete, mine.rank, mine.turnReturnBps, before, mine.totalAssets);
                 }
-                foreach (var row in board.rows) if (row != null) _fxAssets[row.playerId] = row.totalAssets;
+                // 역전: 직전 순위와 비교해 누가 누구를 제쳤는지
+                var reversal = ReversalFx.Describe(_fxRanks, board.rows.Where(r => r != null).Select(r => new KeyValuePair<string, int>(r.playerId, r.rank)),
+                    id => id == _c.LocalPlayerId ? id + "(나)" : id, out bool reversalMine, _c.LocalPlayerId);
+                if (reversal != null) ReversalFx.Play(ScreenRect, reversal, reversalMine, 0.8f);
+                foreach (var row in board.rows) if (row != null) { _fxAssets[row.playerId] = row.totalAssets; _fxRanks[row.playerId] = row.rank; }
                 ShowBanner(board.gameComplete ? (s.totalTurns > 0 ? s.totalTurns : 10) + "턴 최종 승자 · " + board.winnerPlayerId :
                     board.turn + "턴 정산 완료 · 1위 " + top.playerId + " (" + DisplayFormat.Percent(top.turnReturnBps) + ")");
             }
