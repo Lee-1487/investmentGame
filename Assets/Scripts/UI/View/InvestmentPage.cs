@@ -393,8 +393,16 @@ namespace BlackWhale.UI.View
         }
 
         // 매 프레임 서버 기한의 남은 시간을 표시한다.
+        /// <summary>주식 매수 단계 연출용 남은 시간(소수). TabletView가 서버 시계로 채운다.</summary>
+        public System.Func<double> RemainingExact
+        {
+            get => _stockPage.RemainingExact;
+            set => _stockPage.RemainingExact = value;
+        }
+
         public void Tick()
         {
+            _stockPage.Tick();
             UpdateOrderTimer();
             if (SecondsLeft <= 0)
                 foreach (var button in _body.GetComponentsInChildren<Button>())

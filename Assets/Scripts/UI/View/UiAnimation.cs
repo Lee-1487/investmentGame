@@ -51,6 +51,15 @@ namespace BlackWhale.UI.View
             Slide(rt, to - new Vector2(0, distance), to, seconds, delay);
         }
 
+        /// <summary>delay 뒤에 서서히 사라짐(끝나면 숨김). 알림 배너용.</summary>
+        public static void FadeOut(RectTransform rt, float delay = 1f, float seconds = 0.4f)
+        {
+            if (rt == null) return;
+            if (!Application.isPlaying) { rt.gameObject.SetActive(false); return; }
+            var group = Get<CanvasGroup>(rt.gameObject);
+            Get<FadeOutAnim>(rt.gameObject).Begin(group, seconds, delay);
+        }
+
         /// <summary>0~1 진행도를 ease-out(빠르게 출발, 부드럽게 멈춤)으로.</summary>
         public static float EaseOut(float t)
         {
@@ -165,6 +174,27 @@ namespace BlackWhale.UI.View
             _t += Time.unscaledDeltaTime / _seconds;
             _group.alpha = Mathf.Clamp01(_t);
             if (_t >= 1f) { _group.alpha = 1f; _running = false; }
+        }
+    }
+
+    public sealed class FadeOutAnim : MonoBehaviour
+    {
+        private CanvasGroup _group;
+        private float _t, _seconds, _delay;
+        private bool _running;
+
+        public void Begin(CanvasGroup group, float seconds, float delay)
+        {
+            _group = group; _seconds = seconds; _delay = delay; _t = 0f; _running = true;
+        }
+
+        private void Update()
+        {
+            if (!_running || _group == null) return;
+            if (_delay > 0f) { _delay -= Time.unscaledDeltaTime; return; }
+            _t += Time.unscaledDeltaTime / _seconds;
+            _group.alpha = 1f - Mathf.Clamp01(_t);
+            if (_t >= 1f) { _running = false; gameObject.SetActive(false); }
         }
     }
 }

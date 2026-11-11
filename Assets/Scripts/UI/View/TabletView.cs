@@ -225,6 +225,7 @@ namespace BlackWhale.UI.View
             _investmentPage = new InvestmentPage(invest, _c, _lobby);
             // 기업 선택 차례의 서버 마감으로 남은 시간을 표시한다. 진행 판정은 서버.
             _investmentPage.RemainingSeconds = () => _clock.RemainingSeconds(Store.Public, Time.realtimeSinceStartup);
+            _investmentPage.RemainingExact = () => _clock.RemainingExact(Store.Public, Time.realtimeSinceStartup);
             _infoPage = new InfoPurchasePage(info, _c, ScreenRect);
             _investmentPage.OpenStockPlan = id => { ShowPage(1); _infoPage.OpenCompany(id); };
 
