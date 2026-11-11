@@ -85,6 +85,7 @@ namespace BlackWhale.UI.View
         private string _itemsKey;
         private bool _selectInformation;
         private bool _showInformationItems;
+        private Text _rankLabel;
 
         public InfoPurchasePage(RectTransform page, GameClientController controller, RectTransform overlayParent = null)
         {
@@ -144,7 +145,7 @@ namespace BlackWhale.UI.View
                 () => { if (CanPlan) _c.Store.TradePlans.SetFavorite(_zoomCompany, !_c.Store.TradePlans.Get(_zoomCompany).Favorite); });
             _favorite.name = "FavoriteCompany";
             UiKit.Place((RectTransform)_favorite.transform, Vector2.zero, Vector2.zero, new Vector2(20, 172), new Vector2(120, 32));
-            var rankLabel = UiKit.Label(_zoom, "우선순위", 13, Palette.SubText, TextAnchor.MiddleLeft);
+            var rankLabel = _rankLabel = UiKit.Label(_zoom, "우선순위", 13, Palette.SubText, TextAnchor.MiddleLeft);
             UiKit.Place(rankLabel.rectTransform, Vector2.zero, Vector2.zero, new Vector2(156, 172), new Vector2(64, 32));
             for (int i = 0; i < _rankButtons.Length; i++)
             {
@@ -249,10 +250,11 @@ namespace BlackWhale.UI.View
                 RefreshZoom();
             };
             _grid.gameObject.SetActive(false); _zoom.gameObject.SetActive(true); _zoom.SetAsLastSibling();
+            _header.gameObject.SetActive(false); // 확대 창 오른쪽 틈으로 뒤쪽 머리글이 비쳐 보이지 않게
             _zoomChart.name = "ZoomChart_" + company; RefreshZoom();
         }
         public void Collapse()
-        { _zoomCompany = null; _entryDay = _hoverDay = null; _grid.gameObject.SetActive(true); _zoom.gameObject.SetActive(false); }
+        { _zoomCompany = null; _entryDay = _hoverDay = null; _grid.gameObject.SetActive(true); _zoom.gameObject.SetActive(false); _header.gameObject.SetActive(true); }
         private void PlanDay(int day, bool right)
         {
             if (_selectInformation && _c.Store.Public?.windowInformation == true)
@@ -281,6 +283,7 @@ namespace BlackWhale.UI.View
             bool stockSystem = store.Public?.stockSystem == true;
             _favorite.gameObject.SetActive(!stockSystem);
             foreach (var rankButton in _rankButtons) rankButton.gameObject.SetActive(!stockSystem);
+            _rankLabel.gameObject.SetActive(!stockSystem); // 주식 모드에선 순위 버튼이 없으니 '우선순위' 글자만 남지 않게
             bool windows = store.Public?.windowInformation == true;
             if (store.Public?.publicSelectionActive == true) _selectInformation = true;
             _interactionMode.gameObject.SetActive(windows && (store.View?.inventory?.Length ?? 0) > 0 && store.Public?.publicSelectionActive != true);
@@ -313,7 +316,7 @@ namespace BlackWhale.UI.View
                 ? "공용 공개 " + (store.Public.publicSelectionIndex + 1) + "/4 · " + store.Public.publicSelectionPlayerId + " 차례"
                 : store.Public?.phase == Protocol.Info
                 ? "정보 구매 · 보유 " + (store.View?.coins ?? 0) + "코인" + (store.View?.ability?.freeInformationCredits > 0 ? " · 무료 " + store.View.ability.freeInformationCredits + "일" : "")
-                : revealed != null ? "공개 결과 · 구간별 수익률은 위 목록에서 확인" : "정보 구매는 정보 탐색 단계에서만";
+                : revealed != null ? "공개 결과 · 구간별 수익률은 위 목록에서 확인" : stockSystem && store.Public?.phase == Protocol.Investment ? "" : "정보 구매는 정보 탐색 단계에서만";
             for (int i = 0; i < _zoomBundleButtons.Length; i++) CompanyInfo.RefreshPurchaseButton(_zoomBundleButtons[i], _c, _zoomCompany, i, true);
             UiKit.SetButton(_favorite, plan.Favorite ? "★ 찜 해제" : "☆ 찜하기", CanPlan, plan.Favorite ? Palette.AccentSoft : Palette.Card, Palette.Accent);
             for (int i = 0; i < _rankButtons.Length; i++)
@@ -481,7 +484,8 @@ namespace BlackWhale.UI.View
             _header.text = v == null
                 ? "개인 정보 수신 대기"
                 : "보유 코인 <b>" + v.coins + "개</b>   ·   자산 " + DisplayFormat.Money(v.assets)
-                  + (phase == Protocol.Info ? state?.publicSelectionActive == true ? " · " + state.publicSelectionPlayerId + " 공개 차례" : "   ·   1코인 = 1일" : "   ·   구매는 정보 탐색 단계에서만");
+                  + (phase == Protocol.Info ? state?.publicSelectionActive == true ? " · " + state.publicSelectionPlayerId + " 공개 차례" : "   ·   1코인 = 1일"
+                     : state?.stockSystem == true ? "" : "   ·   구매는 정보 탐색 단계에서만");
             if (state?.stockSystem == true && !showingResults && !state.publicSelectionActive)
                 _publicHistory.text = (phase == Protocol.Investment ? "보유 기업의 차트에서 구간을 예약하세요. 구간을 지정하지 않으면 전체 기간 보유합니다.\n" : "1코인 = 새 날짜 1일 · 정보 할인 " + (v?.portfolio?.informationDiscount ?? 0) + "일 · 매수는 각 7초씩 2회, 차례마다 최대 15주입니다.\n")
                     + string.Join(" / ", (v?.portfolio?.insights ?? Array.Empty<StockInsight>()).Select(i => i.companyId + " 이벤트 성공 가능성 " + DisplayFormat.Percent(i.probabilityBps, false)));
@@ -499,6 +503,7 @@ namespace BlackWhale.UI.View
         private readonly string _companyId;
         private readonly GameClientController _c;
         private readonly Text _seats;
+        private readonly string _volatility;
         private readonly Image _border, _tradeShade;
         private readonly RectTransform _tradeBadge;
         private readonly Text _tradeBadgeText, _tradeShadeText;
@@ -532,9 +537,13 @@ namespace BlackWhale.UI.View
             var entry = CompanyCatalog.Get(companyId);
             var logo = CompanyBadge.Create(root, companyId, 24);
             UiKit.Place(logo, new Vector2(0, 1), new Vector2(0, 1), new Vector2(8, -5), new Vector2(24, 24));
-            var name = UiKit.Label(root, "<b>" + entry.DisplayName + "</b> <size=10>" + entry.Id + " · " + entry.Volatility + "</size>",
-                14, Palette.Text, TextAnchor.UpperLeft);
-            UiKit.Stretch(name.rectTransform, 38, 8, 84, 0);
+            // 이름은 한 줄만(두 줄로 넘어가면 아래 배지·그래프와 겹침). 변동성은 아래 안내 줄에 표시.
+            var name = UiKit.Label(root, "<b>" + entry.DisplayName + "</b> <size=10>" + entry.Id + "</size>",
+                14, Palette.Text, TextAnchor.MiddleLeft);
+            name.rectTransform.anchorMin = new Vector2(0, 1); name.rectTransform.anchorMax = Vector2.one;
+            name.rectTransform.offsetMin = new Vector2(38, -30); name.rectTransform.offsetMax = new Vector2(-84, -4);
+            name.horizontalOverflow = HorizontalWrapMode.Wrap; name.verticalOverflow = VerticalWrapMode.Truncate;
+            _volatility = string.IsNullOrEmpty(entry.Volatility) ? "" : "변동성 " + entry.Volatility.Replace("변동성", "").Trim();
 
             _expand = UiKit.Button(root, "확대하기", 11, Palette.AccentSoft, Palette.Accent, () => enlarge?.Invoke(_companyId));
             _expand.name = "Expand_" + companyId;
@@ -556,6 +565,7 @@ namespace BlackWhale.UI.View
             _tip.rectTransform.offsetMin = new Vector2(10, -52); _tip.rectTransform.offsetMax = new Vector2(-104, -36); // 오른쪽 '내 선택' 표시와 안 겹치게
             _tip.horizontalOverflow = HorizontalWrapMode.Wrap; _tip.verticalOverflow = VerticalWrapMode.Truncate;
             _tip.resizeTextForBestFit = true; _tip.resizeTextMinSize = 8; _tip.resizeTextMaxSize = 10;
+            _tip.text = _volatility;
 
             _planLabel = UiKit.Label(root, "", 10, Palette.Accent, TextAnchor.MiddleLeft);
             _planLabel.name = "PlanBadge_" + companyId;
@@ -611,7 +621,7 @@ namespace BlackWhale.UI.View
             _tradeShade.gameObject.SetActive(false);
             var badge = UiKit.Panel(root, "TradeBadge", Palette.Accent, rounded: true);
             _tradeBadge = badge.rectTransform;
-            UiKit.Place(_tradeBadge, Vector2.one, Vector2.one, new Vector2(-6, -31), new Vector2(96, 18));
+            UiKit.Place(_tradeBadge, Vector2.one, Vector2.one, new Vector2(-6, -32), new Vector2(76, 18));
             _tradeBadgeText = UiKit.Label(badge.transform, "", 11, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
             UiKit.Stretch(_tradeBadgeText.rectTransform);
             _tradeBadge.gameObject.SetActive(false);
@@ -629,7 +639,7 @@ namespace BlackWhale.UI.View
             _border.transform.GetChild(0).GetComponent<RectTransform>().offsetMin = Vector2.one * (tradable ? 3f : 1f);
             _border.transform.GetChild(0).GetComponent<RectTransform>().offsetMax = -Vector2.one * (tradable ? 3f : 1f);
             _tradeBadge.gameObject.SetActive(tradable);
-            _tradeBadgeText.text = _companyId == "BANK" ? "예금 · 매매 가능" : "보유 " + shares + "주 · 매매 가능";
+            _tradeBadgeText.text = _companyId == "BANK" ? "예금 가능" : "내 " + shares + "주";
             _tradeShade.gameObject.SetActive(investing && !tradable);
             if (tradable) _seats.text = "";
         }
@@ -718,7 +728,7 @@ namespace BlackWhale.UI.View
 
         private void OnHover(int? day)
         {
-            _tip.text = day.HasValue && day.Value < _bars.Length ? DailyBarModel.Tooltip(_bars[day.Value]) : "";
+            _tip.text = day.HasValue && day.Value < _bars.Length ? DailyBarModel.Tooltip(_bars[day.Value]) : _volatility;
         }
 
         private void RefreshButtons()

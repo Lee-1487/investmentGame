@@ -24,6 +24,10 @@ namespace BlackWhale.UI.View
             public bool WasSoldOut;
             public Image[] BankUnits;          // BANK: 내 30칸 중 자동 예금 칸
             public Text BankLabel;
+            public Outline Frame;              // 진입·청산 단계: 매매 가능(보유) 기업 파란 테두리
+            public RectTransform MineBadge;    // '내 n주 · 매매 가능'
+            public Text MineBadgeText;
+            public Image Shade;                // 미보유 기업 흐린 덮개
         }
         // 연출(D): 현재 차례 시간 막대·긴박감·내 차례 알림
         private Image currentBar;
@@ -183,15 +187,35 @@ namespace BlackWhale.UI.View
             var panel = UiKit.Panel(cell, "ShareCardBackground", Palette.Card, rounded: true); UiKit.Stretch(panel.rectTransform);
             var r = panel.rectTransform;
             var card = new Card(); cards[id] = card;
-            var expand = UiKit.Button(r, "", 14, Palette.Card, Palette.Text, () => OpenPlan?.Invoke(id));
+            // 1줄: 기업명·수량(왼쪽) | 내 보유 배지 · 확대(오른쪽)   2줄: 플레이어별 보유   3줄~: 차트
+            // (예전에는 제목이 가운데 버튼 안에 있어 아래 줄 보유 표시와 겹쳐 보였음)
+            card.Heading = Label(r, "", 5, 22, 14); card.Heading.name = "ShareHeading_" + id;
+            card.Heading.rectTransform.offsetMin = new Vector2(10, card.Heading.rectTransform.offsetMin.y);
+            card.Heading.rectTransform.offsetMax = new Vector2(-150, card.Heading.rectTransform.offsetMax.y);
+            card.Heading.horizontalOverflow = HorizontalWrapMode.Overflow; // 리치 텍스트는 best-fit이 작게 잡혀 글자가 줄어들어서 고정 크기
+            var expand = UiKit.Button(r, "확대 ↗", 11, Palette.AccentSoft, Palette.Accent, () => OpenPlan?.Invoke(id));
             expand.name = "ExpandShare_" + id;
-            UiKit.Place((RectTransform)expand.transform, new Vector2(.5f, 1), new Vector2(.5f, 1), new Vector2(0, -15), new Vector2(240, 26));
-            card.Heading = expand.GetComponentInChildren<Text>();
-            card.Owners = Label(r, "", 29, 20, 12); card.Owners.name = "ShareOwners_" + id;
-            card.Owners.horizontalOverflow = HorizontalWrapMode.Overflow;
+            UiKit.Place((RectTransform)expand.transform, Vector2.one, Vector2.one, new Vector2(-6, -5), new Vector2(58, 22));
+            var badge = UiKit.Panel(r, "MineBadge_" + id, Palette.Accent, rounded: true);
+            card.MineBadge = badge.rectTransform;
+            UiKit.Place(card.MineBadge, Vector2.one, Vector2.one, new Vector2(-70, -5), new Vector2(74, 22));
+            card.MineBadgeText = UiKit.Label(badge.transform, "", 11, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
+            UiKit.Stretch(card.MineBadgeText.rectTransform);
+            card.MineBadge.gameObject.SetActive(false);
+            card.Owners = Label(r, "", 30, 18, 12); card.Owners.name = "ShareOwners_" + id;
+            card.Owners.rectTransform.offsetMin = new Vector2(10, card.Owners.rectTransform.offsetMin.y);
+            card.Owners.horizontalOverflow = HorizontalWrapMode.Wrap; card.Owners.verticalOverflow = VerticalWrapMode.Truncate;
+            card.Owners.resizeTextForBestFit = true; card.Owners.resizeTextMinSize = 8; card.Owners.resizeTextMaxSize = 12;
+            card.Frame = panel.gameObject.AddComponent<Outline>();
+            card.Frame.effectColor = Palette.Accent; card.Frame.effectDistance = new Vector2(3, -3); card.Frame.enabled = false;
             var chartRoot = UiKit.Rect(r, "TradeChart_" + id); UiKit.Stretch(chartRoot, 8, 53, 8, State.phase != Protocol.Selection ? 8 : 54);
             card.Chart = chartRoot.gameObject.AddComponent<BarChartGraphic>(); card.Chart.SetInteractive(true);
             UiKit.Click(chartRoot.gameObject, () => OpenPlan?.Invoke(id));
+            card.Shade = UiKit.Panel(r, "NotOwnedShade_" + id, new Color(0.96f, 0.97f, 0.98f, 0.72f), rounded: true);
+            UiKit.Stretch(card.Shade.rectTransform, 0, 50, 0, 0);
+            var shadeText = UiKit.Label(card.Shade.transform, "미보유 · 이번 턴 매매 불가", 14, Palette.SubText, TextAnchor.MiddleCenter, FontStyle.Bold);
+            UiKit.Stretch(shadeText.rectTransform);
+            card.Shade.gameObject.SetActive(false);
             if (State.phase != Protocol.Selection) return;
             if (id == "BANK") { BuildBankSlots(r, card); return; }
             card.Inventory = UiKit.Rect(r, "ShareInventory_" + id);
@@ -306,7 +330,16 @@ namespace BlackWhale.UI.View
                 var owners = company?.owners ?? Array.Empty<ShareOwner>();
                 int used = owners.Sum(o => o.shares + o.reserved), total = company?.totalShares ?? (id == "BANK" ? StockRules.BankSupply : StockRules.Supply);
                 string tag = id == "BANK" ? "" : used >= total ? "  <color=#DC2626><b>매진</b></color>" : total - used <= 4 ? "  <color=#DC2626>품절 임박</color>" : "";
-                card.Heading.text = id + " · " + used + "/" + total + "주" + tag + "  <size=11>확대 ↗</size>";
+                card.Heading.text = "<b>" + id + "</b> · " + used + "/" + total + "주" + tag;
+                // 진입·청산 단계: 내가 보유한(매매 가능한) 기업 강조, 미보유는 흐리게
+                bool investing = State.phase == Protocol.Investment && !controller.Store.OrderLocked;
+                int mine = Portfolio?.holdings?.Where(h => h.companyId == id).Sum(h => h.shares) ?? 0;
+                bool tradable = investing && (mine > 0 || id == "BANK");
+                card.Frame.enabled = tradable;
+                card.MineBadge.gameObject.SetActive(tradable);
+                card.MineBadgeText.text = id == "BANK" ? "예금 가능" : "내 " + mine + "주";
+                card.Shade.gameObject.SetActive(investing && !tradable);
+                card.Heading.rectTransform.offsetMax = new Vector2(tradable ? -150 : -70, card.Heading.rectTransform.offsetMax.y);
                 card.Owners.text = string.Join("  ", owners.Select(o => "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(o.playerId)) + ">" + o.playerId + " ■" + (o.shares + o.reserved) + "</color>"));
                 var visible = controller.Store.View?.companies?.FirstOrDefault(c => c.companyId == id);
                 var revealed = controller.Store.RevealedTurn == State.turn ? controller.Store.Revealed?.FirstOrDefault(c => c.companyId == id) : null;
