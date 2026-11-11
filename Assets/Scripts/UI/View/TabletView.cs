@@ -141,6 +141,22 @@ namespace BlackWhale.UI.View
                 leave.name = "LeaveRoom";
                 UiKit.Place((RectTransform)leave.transform, Vector2.zero, Vector2.zero, new Vector2(42, 2), new Vector2(100, 30));
             }
+            // 결과 발표·정산 카드·역전 연출 전용 맨 위 레이어.
+            // 결과 단계에서는 '전광판' 창(ProgressionPanel)이 자동으로 열려 화면 전체를 덮기 때문에, 연출을 화면(Screen) 안에 그리면 그 창 뒤에 가려진다.
+            _fxLayer = UiKit.Rect(Root, "ResultFxLayer");
+            UiKit.Stretch(_fxLayer, EdgeSize + 20, EdgeSize + 16, EdgeSize + 20, EdgeSize + 16);
+        }
+
+        private RectTransform _fxLayer;
+        /// <summary>연출을 그릴 곳: 항상 모든 창보다 위(맨 마지막 자식).</summary>
+        private RectTransform FxLayer
+        {
+            get
+            {
+                if (_fxLayer == null) return ScreenRect;
+                _fxLayer.SetAsLastSibling();
+                return _fxLayer;
+            }
         }
 
         private void BuildEdges()
@@ -453,18 +469,19 @@ namespace BlackWhale.UI.View
                 var top = board.rows.OrderBy(r => r.rank).First();
                 var mine = board.rows.FirstOrDefault(r => r.playerId == _c.LocalPlayerId);
                 // 차트(시장 공개)를 다 본 뒤 최종 결과가 나오는 순간: 매 턴 크게 '결과 발표' → 이어서 내 정산 카드·역전 표시
-                ResultAnnouncement.Play(ScreenRect, board.turn, board.gameComplete);
+                var fx = FxLayer;
+                ResultAnnouncement.Play(fx, board.turn, board.gameComplete);
                 const float afterAnnouncement = 1.8f;
                 if (mine != null)
                 {
                     long before = _fxAssets.TryGetValue(mine.playerId, out var b) ? b : mine.totalAssets - mine.cumulativeProfit;
                     int turnNo = board.turn, rank = mine.rank, ret = mine.turnReturnBps; long now = mine.totalAssets; bool complete = board.gameComplete;
-                    DelayedAction.Run(ScreenRect, afterAnnouncement, () => SettlementFx.Play(ScreenRect, turnNo, complete, rank, ret, before, now));
+                    DelayedAction.Run(fx, afterAnnouncement, () => SettlementFx.Play(FxLayer, turnNo, complete, rank, ret, before, now));
                 }
                 // 역전: 직전 순위와 비교해 누가 누구를 제쳤는지
                 var reversal = ReversalFx.Describe(_fxRanks, board.rows.Where(r => r != null).Select(r => new KeyValuePair<string, int>(r.playerId, r.rank)),
                     id => id == _c.LocalPlayerId ? id + "(나)" : id, out bool reversalMine, _c.LocalPlayerId);
-                if (reversal != null) ReversalFx.Play(ScreenRect, reversal, reversalMine, afterAnnouncement + 0.8f);
+                if (reversal != null) ReversalFx.Play(fx, reversal, reversalMine, afterAnnouncement + 0.8f);
                 foreach (var row in board.rows) if (row != null) { _fxAssets[row.playerId] = row.totalAssets; _fxRanks[row.playerId] = row.rank; }
                 ShowBanner(board.gameComplete ? (s.totalTurns > 0 ? s.totalTurns : 10) + "턴 최종 승자 · " + board.winnerPlayerId :
                     board.turn + "턴 정산 완료 · 1위 " + top.playerId + " (" + DisplayFormat.Percent(top.turnReturnBps) + ")");
