@@ -50,6 +50,17 @@ namespace BlackWhale.UI.Presentation
         public const string BaseSource = "BASE";
         public const string RevealedSource = "REVEALED";
 
+        /// <summary>Fully known series for authoring previews; uses the same candle construction as the game.</summary>
+        public static DayBar[] FromDailyChanges(IReadOnlyList<int> values)
+        {
+            var bars = new DayBar[values.Count];
+            for (int day = 0; day < bars.Length; day++)
+                bars[day] = new DayBar { Day = day, Bps = values[day], State = values[day] > 0 ? DayBarState.Up : values[day] < 0 ? DayBarState.Down : DayBarState.Zero,
+                    Source = day == 0 ? BaseSource : RevealedSource };
+            FillCandles(bars);
+            return bars;
+        }
+
         /// <summary>0~30일 막대 31개. revealed가 null이면 열람값만, 있으면 31일 전체(공개 후 전용).</summary>
         public static DayBar[] Build(VisibleCompany company, RevealedCompany revealed = null)
         {

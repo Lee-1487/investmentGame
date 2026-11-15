@@ -28,7 +28,7 @@ namespace BlackWhale.Shared
                 case "OPPORTUNITY": return "유효 매수가 잔여 물량 부족으로 실패하면 턴당 1회, 다음 정보 구매에 쓸 2일 할인권을 받습니다.";
                 case "ANALYST": return "다음 턴부터 매 턴 첫 정보 구매에서 새 날짜 2일까지 할인됩니다.";
                 case "TREND": return "직전 턴 마지막 3일 연속 상승 기업의 이번 턴 1~3일 정보를 추가 확인합니다.";
-                case "BIO_RESEARCH": return "BIO 연구 이벤트의 성공 확률을 확인합니다. 최종 수익은 보장되지 않습니다.";
+                case "BIO_RESEARCH": return "현재 패턴 기반 시장에서는 별도 BIO 연구 이벤트를 사용하지 않습니다.";
                 case "SPACE_PIONEER": return "매 턴 SPACE를 다시 매수해 턴 종료까지 2턴 이상 연속 보유하면 해당 배분금에 +2% 보너스를 받습니다.";
                 case "CASH_INTEREST": return "현금 배분금에 턴당 +2% 보너스, 전체 자산 기준 최대 +1%를 받습니다.";
                 case "DIVERSIFY": return "기업별 3주 이상으로 3개 이상 보유하면 각 기업 손실의 20%를 완화합니다.";

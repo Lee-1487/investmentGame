@@ -37,33 +37,16 @@ namespace BlackWhale.Rules
         private readonly Dictionary<int, Dictionary<string, Dictionary<string, int>>> stockHistory = new Dictionary<int, Dictionary<string, Dictionary<string, int>>>();
         private int stockSeed;
         public bool StockEnabled { get; private set; }
-        public static MarketService CreateStockSystem(int seed)
+        public static MarketService CreateStockSystem(int seed, StockPatternLibrary library = null)
         {
             var rules = new InvestmentRules { entryAtOpen = true, minHoldingDays = 1, maxHoldingDays = 30, maxIntervalsPerCompany = 0 };
-            return new MarketService(t => GenerateStockMarket(seed, t), rules) { StockEnabled = true, stockSeed = seed, UsesWindowInformation = true };
+            var frozenLibrary = (library ?? StockPatternLibrary.CreateDefault()).Copy();
+            return new MarketService(t => GenerateStockMarket(seed, t, frozenLibrary), rules) { StockEnabled = true, stockSeed = seed, UsesWindowInformation = true };
         }
-        private static uint StockHash(int seed, int turn, uint salt)
-        {
-            unchecked { uint x = (uint)seed ^ (uint)turn * 2654435761U ^ salt; x ^= x >> 16; x *= 2246822519U; x ^= x >> 13; x *= 3266489917U; return x ^ (x >> 16); }
-        }
-        public static int BioSuccessChance(int seed, int turn) => 3500 + (int)(StockHash(seed, turn, 17) % 4001);
-        private static MarketData GenerateStockMarket(int seed, int turn)
-        {
-            var data = PatternMarketGenerator.Generate(seed, turn);
-            var bank = data.companies.Single(c => c.companyId == "BANK");
-            bank.dailyChangesBps = bank.dailyChangesBps.Select(v => (int)(200.0 * Math.Tanh(v / 2500.0))).ToArray();
-            var bio = data.companies.Single(c => c.companyId == "BIO");
-            int effect = StockHash(seed, turn, 53) % 10000 < BioSuccessChance(seed, turn) ? 1800 : -1600;
-            var raw = bio.dailyChangesBps.Select((v, d) => v + effect * Math.Max(0, d - 12) / 18.0).ToArray();
-            double scale = 1; int limit = RandomMarketGenerator.DailyLimitBps("BIO", turn);
-            for (int d = 1; d <= 30; d++)
-            {
-                if (raw[d] != 0) scale = Math.Min(scale, 7600 / Math.Abs(raw[d]));
-                if (raw[d] != raw[d - 1]) scale = Math.Min(scale, (limit - 1) / Math.Abs(raw[d] - raw[d - 1]));
-            }
-            bio.dailyChangesBps = raw.Select(v => (int)Math.Round(v * scale)).ToArray();
-            return data;
-        }
+        // Pattern-only markets have no additional BIO outcome event.
+        public static int BioSuccessChance(int seed, int turn) => 0;
+        private static MarketData GenerateStockMarket(int seed, int turn, StockPatternLibrary library)
+            => PatternMarketGenerator.Generate(seed, turn, library: library);
         private Dictionary<string, int> StockHoldings(string player)
             => stockPlayers.TryGetValue(player, out var p) ? p.Shares : new Dictionary<string, int>();
         private bool HasStockAugment(string player, string id) => stockPlayers[player].Augments.Contains(id);
@@ -151,7 +134,7 @@ namespace BlackWhale.Rules
                 priorityUsed = p.PriorityUsed, concentrationCompany = p.Focus, augments = p.Augments.ToArray(), candidates = (string[])p.Candidates.Clone(),
                 holdings = p.Shares.Select(v => new PortfolioHolding { companyId = v.Key, shares = v.Value, activeShares = ActiveShares(p, v.Key), consecutiveTurns = p.Streak[v.Key] }).ToArray(),
                 insights = p.Augments.Contains("BIO_RESEARCH") ? new[] { new StockInsight { companyId = "BIO", probabilityBps = BioSuccessChance(stockSeed, turn),
-                    message = "BIO 연구 이벤트 성공 가능성 · 최종 수익 보장 아님" } } : new StockInsight[0] };
+                    message = "등록 패턴 기반 시장 · 별도 BIO 연구 이벤트 없음" } } : new StockInsight[0] };
         }
         public RuleResult TradeShares(RequestContext c, ShareOrder[] requested)
         {

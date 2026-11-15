@@ -57,6 +57,10 @@ namespace BlackWhale.Tests
             var passed = new List<string>();
             Action<string, Action> run = (name, action) => { action(); passed.Add("STOCK-v3/" + name); };
             run("pattern-reproducibility-limits-and-legal-trade-survey", Patterns);
+            run("authored-pattern-timing-vertices-bounds-and-library", AuthoredPatterns);
+            run("fixed-daily-volatility-all-turns-and-settings-isolation", FixedVolatility);
+            run("company-pattern-probabilities-and-weighted-generation", PatternProbabilities);
+            run("registered-only-shared-base-and-exact-live-preview", RegisteredPatternsOnly);
             run("four-public-picks-order-overlap-private-gates-and-replay", Public);
             run("timeout-reconnect-pause-and-short-info-budget", Timeouts);
             run("window-boundaries-union-cost-replay-and-private-copy", Purchases);
@@ -67,6 +71,193 @@ namespace BlackWhale.Tests
             run("pattern-lab-reuses-generator-and-visible-axis-fit", PatternLabSamples);
             run("unlimited-reservations-auto-order-reconnect-and-public-trade-returns", Reservations);
             return passed.ToArray();
+        }
+        private static void AuthoredPatterns()
+        {
+            Check(Enum.GetValues(typeof(StockPatternKind)).Length == 4, "only M/W/FLAG/rectangle remain");
+            foreach (string company in InvestmentRules.CompanyIds)
+                for (int preset = 0; preset < 4; preset++)
+                {
+                    var pattern = CustomStockPattern.Preset(company, preset);
+                    foreach (int requested in new[] { -10, 1, pattern.MinimumDays, 13, 30, 121, 3650, 10000 })
+                    {
+                        pattern.SetDuration(requested);
+                        Check(pattern.TotalDays == Math.Max(pattern.MinimumDays, Math.Min(3650, requested)), "duration clamps to distinct vertex days");
+                        Check(pattern.segmentDays.All(d => d >= 1), "every segment retains at least one day");
+                        var raw = pattern.GenerateRaw();
+                        double factor = pattern.amplitudeBps / (pattern.vertices.Max() - pattern.vertices.Min());
+                        int day = 0;
+                        for (int i = 1; i < pattern.vertices.Count; i++)
+                        {
+                            day += pattern.segmentDays[i - 1];
+                            Check(Math.Abs(raw[day] - (pattern.vertices[i] - pattern.vertices[0]) * factor) < .0001, "every vertex is sampled exactly");
+                        }
+                        var bounded = pattern.GenerateForCompany(1, out double scale);
+                        int limit = new StockVolatilitySettings().DailyLimitBps(company);
+                        Check(bounded[0] == 0 && scale > 0, "baseline and uniform scale");
+                        Check(Enumerable.Range(1, bounded.Length - 1).All(d => bounded[d] > -10000 && Math.Abs(bounded[d] - bounded[d - 1]) <= limit), "authored limits");
+                    }
+                }
+            var asymmetric = CustomStockPattern.Preset("AI", 0);
+            asymmetric.segmentDays = new List<int> { 1, 50, 1, 1, 50 };
+            asymmetric.SetDuration(10);
+            Check(asymmetric.TotalDays == 10 && asymmetric.segmentDays[1] >= 3 && asymmetric.segmentDays[4] >= 3, "asymmetric timing survives compression");
+            var custom = CustomStockPattern.Preset("AI", 0); custom.id = "custom";
+            var library = StockPatternLibrary.CreateDefault(); library.patterns.Add(custom);
+            var originalLibrary = library.Copy();
+            var frozen = new PatternMarketGenerator(42, library: library);
+            var before = frozen.ForTurn(1);
+            custom.vertices[1] = 999;
+            CollectionAssertEquivalent(before.companies[0].dailyChangesBps, frozen.ForTurn(1).companies[0].dailyChangesBps);
+            CollectionAssertEquivalent(PatternMarketGenerator.Generate(42, 2, library: originalLibrary).companies[0].dailyChangesBps,
+                frozen.ForTurn(2).companies[0].dailyChangesBps);
+            int selected = 0;
+            for (int seed = 0; seed < 100; seed++)
+            {
+                var data = PatternMarketGenerator.Generate(seed, 1, library: library);
+                new MarketBook(data, new InvestmentRules());
+                var ai = data.companies.Single(c => c.companyId == "AI");
+                Check(ai.dailyChangesBps.SequenceEqual(PatternMarketGenerator.Generate(seed, 1, library: library).companies.Single(c => c.companyId == "AI").dailyChangesBps), "custom selection is deterministic");
+                var service = MarketService.CreateStockSystem(seed, library);
+                service.BeginTurn(new RequestContext("CUSTOM", 1, Protocol.Info), new[] { "P1" });
+                Check(service.GetWindow(1, "AI", 1, 30).SequenceEqual(ai.dailyChangesBps.Skip(1)), "stock system consumes the same authored curve");
+                if (!ai.dailyChangesBps.SequenceEqual(PatternMarketGenerator.Generate(seed, 1).companies.Single(c => c.companyId == "AI").dailyChangesBps)) selected++;
+                Check(data.companies.Single(c => c.companyId == "BANK").dailyChangesBps.SequenceEqual(PatternMarketGenerator.Generate(seed, 1).companies.Single(c => c.companyId == "BANK").dailyChangesBps), "library is scoped per company");
+            }
+            Check(selected > 0 && selected < 100, "custom and built-in patterns both occur");
+            custom.SetDuration(31);
+            Check(PatternMarketGenerator.Generate(42, 1, library: library).companies[0].dailyChangesBps.SequenceEqual(PatternMarketGenerator.Generate(42, 1).companies[0].dailyChangesBps), "long patterns are excluded from 30-day games");
+        }
+        private static void CollectionAssertEquivalent(int[] expected, int[] actual)
+            => Check(expected.SequenceEqual(actual), "library snapshot is isolated");
+        private static void RegisteredPatternsOnly()
+        {
+            var shared = CustomStockPattern.Preset("BANK", 0);
+            shared.id = "shared-only"; shared.name = "공유 패턴"; shared.isBasePattern = true;
+            var library = new StockPatternLibrary { registeredVersion = 1 };
+            library.patterns.Add(shared);
+            foreach (string company in InvestmentRules.CompanyIds)
+            {
+                Check(library.AvailablePatterns(company).Count == 1 && library.BasePatternCount(company) == 1, "global base is available once for every company");
+                Check(library.Probabilities(company).SequenceEqual(new double[] { 100 }), "there are no implicit extra candidates");
+            }
+            foreach (int turn in new[] { 1, 6, 10 })
+            {
+                var live = MarketService.CreateStockSystem(123, library);
+                live.BeginTurn(new RequestContext("EXACT", turn, Protocol.Info), new[] { "P1" });
+                foreach (string company in InvestmentRules.CompanyIds)
+                {
+                    var expected = shared.GenerateTimeline(company, turn, library.volatility, out _);
+                    var sample = PatternMarketGenerator.Inspect(123, turn, company, library: library);
+                    Check(sample.PatternId == shared.id && sample.IsBasePattern, "only the registered global pattern is selected");
+                    Check(sample.DailyChangesBps.SequenceEqual(expected), "market sample exactly matches the authored candle preview");
+                    Check(live.GetWindow(turn, company, 1, 30).SequenceEqual(expected.Skip(1)), "actual stock game has no BANK/BIO overlay");
+                    Check(expected.SequenceEqual(PatternMarketGenerator.Inspect(99999, turn, company, library: library).DailyChangesBps), "seed never changes the selected pattern geometry");
+                }
+            }
+            var bank = shared.GenerateTimeline("BANK", 1, library.volatility, out _);
+            var space = shared.GenerateTimeline("SPACE", 1, library.volatility, out _);
+            Check(!bank.SequenceEqual(space), "company daily limits scale a shared shape differently");
+            var user = CustomStockPattern.Preset("SPACE", 1); user.id = "space-only"; user.useCustomProbability = true; user.probabilityPercent = 100;
+            library.patterns.Add(user);
+            Check(PatternMarketGenerator.Inspect(123, 1, "SPACE", library: library).PatternId == user.id, "company user pattern overrides only its company's draw");
+            Check(PatternMarketGenerator.Inspect(123, 1, "AI", library: library).PatternId == shared.id, "another company's user pattern is excluded");
+            var empty = new StockPatternLibrary { registeredVersion = 1 };
+            bool rejected = false;
+            try { PatternMarketGenerator.Generate(123, 1, library: empty); } catch (InvalidOperationException) { rejected = true; }
+            Check(rejected, "an empty registered library never falls back to a random or hidden generator");
+        }
+        private static void PatternProbabilities()
+        {
+            var library = StockPatternLibrary.CreateDefault();
+            Check(library.Probabilities("AI").SequenceEqual(new double[] { 25, 25, 25, 25 }), "four defaults are exactly equal");
+            var first = CustomStockPattern.Preset("AI", 0); first.id = "one"; first.name = "custom one";
+            library.patterns.Add(first);
+            Check(library.Probabilities("AI").All(p => p == 20), "one automatic addition makes five equal slots");
+            first.useCustomProbability = true; first.probabilityPercent = 40;
+            Check(library.Probabilities("AI").SequenceEqual(new double[] { 15, 15, 15, 15, 40 }), "each base receives (100-p)/4");
+            var second = CustomStockPattern.Preset("AI", 1); second.id = "two";
+            library.patterns.Add(second);
+            Check(library.Probabilities("AI").SequenceEqual(new double[] { 12, 12, 12, 12, 40, 12 }), "automatic candidates share the unassigned remainder");
+            second.useCustomProbability = true; second.probabilityPercent = 30;
+            Check(library.Probabilities("AI").SequenceEqual(new double[] { 7.5, 7.5, 7.5, 7.5, 40, 30 }), "multiple explicit custom percentages are summed");
+            Check(library.Probabilities("BANK").All(p => p == 25), "probabilities are scoped per company");
+            second.probabilityPercent = 70;
+            bool invalid = false;
+            try { library.Copy(); } catch (ArgumentException) { invalid = true; }
+            Check(invalid, "totals over 100 are rejected before persistence or room creation");
+            second.enabled = false; first.probabilityPercent = 100;
+            var frozen = new PatternMarketGenerator(111, library: library);
+            for (int seed = 0; seed < 100; seed++)
+            {
+                var sample = PatternMarketGenerator.Inspect(seed, 1, "AI", library: library);
+                Check(sample.CustomPatternName == first.name, "100 percent always selects the specified authored graph");
+                Check(sample.DailyChangesBps.SequenceEqual(PatternMarketGenerator.Generate(seed, 1, library: library).companies[0].dailyChangesBps), "editor and generator use the same weighted draw");
+            }
+            var expected = first.GenerateForCompany(2, out _, library.volatility);
+            first.probabilityPercent = 0;
+            Check(frozen.ForTurn(2).companies[0].dailyChangesBps.Take(expected.Length).SequenceEqual(expected), "room freezes its probabilities");
+            Check(library.Probabilities("AI").SequenceEqual(new double[] { 25, 25, 25, 25, 0 }), "zero percent leaves only the defaults");
+            library = StockPatternLibrary.CreateDefault();
+            foreach (string company in InvestmentRules.CompanyIds)
+            {
+                int[] counts = new int[4];
+                for (int seed = 0; seed < 20000; seed++) counts[library.PickPatternIndex(seed, 1, company)]++;
+                Check(counts.All(count => count > 4500 && count < 5500), "default draw is uniform for " + company);
+            }
+            var extraBase = CustomStockPattern.Preset("AI", 0); extraBase.isBasePattern = true;
+            // Base candidates always share the remainder, even if older data contains an override.
+            extraBase.useCustomProbability = true; extraBase.probabilityPercent = 95;
+            var user = CustomStockPattern.Preset("AI", 1); user.useCustomProbability = true; user.probabilityPercent = 40;
+            library.patterns.Add(extraBase); library.patterns.Add(user);
+            Check(library.BasePatternCount("AI") == 5, "added base patterns increase N");
+            Check(library.Probabilities("AI").SequenceEqual(new double[] { 12, 12, 12, 12, 12, 40 }), "each base receives (100 minus user sum) divided by N");
+            Check(library.Copy().patterns[0].isBasePattern, "base/user classification survives a room snapshot");
+            extraBase.enabled = false;
+            Check(library.BasePatternCount("AI") == 4, "excluded base patterns do not affect N");
+            Check(library.Probabilities("AI").SequenceEqual(new double[] { 15, 15, 15, 15, 40 }), "remaining active base candidates rebalance automatically");
+        }
+        private static void FixedVolatility()
+        {
+            var defaults = new StockVolatilitySettings();
+            string[] companies = { "BANK", "FOOD", "AUTO", "AI", "BIO", "SPACE" };
+            int[] expected = { 200, 500, 700, 1500, 2000, 2500 };
+            for (int i = 0; i < companies.Length; i++) Check(defaults.DailyLimitBps(companies[i]) == expected[i], "requested daily limit " + companies[i]);
+            var library = StockPatternLibrary.CreateDefault();
+            foreach (string company in companies) library.volatility.SetDailyLimitBps(company, 25);
+            library.patterns.Add(CustomStockPattern.Preset("AI", 0));
+            var custom = library.patterns[library.patterns.Count - 1]; custom.startDay = 5; custom.id = "timing";
+            CollectionAssertEquivalent(custom.GenerateForCompany(1, out _, library.volatility), custom.GenerateForCompany(10, out _, library.volatility));
+            var original = library.Copy();
+            var frozen = new PatternMarketGenerator(123, library: library);
+            library.volatility.aiBps = 9999;
+            CollectionAssertEquivalent(frozen.ForTurn(10).companies[0].dailyChangesBps,
+                PatternMarketGenerator.Generate(123, 10, library: original).companies[0].dailyChangesBps);
+            for (int seed = 0; seed < 12; seed++)
+                for (int turn = 1; turn <= 10; turn++)
+                {
+                    var provider = new PatternMarketGenerator(seed, library: original);
+                    var market = provider.ForTurn(turn);
+                    foreach (var company in market.companies)
+                    {
+                        Check(Enumerable.Range(1, 30).All(d => Math.Abs(company.dailyChangesBps[d] - company.dailyChangesBps[d - 1]) <= 25), "base/custom limit is fixed through turn ten");
+                        var single = new CompanyMarketData { companyId = company.companyId };
+                        var metadata = new StockPatternSample();
+                        original.Apply(single, seed, turn, metadata);
+                        if (metadata.PatternId == custom.id)
+                        {
+                            Check(single.dailyChangesBps.Take(custom.startDay + 1).All(v => v == 0), "authored start date is preserved");
+                            Check(single.dailyChangesBps[custom.startDay + custom.segmentDays[0]] == custom.GenerateForCompany(turn, out _, original.volatility)[custom.segmentDays[0]], "authored vertex dates match the game");
+                        }
+                    }
+                    var stock = MarketService.CreateStockSystem(seed, original);
+                    stock.BeginTurn(new RequestContext("VOL", turn, Protocol.Info), new[] { "P1" });
+                    foreach (string company in companies)
+                    {
+                        var closes = new[] { 0 }.Concat(stock.GetWindow(turn, company, 1, 30)).ToArray();
+                        Check(Enumerable.Range(1, 30).All(d => Math.Abs(closes[d] - closes[d - 1]) <= 25), "stock events respect the saved limit on every turn");
+                    }
+                }
         }
         private static void Reservations()
         {
@@ -183,9 +374,9 @@ namespace BlackWhale.Tests
                             foreach (StockPatternOutcome outcome in Enum.GetValues(typeof(StockPatternOutcome)))
                             {
                                 var sample = PatternMarketGenerator.Inspect(seed, turn, company.companyId, pattern, outcome);
-                                Check(sample.Pattern == pattern && sample.Outcome == outcome && sample.StartDay >= 1 && sample.EndDay <= 29, "forced diagnostic metadata");
-                                int limit = RandomMarketGenerator.DailyLimitBps(company.companyId, turn), cap = RandomMarketGenerator.AbsoluteCapBps[company.companyId];
-                                Check(Enumerable.Range(1, 30).All(d => Math.Abs(sample.DailyChangesBps[d]) <= cap && Math.Abs(sample.DailyChangesBps[d] - sample.DailyChangesBps[d - 1]) <= limit), "lab constraints match normal play");
+                                Check(sample.Pattern == pattern && sample.Outcome == StockPatternOutcome.Completed && sample.StartDay >= 0 && sample.EndDay <= 30, "forced diagnostic metadata");
+                                int limit = new StockVolatilitySettings().DailyLimitBps(company.companyId), cap = RandomMarketGenerator.AbsoluteCapBps[company.companyId];
+                                Check(Enumerable.Range(1, 30).All(d => sample.DailyChangesBps[d] > -10000 && Math.Abs(sample.DailyChangesBps[d] - sample.DailyChangesBps[d - 1]) <= limit), "lab constraints match normal play");
                             }
                     }
                 }
@@ -210,18 +401,18 @@ namespace BlackWhale.Tests
                     {
                         Check(c.publicBundleIndices.Length == 0 && c.dailyChangesBps[0] == 0, "no preselected public dates");
                         Check(c.dailyChangesBps.SequenceEqual(repeat.companies.Single(r => r.companyId == c.companyId).dailyChangesBps), "deterministic path");
-                        int limit = RandomMarketGenerator.DailyLimitBps(c.companyId, turn), cap = RandomMarketGenerator.AbsoluteCapBps[c.companyId];
-                        Check(Enumerable.Range(1, 30).All(d => Math.Abs(c.dailyChangesBps[d]) <= cap && Math.Abs(c.dailyChangesBps[d] - c.dailyChangesBps[d - 1]) <= limit), "daily and absolute constraints");
+                        int limit = new StockVolatilitySettings().DailyLimitBps(c.companyId), cap = RandomMarketGenerator.AbsoluteCapBps[c.companyId];
+                        Check(Enumerable.Range(1, 30).All(d => c.dailyChangesBps[d] > -10000 && Math.Abs(c.dailyChangesBps[d] - c.dailyChangesBps[d - 1]) <= limit), "daily and absolute constraints");
                         int best = int.MinValue;
                         for (int a = 0; a <= 25; a++) for (int b = a + 5; b <= Math.Min(a + 10, 30); b++)
                             best = Math.Max(best, c.dailyChangesBps[b] - c.dailyChangesBps[a]);
                         if (best > 0) profitable++; else lossOnly++;
                     }
                 }
-            Check(profitable > 0 && lossOnly > 0, "legal opportunities exist without guaranteeing profits for every company");
+            Check(profitable > 0, "registered templates retain their authored trading opportunities without random paths");
             var copy = generator.ForTurn(3); copy.companies[0].dailyChangesBps[10] = int.MaxValue;
             Check(generator.ForTurn(3).companies[0].dailyChangesBps[10] != int.MaxValue, "cache isolated");
-            Check(!generator.ForTurn(3).companies[0].dailyChangesBps.SequenceEqual(generator.ForTurn(4).companies[0].dailyChangesBps), "fresh turn");
+            Check(generator.ForTurn(3).companies.Any(c => !c.dailyChangesBps.SequenceEqual(generator.ForTurn(4).companies.Single(n => n.companyId == c.companyId).dailyChangesBps)), "a turn selects candidates independently");
         }
         private static void Public()
         {

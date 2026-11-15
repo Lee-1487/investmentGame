@@ -43,11 +43,11 @@ namespace BlackWhale.Rules
         /// Normal v3 play: one seeded pattern market per turn and movable information windows.
         /// Same seed + turn = same market, so a test or replay can fix the seed.
         /// </summary>
-        public static MarketService CreateRandom(int seed, InvestmentRules rules = null)
+        public static MarketService CreateRandom(int seed, InvestmentRules rules = null, StockPatternLibrary library = null)
         {
             var liveRules = (rules ?? new InvestmentRules()).Copy(); liveRules.entryAtOpen = true;
             liveRules.minHoldingDays = 1; liveRules.maxHoldingDays = 30; liveRules.maxIntervalsPerCompany = 0;
-            return new MarketService(new PatternMarketGenerator(seed, liveRules).ForTurn, liveRules) { UsesWindowInformation = true };
+            return new MarketService(new PatternMarketGenerator(seed, liveRules, library).ForTurn, liveRules) { UsesWindowInformation = true };
         }
 
         public bool UsesWindowInformation { get; private set; }

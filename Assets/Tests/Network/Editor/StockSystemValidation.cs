@@ -332,7 +332,8 @@ namespace BlackWhale.Tests
             decimal mixed=price("BANK",2)/10000m*price("AI",5)/price("AI",2)*price("BANK",30)/price("BANK",5);
             decimal expected=10000m*(mixed/3m+price("BANK",30)/10000m*2m/3m);
             Check(Math.Abs(board.rows.Single(v=>v.playerId=="P1").totalAssets-expected)<=1, "actual entry/exit and BANK valuation");
-            Check(m.GetWindow(1,"BANK",1,30).All(v=>Math.Abs(v)<=200),"bounded BANK series");
+            var bankPrices = new[] { 0 }.Concat(m.GetWindow(1, "BANK", 1, 30)).ToArray();
+            Check(Enumerable.Range(1, 30).All(d => Math.Abs(bankPrices[d] - bankPrices[d - 1]) <= 200), "fixed BANK daily limit");
         }
         private sealed class LocalClient : IGameClient
         {

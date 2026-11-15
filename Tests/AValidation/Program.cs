@@ -27,6 +27,11 @@ internal static class Program
     {
         try
         {
+            if (args.Contains("--patterns-only"))
+            {
+                foreach (string check in StockPatternValidation.Run().Concat(StockSystemValidation.Run())) Console.WriteLine("PASS " + check);
+                return 0;
+            }
             string root = args.Length > 0 ? Path.GetFullPath(args[0]) : Directory.GetCurrentDirectory();
             var codec = new TestJson();
             var suite = new RoomValidation(root, codec);

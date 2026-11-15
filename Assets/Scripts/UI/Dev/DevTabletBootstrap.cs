@@ -161,7 +161,7 @@ namespace BlackWhale.UI.Dev
             {
                 if (host)
                 {
-                    var service = MarketService.CreateStockSystem(RandomMarketGenerator.NewSeed());
+                    var service = MarketService.CreateStockSystem(RandomMarketGenerator.NewSeed(), StockPatternLibraryResource.Load());
                     await active.Host(service, new SharedInformationService(service), nickname.text.Trim(), number, allowLan: true,
                         mode: developerMode ? TimerMode.Developer : TimerMode.Realtime);
                     endpoint = "접속 주소: " + HostAddresses() + "  ·  포트 " + active.ListeningPort;
