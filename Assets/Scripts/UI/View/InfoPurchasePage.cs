@@ -302,6 +302,8 @@ namespace BlackWhale.UI.View
             var revealed = store.RevealedTurn == store.CurrentTurn ? store.Revealed?.FirstOrDefault(c => c.companyId == _zoomCompany) : null;
             _zoomBars = DailyBarModel.Build(company, revealed);
             _zoomChart.SetData(_zoomBars);
+            _zoomChart.SetTrendThroughDay(revealed != null ? 30 : store.Public?.stockSystem == true && store.Public.phase == Protocol.Investment ? store.View?.portfolio?.processedDay : (int?)null);
+            _zoomChart.SetHiddenTail(store.Public?.phase == Protocol.Info);
             _zoomChart.SetCurrentDay(StockRules.CurrentDay(store.Public, store.View?.portfolio));
             var intervals = store.TradePlans.ChartIntervals(store.View, store.CurrentTurn, _zoomCompany, store.OrderLocked);
             if (revealed?.investments != null) _zoomChart.SetRevealedInvestments(revealed.investments);
@@ -727,6 +729,8 @@ namespace BlackWhale.UI.View
             // 시장 공개(주문 잠금) 이후에만 31일 전체, 그 전에는 열람한 날짜만.
             _bars = DailyBarModel.Build(company, revealed);
             _chart.SetData(_bars);
+            _chart.SetTrendThroughDay(revealed != null ? 30 : _c.Store.Public?.stockSystem == true && _c.Store.Public.phase == Protocol.Investment ? _c.Store.View?.portfolio?.processedDay : (int?)null);
+            _chart.SetHiddenTail(_c.Store.Public?.phase == Protocol.Info);
             _chart.SetCurrentDay(StockRules.CurrentDay(_c.Store.Public, _c.Store.View?.portfolio));
             _chart.SetFills(_c.Store.Public?.shareMarket?.FirstOrDefault(c => c.companyId == _companyId)?.fills);
             if (revealed?.investments != null) _chart.SetRevealedInvestments(revealed.investments);

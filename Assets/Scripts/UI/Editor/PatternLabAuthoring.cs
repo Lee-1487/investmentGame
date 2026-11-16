@@ -36,6 +36,24 @@ namespace BlackWhale.UI.EditorTools
         private static readonly string[] HiddenNames = { "자동 (기업 규칙)", "UpDown", "DownUp", "Decline", "Lightning", "Crash", "없음" };
         private static readonly HiddenPatternKind?[] HiddenChoices = { null, HiddenPatternKind.UpDown, HiddenPatternKind.DownUp,
             HiddenPatternKind.Decline, HiddenPatternKind.Lightning, HiddenPatternKind.Crash, HiddenPatternKind.None };
+        private static readonly int[] StableHiddenIndices = { 0, 1, 2 };
+        private static readonly int[] VolatileHiddenIndices = { 0, 3, 4, 5 };
+        private static readonly int[] BankHiddenIndices = { 0, 6 };
+        private int[] CompanyHiddenIndices => InvestmentRules.CompanyIds[authorCompany] == "BANK" ? BankHiddenIndices
+            : InvestmentRules.CompanyIds[authorCompany] == "FOOD" || InvestmentRules.CompanyIds[authorCompany] == "AUTO"
+                ? StableHiddenIndices : VolatileHiddenIndices;
+        private void NormalizeHiddenSelection()
+        {
+            if (Array.IndexOf(CompanyHiddenIndices, combinationHidden) < 0) combinationHidden = 0;
+        }
+        private void DrawHiddenChoice(float width)
+        {
+            NormalizeHiddenSelection();
+            var indices = CompanyHiddenIndices;
+            int selected = EditorGUILayout.Popup(Array.IndexOf(indices, combinationHidden),
+                Array.ConvertAll(indices, i => HiddenNames[i]), GUILayout.Width(width));
+            combinationHidden = indices[selected];
+        }
         private string probabilityMessage = "";
         private int CanvasDays => Math.Max(30, draft.startDay + draft.TotalDays);
         private int DrawingDay(Vector2 point) => Mathf.RoundToInt(point.x * CanvasDays);
@@ -83,7 +101,7 @@ namespace BlackWhale.UI.EditorTools
             { Rebuild(); Repaint(); volatilityMessage = "변경한 한도로 미리보기 중입니다. 저장하면 새 게임부터 적용됩니다."; GUIUtility.ExitGUI(); }
             using (new EditorGUILayout.HorizontalScope())
             {
-                EditorGUILayout.LabelField("급등락은 위 변동폭 × 배율 · 패턴 밖/전조는 0.1배 · 저장 시 새 게임부터 적용", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField("기본 패턴 급등락: 설정 배율 · hidden: FOOD/AUTO 1.5배, AI/BIO/SPACE 2배 · 전조 0.1배 · 저장 후 새 게임 적용", EditorStyles.miniLabel);
                 if (GUILayout.Button("변동폭·배율 저장", GUILayout.Width(125)))
                 {
                     volatilityMessage = WriteLibrary() ? "변동 한도 저장 완료 · 새 게임부터 적용됩니다." : authorMessage;
@@ -352,6 +370,7 @@ namespace BlackWhale.UI.EditorTools
         private StockPatternSample GenerateSeedPreview(CustomStockPattern pattern, HiddenPatternKind? hidden, int previewSeed)
         {
             string company = InvestmentRules.CompanyIds[authorCompany];
+            if (!Array.Exists(CompanyHiddenIndices, index => HiddenChoices[index] == hidden)) hidden = null;
             var sample = new StockPatternSample { Seed = previewSeed, Turn = turn, CompanyId = company };
             sample.DailyChangesBps = authoringLibrary.GenerateSelected(pattern, previewSeed, turn, company, sample, hiddenOverride: hidden);
             return sample;
@@ -366,18 +385,18 @@ namespace BlackWhale.UI.EditorTools
                 return;
             }
             combinationPattern = Mathf.Clamp(combinationPattern, 0, patterns.Count - 1);
-            combinationHidden = Mathf.Clamp(combinationHidden, 0, HiddenChoices.Length - 1);
+            NormalizeHiddenSelection();
             using (new EditorGUILayout.HorizontalScope())
             {
                 GUILayout.Label("기본 패턴", GUILayout.Width(65));
                 combinationPattern = EditorGUILayout.Popup(combinationPattern, patterns.ConvertAll(p => p.name).ToArray(), GUILayout.Width(180));
                 GUILayout.Label("hidden", GUILayout.Width(45));
-                combinationHidden = EditorGUILayout.Popup(combinationHidden, HiddenNames, GUILayout.Width(150));
+                DrawHiddenChoice(150);
                 seed = EditorGUILayout.IntField("시드", seed);
                 if (GUILayout.Button("새 시드", GUILayout.Width(70))) seed = RandomMarketGenerator.NewSeed();
                 if (GUILayout.Button("배율·위치 초기화", GUILayout.Width(125))) { marketZoom = 1; marketCenterBps = 0; }
             }
-            EditorGUILayout.LabelField("조합 선택은 실험용입니다. 자동은 기업별 게임 규칙을 따르고, 직접 선택하면 기업과 관계없이 해당 hidden을 미리 봅니다. 휠: 확대·축소 / 가운데 버튼 또는 Alt+왼쪽 드래그: 세로 이동", EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.LabelField("기업별 hidden: AI/BIO/SPACE는 Decline·Lightning·Crash, FOOD/AUTO는 UpDown·DownUp, BANK는 없음. 휠: 확대·축소 / 가운데 버튼 또는 Alt+왼쪽 드래그: 세로 이동", EditorStyles.wordWrappedMiniLabel);
             var sample = GenerateCombinationPreview(patterns[combinationPattern], HiddenChoices[combinationHidden]);
             marketExtentBps = 50;
             foreach (int value in sample.DailyChangesBps) marketExtentBps = Math.Max(marketExtentBps, Math.Abs((double)value));
@@ -395,7 +414,7 @@ namespace BlackWhale.UI.EditorTools
             var result = new List<StockPatternSample>();
             if (patterns.Count == 0) return result;
             combinationPattern = Mathf.Clamp(combinationPattern, 0, patterns.Count - 1);
-            combinationHidden = Mathf.Clamp(combinationHidden, 0, HiddenChoices.Length - 1);
+            NormalizeHiddenSelection();
             if (comparisonMode == 3)
             {
                 if (!ComparisonSeedRangeValid) return result;
@@ -410,9 +429,8 @@ namespace BlackWhale.UI.EditorTools
                 if (comparisonMode == 0)
                     result.Add(GenerateCombinationPreview(pattern, HiddenChoices[combinationHidden]));
                 else
-                    // The five explicit hidden types are compared even on BANK/FOOD/AUTO.
-                    for (int hidden = 1; hidden <= 5; hidden++)
-                        result.Add(GenerateCombinationPreview(pattern, HiddenChoices[hidden]));
+                    foreach (int hidden in CompanyHiddenIndices)
+                        if (hidden != 0) result.Add(GenerateCombinationPreview(pattern, HiddenChoices[hidden]));
             }
             return result;
         }
@@ -442,16 +460,16 @@ namespace BlackWhale.UI.EditorTools
                 if (GUILayout.Button("새 시드", GUILayout.Width(75))) { seed = RandomMarketGenerator.NewSeed(); GUI.changed = true; }
                 GUILayout.FlexibleSpace();
                 comparisonMode = EditorGUILayout.Popup(comparisonMode,
-                    new[] { "기본 패턴 비교 · hidden 고정", "hidden 5종 비교 · 기본 고정", "기본 패턴 × hidden 5종 전체", "여러 시드 비교 · 패턴 고정" }, GUILayout.Width(250));
+                    new[] { "기본 패턴 비교 · hidden 고정", $"hidden {CompanyHiddenIndices.Length - 1}종 비교 · 기본 고정", $"기본 패턴 × hidden {CompanyHiddenIndices.Length - 1}종 전체", "여러 시드 비교 · 패턴 고정" }, GUILayout.Width(250));
             }
             using (new EditorGUILayout.HorizontalScope())
             {
                 combinationPattern = Mathf.Clamp(combinationPattern, 0, patterns.Count - 1);
-                combinationHidden = Mathf.Clamp(combinationHidden, 0, HiddenChoices.Length - 1);
+                NormalizeHiddenSelection();
                 if (comparisonMode == 0 || comparisonMode == 3)
                 {
                     GUILayout.Label("공통 hidden", GUILayout.Width(85));
-                    combinationHidden = EditorGUILayout.Popup(combinationHidden, HiddenNames, GUILayout.Width(180));
+                    DrawHiddenChoice(180);
                 }
                 if (comparisonMode == 1 || comparisonMode == 3)
                 {
@@ -481,7 +499,7 @@ namespace BlackWhale.UI.EditorTools
             EditorGUILayout.HelpBox((comparisonMode == 3
                 ? "같은 기업·기본 패턴·hidden 선택·턴·변동폭으로 시드만 바꾸어 생성합니다. hidden을 '자동'으로 두면 시드마다 유형도 달라질 수 있습니다. "
                 : "같은 기업·시드·턴·변동폭으로 생성합니다. ")
-                + "모든 카드에 같은 % 축을 적용합니다. 휠: 함께 확대·축소 / 가운데 버튼 또는 Alt+왼쪽 드래그: 함께 세로 이동 / 카드 클릭: 상세 보기. 직접 지정한 hidden은 기업별 출현 제한을 넘어 실험합니다.", MessageType.Info);
+                + "선택한 기업에 허용된 hidden만 비교합니다. 모든 카드에 같은 % 축을 적용합니다. 휠: 함께 확대·축소 / 가운데 버튼 또는 Alt+왼쪽 드래그: 함께 세로 이동 / 카드 클릭: 상세 보기.", MessageType.Info);
             if (comparisonMode == 3 && !ComparisonSeedRangeValid)
             {
                 EditorGUILayout.HelpBox("마지막 시드가 정수 최댓값(2,147,483,647)을 초과합니다. 시작 시드·개수·간격을 줄여 주세요.", MessageType.Warning);

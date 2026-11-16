@@ -75,6 +75,7 @@ namespace BlackWhale.UI.View
 
         // 알림 감지용 이전 값
         private string _lastPhaseKey = "";
+        private int? _lastDay;
         private int _lastCoins = -1;
         private bool _lastLocked;
         private int _lastBoardTurn = -1;
@@ -421,19 +422,20 @@ namespace BlackWhale.UI.View
             if (s != null)
             {
                 string phaseKey = s.turn + "|" + s.phase + "|" + s.developerRevision;
+                var day = _c.HasCurrentPlayerView ? StockRules.CurrentDay(s, Store.View?.portfolio) : null;
+                bool contextChanged = phaseKey != _lastPhaseKey || day != _lastDay;
+                if (contextChanged) ClearBanners();
                 if (phaseKey != _lastPhaseKey)
                 {
-                    ClearBanners();
                     _lastCoins = -1;
                     _lastSelector = "";
                     _lastPhaseKey = phaseKey;
                     if (s.phase == Protocol.Lobby) ShowBanner("대기실에 입장했습니다. 준비를 누르세요.");
                     else if (s.phase == Protocol.Ended && !string.IsNullOrEmpty(Store.EndReason)) ShowBanner(ErrorMessages.ToKorean(Store.EndReason));
-                    else if (s.phase != Protocol.Ended) ShowBanner("<b>" + s.turn + "턴 · " + PhaseNames.ForState(s) + "</b> 단계가 시작되었습니다.");
+                    else if (s.phase != Protocol.Ended && !day.HasValue) ShowBanner("<b>" + s.turn + "턴 · " + PhaseNames.ForState(s) + "</b> 단계가 시작되었습니다.");
                     if (s.phase == Protocol.Info || s.phase == Protocol.Reveal) ShowPage(1);
                     if (s.phase == Protocol.Lobby || s.phase == Protocol.Selection || s.phase == StockRules.AugmentPhase || s.phase == Protocol.Investment || s.phase == Protocol.Result) ShowPage(0);
                 }
-
                 if (s.phase == Protocol.Selection && s.currentPlayerId != _lastSelector)
                 {
                     ClearBanners();
@@ -443,13 +445,16 @@ namespace BlackWhale.UI.View
                 string publicSelector = s.publicSelectionActive ? s.turn + "|" + s.publicSelectionIndex + "|" + s.publicSelectionPlayerId : "";
                 if (publicSelector != _lastPublicSelector)
                 {
+                    ClearBanners();
                     _lastPublicSelector = publicSelector;
                     if (s.publicSelectionActive)
                     {
-                        ClearBanners();
                         if (s.publicSelectionPlayerId == _c.LocalPlayerId) ShowPage(1);
                     }
                 }
+                if (contextChanged && day.HasValue)
+                    ShowBanner("<b>" + s.turn + "턴 · 현재 " + day.Value + "일차</b> 주가 공개");
+                _lastDay = day;
             }
 
             var v = Store.View;
@@ -723,7 +728,8 @@ namespace BlackWhale.UI.View
         private void OnDoneClicked()
         {
             var status = _c.CompleteStep();
-            if (status == CommandStatus.Sent) ShowBanner(Store.Public?.developerMode == true ? "개발자 확인을 적용했습니다." : Store.Public?.phase == Protocol.Investment ? "주문을 확정했습니다." : "완료했습니다. 다른 참가자를 기다립니다.");
+            if (status == CommandStatus.Sent && Store.Public?.developerMode != true)
+                ShowBanner(Store.Public?.phase == Protocol.Investment ? "주문을 확정했습니다." : "완료했습니다. 다른 참가자를 기다립니다.");
         }
 
         // ------------------------------------------------------------------

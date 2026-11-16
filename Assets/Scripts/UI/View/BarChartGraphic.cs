@@ -36,26 +36,45 @@ namespace BlackWhale.UI.View
         public static readonly Color32 HoverColor = new Color32(0x11, 0x18, 0x27, 0x22);
         public static readonly Color32 CurrentDayColor = new Color32(0xF5, 0x9E, 0x0B, 0x38);
         public static readonly Color32 CurrentDayEdgeColor = new Color32(0xD9, 0x77, 0x06, 0xD0);
+        public static readonly Color32 TrendColor = new Color32(77, 209, 240, 255);
+        private int? _trendThroughDay;
+        public void SetTrendThroughDay(int? day)
+        {
+            if (day.HasValue) day = Mathf.Clamp(day.Value, 0, 30);
+            if (_trendThroughDay == day) return;
+            _trendThroughDay = day;
+            SetVerticesDirty();
+        }
         private int? _currentDay;
-        private Text _currentDayLabel;
         public int? CurrentDay => _currentDay;
         public void SetCurrentDay(int? day)
         {
             if (day.HasValue && (day.Value < 1 || day.Value > 30)) day = null;
             if (_currentDay == day) return;
             _currentDay = day;
-            if (day.HasValue && _currentDayLabel == null) {
-                var badge = UiKit.Panel(transform, "CurrentDayBadge", new Color32(0xFF, 0xF7, 0xE5, 0xEE), rounded: true);
-                badge.raycastTarget = false;
-                UiKit.Place(badge.rectTransform, new Vector2(1, 0), new Vector2(1, 0), new Vector2(-2, 2), new Vector2(86, 18));
-                _currentDayLabel = UiKit.Label(badge.transform, "", 11, new Color32(0x92, 0x40, 0x0E, 0xFF), TextAnchor.MiddleCenter, FontStyle.Bold);
-                _currentDayLabel.name = "CurrentDayLabel"; _currentDayLabel.raycastTarget = false;
-                UiKit.Stretch(_currentDayLabel.rectTransform);
+            SetVerticesDirty();
+        }
+
+        private bool _hiddenTail;
+        private Text _hiddenTailLabel;
+        public void SetHiddenTail(bool visible)
+        {
+            if (_hiddenTail == visible) return;
+            _hiddenTail = visible;
+            if (visible && _hiddenTailLabel == null)
+            {
+                _hiddenTailLabel = UiKit.Label(transform, "hidden", 14, Palette.SubText, TextAnchor.MiddleCenter, FontStyle.Bold);
+                _hiddenTailLabel.name = "HiddenTailLabel";
+                _hiddenTailLabel.raycastTarget = false;
+                _hiddenTailLabel.resizeTextForBestFit = true;
+                _hiddenTailLabel.resizeTextMinSize = 8;
+                _hiddenTailLabel.resizeTextMaxSize = 14;
+                _hiddenTailLabel.rectTransform.anchorMin = new Vector2(26f / DayAxis.Count, 0);
+                _hiddenTailLabel.rectTransform.anchorMax = Vector2.one;
+                _hiddenTailLabel.rectTransform.offsetMin = Vector2.zero;
+                _hiddenTailLabel.rectTransform.offsetMax = Vector2.zero;
             }
-            if (_currentDayLabel != null) {
-                _currentDayLabel.transform.parent.gameObject.SetActive(day.HasValue);
-                _currentDayLabel.text = day.HasValue ? "현재 " + day.Value + "일차" : "";
-            }
+            if (_hiddenTailLabel != null) _hiddenTailLabel.gameObject.SetActive(visible);
             SetVerticesDirty();
         }
 
@@ -234,11 +253,18 @@ namespace BlackWhale.UI.View
             float zeroY = ValueY(r, 0);
 
             float sweep = RevealProgressDay;
+            // 26~30일은 날짜별 틈 없이 하나로 이어진 안개로 표시한다.
+            if (_hiddenTail)
+            {
+                float left = DayAxis.LeftX(26, r.xMin, r.width);
+                Quad(vh, left, r.yMin, r.xMax, r.yMax, new Color32(0xCB, 0xD0, 0xD8, 0xDD));
+            }
             // 미열람 날짜: 칸 전체 음영(공개 연출 중 아직 선이 지나가지 않은 공개 날짜도 가려 둔다)
             for (int i = 0; i < _bars.Length; i++)
             {
                 bool waiting = _bars[i].Source == DailyBarModel.RevealedSource && _bars[i].Day + 0.5f > sweep;
                 if (_bars[i].State != DayBarState.Hidden && !waiting) continue;
+                if (_hiddenTail && _bars[i].Day >= 26) continue;
                 float x0 = DayAxis.LeftX(_bars[i].Day, r.xMin, r.width);
                 Quad(vh, x0 + 0.5f, r.yMin, x0 + slot - 0.5f, r.yMax, HiddenColor);
             }
@@ -356,6 +382,28 @@ namespace BlackWhale.UI.View
                 if (y1 - y0 < 2f) { float m = (y0 + y1) * 0.5f; y0 = m - 1f; y1 = m + 1f; } // 너무 얇은 몸통도 보이게
                 Quad(vh, cx - bodyW * 0.5f, y0, cx + bodyW * 0.5f, y1, color);
             }
+
+            // 공개가 끝난 날짜의 종가만 연결한다. 미열람 날짜와 공개 연출의 앞쪽은 건너지 않는다.
+            if (_trendThroughDay.HasValue)
+                for (int i = 1; i < _bars.Length; i++)
+                {
+                    var from = _bars[i - 1]; var to = _bars[i];
+                    if (to.Day > _trendThroughDay.Value || to.Day != from.Day + 1 || !from.Bps.HasValue || !to.Bps.HasValue) continue;
+                    if (from.Source == DailyBarModel.RevealedSource && from.Day + .5f > sweep
+                        || to.Source == DailyBarModel.RevealedSource && to.Day + .5f > sweep) continue;
+                    var a = new Vector2(DayAxis.CenterX(from.Day, r.xMin, r.width), ValueY(r, from.Bps.Value));
+                    var b = new Vector2(DayAxis.CenterX(to.Day, r.xMin, r.width), ValueY(r, to.Bps.Value));
+                    var delta = (b - a).normalized;
+                    var normal = new Vector2(-delta.y, delta.x); // 2px 두께
+                    int index = vh.currentVertCount;
+                    var vertex = UIVertex.simpleVert; vertex.color = TrendColor;
+                    vertex.position = a - normal; vh.AddVert(vertex);
+                    vertex.position = a + normal; vh.AddVert(vertex);
+                    vertex.position = b + normal; vh.AddVert(vertex);
+                    vertex.position = b - normal; vh.AddVert(vertex);
+                    vh.AddTriangle(index, index + 1, index + 2);
+                    vh.AddTriangle(index + 2, index + 3, index);
+                }
 
             // 공개 선(지나가는 동안만)
             if (sweep < DayAxis.Count)

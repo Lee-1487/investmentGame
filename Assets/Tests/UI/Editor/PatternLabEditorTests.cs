@@ -99,8 +99,8 @@ namespace BlackWhale.UI.Tests
                 string before = JsonUtility.ToJson(library);
                 var generate = type.GetMethod("GenerateComparisonSamples", flags);
                 var comparison = (List<StockPatternSample>)generate.Invoke(window, null);
-                Assert.AreEqual(20, comparison.Count);
-                Assert.AreEqual(20, comparison.Select(s => s.PatternId + ":" + s.Hidden).Distinct().Count());
+                Assert.AreEqual(12, comparison.Count);
+                Assert.AreEqual(12, comparison.Select(s => s.PatternId + ":" + s.Hidden).Distinct().Count());
                 foreach (var sample in comparison)
                 {
                     Assert.AreEqual("AI", sample.CompanyId);
@@ -132,19 +132,68 @@ namespace BlackWhale.UI.Tests
                 type.GetField("authoringLibrary", flags).SetValue(window, library);
                 type.GetField("authorCompany", flags).SetValue(window, System.Array.IndexOf(InvestmentRules.CompanyIds, "FOOD"));
                 type.GetField("comparisonMode", flags).SetValue(window, 0);
-                type.GetField("combinationHidden", flags).SetValue(window, 4); // Lightning.
+                type.GetField("combinationHidden", flags).SetValue(window, 4); // Invalid Lightning resets to company rules.
                 var generate = type.GetMethod("GenerateComparisonSamples", flags);
                 var comparison = (List<StockPatternSample>)generate.Invoke(window, null);
                 Assert.AreEqual(4, comparison.Count);
-                Assert.IsTrue(comparison.All(s => s.Hidden == HiddenPatternKind.Lightning && s.CompanyId == "FOOD" && s.EndDay <= 21));
+                Assert.IsTrue(comparison.All(s => (s.Hidden == HiddenPatternKind.UpDown || s.Hidden == HiddenPatternKind.DownUp) && s.CompanyId == "FOOD"));
+                Assert.AreEqual(0, type.GetField("combinationHidden", flags).GetValue(window));
                 type.GetField("comparisonMode", flags).SetValue(window, 1);
                 type.GetField("combinationPattern", flags).SetValue(window, 2);
                 comparison = (List<StockPatternSample>)generate.Invoke(window, null);
-                Assert.AreEqual(5, comparison.Count);
+                Assert.AreEqual(2, comparison.Count);
                 Assert.AreEqual(1, comparison.Select(s => s.PatternId).Distinct().Count());
-                Assert.AreEqual(5, comparison.Select(s => s.Hidden).Distinct().Count());
+                Assert.AreEqual(2, comparison.Select(s => s.Hidden).Distinct().Count());
                 library.patterns.Clear();
                 Assert.AreEqual(0, ((List<StockPatternSample>)generate.Invoke(window, null)).Count);
+            }
+            finally { Object.DestroyImmediate(window); }
+        }
+
+        [TestCase("AI")]
+        [TestCase("BIO")]
+        [TestCase("SPACE")]
+        [TestCase("FOOD")]
+        [TestCase("AUTO")]
+        [TestCase("BANK")]
+        public void EveryComparisonModeAndPreviewUseCompanyHiddenChoices(string company)
+        {
+            var window = ScriptableObject.CreateInstance<PatternLabWindow>();
+            try
+            {
+                var type = typeof(PatternLabWindow);
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var library = StockPatternLibrary.CreateDefault();
+                type.GetField("authoringLibrary", flags).SetValue(window, library);
+                var companyField = type.GetField("authorCompany", flags);
+                companyField.SetValue(window, System.Array.IndexOf(InvestmentRules.CompanyIds, company));
+                var allowed = company == "BANK" ? new[] { HiddenPatternKind.None }
+                    : company == "FOOD" || company == "AUTO" ? new[] { HiddenPatternKind.UpDown, HiddenPatternKind.DownUp }
+                    : new[] { HiddenPatternKind.Decline, HiddenPatternKind.Lightning, HiddenPatternKind.Crash };
+                var choices = (HiddenPatternKind?[])type.GetField("HiddenChoices", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+                var indices = (int[])type.GetProperty("CompanyHiddenIndices", flags).GetValue(window);
+                CollectionAssert.AreEquivalent(allowed, indices.Skip(1).Select(i => choices[i].Value), "dropdown offers only company-specific types plus automatic");
+                var selection = type.GetField("combinationHidden", flags);
+                var generate = type.GetMethod("GenerateComparisonSamples", flags);
+                for (int mode = 0; mode < 4; mode++)
+                {
+                    type.GetField("comparisonMode", flags).SetValue(window, mode);
+                    for (int hidden = 0; hidden < choices.Length; hidden++)
+                    {
+                        selection.SetValue(window, hidden); // Includes a stale choice from another company.
+                        var samples = (List<StockPatternSample>)generate.Invoke(window, null);
+                        int expected = mode == 0 ? 4 : mode == 1 ? allowed.Length : mode == 2 ? 4 * allowed.Length : 6;
+                        Assert.AreEqual(expected, samples.Count);
+                        Assert.IsTrue(samples.All(s => s.CompanyId == company && allowed.Contains(s.Hidden)));
+                        Assert.IsTrue(indices.Contains((int)selection.GetValue(window)), "switching companies discards incompatible saved selections");
+                        if (mode == 1 || mode == 2) CollectionAssert.AreEquivalent(allowed, samples.Select(s => s.Hidden).Distinct());
+                    }
+                }
+                foreach (var hidden in choices)
+                {
+                    var preview = (StockPatternSample)type.GetMethod("GenerateCombinationPreview", flags).Invoke(window, new object[] { library.patterns[0], hidden });
+                    Assert.Contains(preview.Hidden, allowed, "individual previews also reject incompatible hidden types");
+                }
             }
             finally { Object.DestroyImmediate(window); }
         }
@@ -219,11 +268,11 @@ namespace BlackWhale.UI.Tests
                 var pattern = library.patterns.First(p => BaseStockPatternGenerator.Shape(p) != BasePatternShape.Authored);
                 string before = JsonUtility.ToJson(library);
                 type.GetField("authorCompany", flags).SetValue(window, System.Array.IndexOf(InvestmentRules.CompanyIds, "FOOD"));
-                var sample = (StockPatternSample)type.GetMethod("GenerateCombinationPreview", flags).Invoke(window, new object[] { pattern, HiddenPatternKind.Lightning });
+                var sample = (StockPatternSample)type.GetMethod("GenerateCombinationPreview", flags).Invoke(window, new object[] { pattern, HiddenPatternKind.DownUp });
                 Assert.AreEqual("FOOD", sample.CompanyId);
                 Assert.AreEqual(pattern.id, sample.PatternId);
-                Assert.AreEqual(HiddenPatternKind.Lightning, sample.Hidden);
-                Assert.LessOrEqual(sample.EndDay, 21);
+                Assert.AreEqual(HiddenPatternKind.DownUp, sample.Hidden);
+                Assert.LessOrEqual(sample.EndDay, 25);
                 Assert.AreEqual(before, JsonUtility.ToJson(library));
             }
             finally { Object.DestroyImmediate(window); }
@@ -604,6 +653,45 @@ namespace BlackWhale.UI.Tests
             }
             finally { if (window != null) window.Close(); }
         }
+        [TestCase(0, 0)]
+        [TestCase(1, 1)]
+        [TestCase(4, 2)]
+        [TestCase(30, 28)]
+        public void PriceTrendStopsAtPublishedDayAndBreaksAtUnknownDays(int publishedDay, int segments)
+        {
+            var go = new GameObject("Published price trend", typeof(RectTransform), typeof(BarChartGraphic));
+            try
+            {
+                var chart = go.GetComponent<BarChartGraphic>();
+                chart.rectTransform.sizeDelta = new Vector2(620, 200);
+                var bars = Enumerable.Range(0, 31).Select(day => new DayBar { Day = day, Bps = day * 100, Source = "PUBLIC" }).ToArray();
+                bars[2].Bps = null;
+                chart.SetData(bars);
+                chart.SetTrendThroughDay(publishedDay);
+                var populate = typeof(BarChartGraphic).GetMethod("OnPopulateMesh", BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.DeclaredOnly);
+                using (var mesh = new VertexHelper())
+                {
+                    populate.Invoke(chart, new object[] { mesh });
+                    var vertices = new List<UIVertex>();
+                    for (int i = 0; i < mesh.currentVertCount; i++)
+                    {
+                        var vertex = new UIVertex(); mesh.PopulateUIVertex(ref vertex, i);
+                        if (vertex.color.Equals(BarChartGraphic.TrendColor)) vertices.Add(vertex);
+                    }
+                    Assert.AreEqual(segments * 4, vertices.Count, "unknown days break the line and future known prices are excluded");
+                    Assert.IsTrue(vertices.All(v => v.position.x <= DayAxis.CenterX(publishedDay, chart.rectTransform.rect.xMin, 620) + 1), "line ends at the last published close");
+                    chart.SetTrendThroughDay(null);
+                    populate.Invoke(chart, new object[] { mesh });
+                    for (int i = 0; i < mesh.currentVertCount; i++)
+                    {
+                        var vertex = new UIVertex(); mesh.PopulateUIVertex(ref vertex, i);
+                        Assert.IsFalse(vertex.color.Equals(BarChartGraphic.TrendColor), "leaving price publication removes the trend");
+                    }
+                }
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
         [Test]
         public void ChartFitsOnlyVisibleOpensAndClosesAndIgnoresHiddenBounds()
         {

@@ -60,6 +60,8 @@ namespace BlackWhale.Tests
             run("authored-pattern-timing-vertices-bounds-and-library", AuthoredPatterns);
             run("procedural-base-timing-flag-hidden-and-surge-rules", ProceduralRules);
             run("forced-base-hidden-combinations-and-reversal-directions", ForcedHiddenCombinations);
+            run("food-auto-hidden-reversal-uses-configured-volatility-times-1.5", StableReversalVolatility);
+            run("ai-bio-space-hidden-types-and-fixed-double-volatility", VolatileHiddenRules);
             run("fixed-daily-volatility-all-turns-and-settings-isolation", FixedVolatility);
             run("company-pattern-probabilities-and-weighted-generation", PatternProbabilities);
             run("registered-only-shared-base-and-exact-live-preview", RegisteredPatternsOnly);
@@ -153,7 +155,7 @@ namespace BlackWhale.Tests
                             Check(Enumerable.Range(22, sample.HiddenEventStartDay - 22).All(d => Math.Abs(values[d] - values[d - 1]) <= quiet), "prelude is quiet from day 22");
                             Check(sample.HiddenEventStartDay >= 26 && sample.HiddenEventStartDay + sample.HiddenEventDays <= 31, "hidden event fits days 26 through 30");
                             int sign = sample.Hidden == HiddenPatternKind.Lightning ? 1 : -1;
-                            Check(Enumerable.Range(sample.HiddenEventStartDay, sample.HiddenEventDays).All(d => values[d] - values[d - 1] == sign * limit * 3), "hidden surge uses exact configured multiple");
+                            Check(Enumerable.Range(sample.HiddenEventStartDay, sample.HiddenEventDays).All(d => values[d] - values[d - 1] == sign * limit * 2), "hidden surge uses twice company volatility");
                             if (sample.Hidden == HiddenPatternKind.Lightning)
                             {
                                 Check(sample.HiddenEventDays == 1, "only one lightning day");
@@ -169,10 +171,11 @@ namespace BlackWhale.Tests
                             int changes = 0;
                             for (int day = 27; day <= 30; day++)
                                 if (Math.Sign(values[day] - values[day - 1]) != Math.Sign(values[day - 1] - values[day - 2])) changes++;
-                            Check(changes == 1 && Enumerable.Range(26, 5).All(d => Math.Abs(values[d] - values[d - 1]) <= quiet), "stable hidden has exactly one direction reversal");
+                            int reversalMove = (int)Math.Round(limit * 1.5, MidpointRounding.AwayFromZero);
+                            Check(changes == 1 && Enumerable.Range(26, 5).All(d => Math.Abs(values[d] - values[d - 1]) == reversalMove), "stable hidden has exactly one direction reversal at 1.5 times company volatility");
                         }
                         if (sample.Hidden == HiddenPatternKind.Decline)
-                            Check(values[30] < values[26] && Enumerable.Range(27, 4).Count(d => values[d] > values[d - 1]) >= 2, "decline mixes rises but ends below day 26");
+                            Check(values[30] < values[26] && Enumerable.Range(26, 5).Count(d => values[d] > values[d - 1]) == 2, "decline mixes two rises and three falls but ends below day 26");
                         if (company == "BANK") Check(sample.Hidden == HiddenPatternKind.None && values.Skip(26).All(v => v == values[25]), "BANK has no hidden event");
                         for (int day = 1; day <= 25; day++)
                             if (day <= sample.StartDay || day > sample.EndDay)
@@ -211,6 +214,54 @@ namespace BlackWhale.Tests
             Check(saved.baseSettings.surgeMultiplier == 3, "library snapshots isolate multiplier settings");
         }
 
+        private static void VolatileHiddenRules()
+        {
+            var library = StockPatternLibrary.CreateDefault();
+            library.baseSettings.surgeMultiplier = 4.5; // Hidden stays at 2x independently of main-pattern surges.
+            foreach (string company in new[] { "AI", "BIO", "SPACE" })
+                foreach (int limit in new[] { 1, 501, 2000, 10000 })
+                {
+                    library.volatility.SetDailyLimitBps(company, limit);
+                    var seen = new HashSet<HiddenPatternKind>();
+                    foreach (var pattern in library.patterns)
+                        for (int seed = 0; seed < 100; seed++)
+                        {
+                            var sample = new StockPatternSample();
+                            var values = library.GenerateSelected(pattern, seed, 1, company, sample);
+                            seen.Add(sample.Hidden);
+                            Check(sample.Hidden == HiddenPatternKind.Decline || sample.Hidden == HiddenPatternKind.Crash || sample.Hidden == HiddenPatternKind.Lightning, "volatile companies only generate the three allowed hidden types");
+                            if (sample.Hidden == HiddenPatternKind.Decline)
+                            {
+                                Check(Enumerable.Range(26, 5).All(d => Math.Abs(values[d] - values[d - 1]) == limit * 2), "every decline move uses twice configured volatility");
+                                Check(values[30] < values[25] && values[30] < values[26], "decline ends below both hidden entry and day 26");
+                            }
+                            else
+                                Check(Enumerable.Range(sample.HiddenEventStartDay, sample.HiddenEventDays).All(d => values[d] - values[d - 1] == (sample.Hidden == HiddenPatternKind.Lightning ? 2 : -2) * limit), "lightning and crash use fixed double volatility regardless of main-pattern multiplier");
+                        }
+                    Check(seen.Count == 3, "all three hidden types occur");
+                }
+        }
+
+        private static void StableReversalVolatility()
+        {
+            var library = StockPatternLibrary.CreateDefault();
+            foreach (string company in new[] { "FOOD", "AUTO" })
+                foreach (int limit in new[] { 1, 501, 700, 10000 })
+                    foreach (var pattern in library.patterns.Where(p => BaseStockPatternGenerator.Shape(p) != BasePatternShape.Authored))
+                        foreach (var hidden in new[] { HiddenPatternKind.UpDown, HiddenPatternKind.DownUp })
+                            for (int seed = 0; seed < 20; seed++)
+                            {
+                                var volatility = library.volatility.Copy();
+                                volatility.SetDailyLimitBps(company, limit);
+                                var values = library.GenerateSelected(pattern, seed, 1, company,
+                                    volatilityOverride: volatility, hiddenOverride: hidden);
+                                int expected = (int)Math.Round(limit * 1.5, MidpointRounding.AwayFromZero);
+                                Check(Enumerable.Range(26, 5).All(d => Math.Abs(values[d] - values[d - 1]) == expected), "each hidden day follows configured volatility, including half-bps rounding");
+                                Check(Math.Sign(values[26] - values[25]) == (hidden == HiddenPatternKind.UpDown ? 1 : -1), "configured reversal preserves initial direction");
+                                Check(Enumerable.Range(27, 4).Count(d => Math.Sign(values[d] - values[d - 1]) != Math.Sign(values[d - 1] - values[d - 2])) == 1, "configured reversal changes direction exactly once");
+                            }
+        }
+
         private static void ForcedHiddenCombinations()
         {
             var library = StockPatternLibrary.CreateDefault();
@@ -234,7 +285,8 @@ namespace BlackWhale.Tests
                             if (hidden == HiddenPatternKind.Decline) Check(values[30] < values[26], "forced decline ends lower");
                             if (hidden == HiddenPatternKind.Lightning || hidden == HiddenPatternKind.Crash)
                             {
-                                int surge = (int)(library.volatility.DailyLimitBps(company) * library.baseSettings.surgeMultiplier);
+                                int surge = (int)(library.volatility.DailyLimitBps(company)
+                                    * (company == "AI" || company == "BIO" || company == "SPACE" ? 2 : library.baseSettings.surgeMultiplier));
                                 Check(Enumerable.Range(sample.HiddenEventStartDay, sample.HiddenEventDays).All(d => values[d] - values[d - 1] == (hidden == HiddenPatternKind.Lightning ? surge : -surge)), "forced event moves at configured surge magnitude");
                             }
                         }

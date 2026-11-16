@@ -395,6 +395,7 @@ namespace BlackWhale.UI.View
                 var visible = controller.Store.View?.companies?.FirstOrDefault(c => c.companyId == id);
                 var revealed = controller.Store.RevealedTurn == State.turn ? controller.Store.Revealed?.FirstOrDefault(c => c.companyId == id) : null;
                 card.Chart.SetData(DailyBarModel.Build(visible, revealed));
+                card.Chart.SetTrendThroughDay(revealed != null ? 30 : State.phase == Protocol.Investment ? Portfolio?.processedDay : (int?)null);
                 card.Chart.SetCurrentDay(StockRules.CurrentDay(State, Portfolio));
                 card.Chart.SetFills(company?.fills);
                 if (investing) {
