@@ -16,7 +16,7 @@ namespace BlackWhale.UI.View
         private readonly RectTransform _root;
         private int _turnCount = 10;
         private bool _stockMode;
-        private bool IsSpecialTurn(int turn) => _stockMode ? turn == 1 || turn == 3 || turn == 5 : ScoreboardModel.IsAuctionTurn(turn);
+        private bool IsSpecialTurn(int turn) => _stockMode ? turn == 1 || turn == 4 : ScoreboardModel.IsAuctionTurn(turn);
 
         public ScoreboardScreen(RectTransform root) => _root = root;
 

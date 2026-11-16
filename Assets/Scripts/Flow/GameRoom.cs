@@ -60,7 +60,7 @@ namespace BlackWhale.Flow
         private string phase = Protocol.Lobby;
         private int turn, selectionIndex;
         private readonly Random publicRandom = new Random();
-        private bool TimedPhase => mode != TimerMode.Developer || StockMode && (phase == Protocol.Investment || phase == Protocol.Info);
+        private bool TimedPhase => mode != TimerMode.Developer || StockMode && phase == Protocol.Investment && developerTimerRunning;
         private double origin, phaseEnd, pickEnd;
         private double lastPublishedAt;
         private int publicPickIndex;
@@ -249,6 +249,8 @@ namespace BlackWhale.Flow
                     return Reply(member.Id, CommandResult.Fail(command, "INVALID_REQUEST"));
                 string key = member.Id + ":" + command.turn + ":" + command.requestId;
                 string fingerprint = Fingerprint(command);
+                if (mode == TimerMode.Developer && StockMode && command.developerRevision != developerRevision)
+                    return Reply(member.Id, CommandResult.Fail(command, "STALE_DEVELOPER_STATE"));
                 Cached previous;
                 // Replay is checked before stage, deadline, quota or ended-state checks.
                 if (cache.TryGetValue(key, out previous))
@@ -277,6 +279,7 @@ namespace BlackWhale.Flow
         }
         private CommandResult Execute(Member member, Command command, double now)
         {
+            if (command.type.StartsWith("DEV_", StringComparison.Ordinal)) return ExecuteDeveloperCommand(member.Id, command, now);
             if (StockMode && (command.type == "SUBMIT_INVESTMENT" || command.type == "SAVE_TRADE_PLAN" && phase != Protocol.Info))
                 return CommandResult.Fail(command, "WRONG_PHASE");
             if (StockMode && IsStockCommand(command.type)) return ExecuteStockCommand(member.Id, command, now);
@@ -409,8 +412,9 @@ namespace BlackWhale.Flow
                 else
                 {
                     if (PublicPicking) return CommandResult.Fail(command, "PUBLIC_SELECTION_PENDING");
-                    if (command.type == "BUY_INFORMATION_WINDOW" && payload.endDay == 0) return CommandResult.Fail(command, "INVALID_WINDOW");
-                    operation = command.type == "BUY_INFORMATION_WINDOW" ? WindowInfo.BuyWindow(ctx, payload.companyId, payload.startDay, payload.endDay) :
+                    if (!StockMode && command.type == "BUY_INFORMATION_WINDOW" && payload.endDay == 0) return CommandResult.Fail(command, "INVALID_WINDOW");
+                    operation = command.type == "BUY_INFORMATION_WINDOW" ? StockMode ? WindowInfo.BuyRandomDays(ctx, payload.companyId, payload.informationDays)
+                        : WindowInfo.BuyWindow(ctx, payload.companyId, payload.startDay, payload.endDay) :
                         WindowInfo.UseInformationItem(ctx, payload.itemId, payload.companyId, payload.startDay, payload.targetPlayerId, now);
                 }
                 if (!operation.Success) return CommandResult.Fail(command, operation.ErrorCode);
@@ -455,6 +459,7 @@ namespace BlackWhale.Flow
         }
         private void BeginTurn(double now)
         {
+            developerCheckpoints.Clear();
             turn++;
             if (!begun.Add(turn)) return;
             string[] ids = members.OrderBy(m => m.Id, StringComparer.Ordinal).Select(m => m.Id).ToArray();
@@ -465,8 +470,9 @@ namespace BlackWhale.Flow
             phase = Protocol.Info;
             market.BeginTurn(Context(), ids);
             information.GrantTurnCoins(Context(), ids);
+            if (StockMode) WindowInfo.PrepareRandomInformation(Context());
             progression?.BeginTurn(Context());
-            if (StockMode && (turn == 1 || turn == 3 || turn == 5))
+            if (StockMode && (turn == 1 || turn == 4))
             { Stock.BeginAugmentSelection(); Enter(StockRules.AugmentPhase, now, settings.AbilitySelectionSeconds ?? 20); }
             else Enter(progression != null && (turn == 3 || turn == 6 || turn == 9) ? Protocol.Auction : Protocol.Info,
                 now, progression != null && (turn == 3 || turn == 6 || turn == 9) ? 15 : settings.InfoSeconds);
@@ -475,14 +481,18 @@ namespace BlackWhale.Flow
         private void Enter(string next, double now, double duration)
         {
             phase = next;
+            developerTimerRunning = false;
             phaseEnd = duration == 0 ? 0 : now + duration;
             pickEnd = next == Protocol.Selection ? now + (StockMode ? StockRules.DraftSeconds : 4) : 0;
             if (next == Protocol.Info && WindowMode)
             {
-                publicPickIndex = StockMode && lobbySettings.publicRevealDays == 0 ? 4 : 0;
+                publicPickIndex = StockMode ? 4 : 0;
                 publicPickEnd = publicPickIndex < 4 ? now + settings.PublicInformationPickSeconds : 0;
             }
             completed.Clear();
+            if (StockMode && next == Protocol.Info)
+                foreach (var member in members) WindowInfo.GrantAnalystCoins(Context(), member.Id);
+            CaptureDeveloperPhase(duration);
             PublishState();
         }
         private void Selected(double now)
@@ -512,7 +522,7 @@ namespace BlackWhale.Flow
                 else NextPhase(phaseEnd);
                 while (PublicPicking && members.Any(m => m.Id == order[publicPickIndex] && m.Connection == null)) AutoPublicSelect(Math.Min(now, publicPickEnd));
             }
-            if (StockMode && phase == Protocol.Investment)
+            if (StockMode && phase == Protocol.Investment && TimedPhase)
             {
                 int day = Math.Min(30, (int)Math.Floor((now - phaseEnd + 30 * lobbySettings.daySeconds) / lobbySettings.daySeconds));
                 if (Stock.ProcessedDay < day) {
@@ -691,6 +701,7 @@ namespace BlackWhale.Flow
         {
             lock (gate) return new PublicState { roomId = roomId, turn = turn, phase = phase,
                 selectionIndex = selectionIndex, currentPlayerId = CurrentPlayer, paused = paused, developerMode = mode == TimerMode.Developer,
+                developerTimerRunning = developerTimerRunning, developerCanGoBack = developerCheckpoints.Count > 1, developerRevision = developerRevision,
                 serverElapsedSeconds = phase != Protocol.Lobby ? Now : 0, phaseEndsAtServerSeconds = TimedPhase ? phaseEnd : 0,
                 selectionDeadlineAtServerSeconds = mode == TimerMode.Developer ? 0 : pickEnd,
                 initialPlayerOrder = (string[])initialOrder.Clone(), seatPlayerIds = order.Take(4).ToArray(),
@@ -703,7 +714,8 @@ namespace BlackWhale.Flow
                 publicSelectionDeadlineAtServerSeconds = PublicPicking && TimedPhase ? publicPickEnd : 0,
                 publicInformation = WindowMode && turn > 0 ? WindowInfo.GetPublicInformation(Context()) : new PublicInformationChoice[0],
                 players = members.OrderBy(m => m.Id, StringComparer.Ordinal).Select(m => new Player { playerId = m.Id, displayName = m.Name,
-                    connected = m.Connection != null, ready = m.Ready, isBot = m.IsBot }).ToArray(),
+                    connected = m.Connection != null, ready = m.Ready, isBot = m.IsBot,
+                    augments = StockMode && turn > 0 ? Stock.GetPortfolio(m.Id).augments : Array.Empty<string>() }).ToArray(),
                 companySeats = turn > 0 ? market.GetCompanySeats() : new CompanySeat[0] };
         }
         private void SendView(string player)
@@ -743,11 +755,12 @@ namespace BlackWhale.Flow
         private static Command Copy(Command input)
         {
             return new Command { type = input?.type, requestId = input?.requestId, turn = input?.turn ?? 0,
+                developerRevision = input?.developerRevision ?? 0,
                 payload = input?.payload == null ? null : new CommandPayload { companyId = input.payload.companyId,
                     bundleIndex = input.payload.bundleIndex, ready = input.payload.ready, investments = Copy(input.payload.investments),
                     startDay = input.payload.startDay, endDay = input.payload.endDay, itemId = input.payload.itemId, targetPlayerId = input.payload.targetPlayerId,
                     abilityId = input.payload.abilityId, bidAmount = input.payload.bidAmount, useFreePass = input.payload.useFreePass,
-                    historyTurn = input.payload.historyTurn,
+                    historyTurn = input.payload.historyTurn, informationDays = input.payload.informationDays,
                     lobbySettings = input.payload.lobbySettings?.Copy(),
                     augmentId = input.payload.augmentId,
                     shareOrders = input.payload.shareOrders?.Select(v => v == null ? null : new ShareOrder { companyId = v.companyId, targetShares = v.targetShares }).ToArray(),
@@ -767,18 +780,19 @@ namespace BlackWhale.Flow
             using (var bytes = new MemoryStream())
             using (var writer = new BinaryWriter(bytes, Encoding.UTF8))
             {
-                writer.Write(c.type ?? ""); writer.Write(c.payload != null);
+                writer.Write(c.type ?? ""); writer.Write(c.developerRevision); writer.Write(c.payload != null);
                 if (c.payload != null)
                 {
                     writer.Write(c.payload.companyId ?? ""); writer.Write(c.payload.bundleIndex); writer.Write(c.payload.ready);
                     writer.Write(c.payload.startDay); writer.Write(c.payload.endDay); writer.Write(c.payload.itemId ?? ""); writer.Write(c.payload.targetPlayerId ?? "");
                     writer.Write(c.payload.abilityId ?? ""); writer.Write(c.payload.bidAmount); writer.Write(c.payload.useFreePass);
-                    writer.Write(c.payload.historyTurn);
+                    writer.Write(c.payload.historyTurn); writer.Write(c.payload.informationDays);
                     writer.Write(c.payload.lobbySettings != null);
                     if (c.payload.lobbySettings != null) {
                         writer.Write(c.payload.lobbySettings.earlyTurnCoins); writer.Write(c.payload.lobbySettings.lateTurnCoins);
                         writer.Write(c.payload.lobbySettings.publicRevealDays); writer.Write(c.payload.lobbySettings.scatteredPublicDays);
                         writer.Write(c.payload.lobbySettings.daySeconds);
+                        writer.Write(c.payload.lobbySettings.informationStartDay); writer.Write(c.payload.lobbySettings.informationEndDay);
                     }
                     writer.Write(c.payload.augmentId ?? "");
                     writer.Write(c.payload.shareOrders?.Length ?? -1);

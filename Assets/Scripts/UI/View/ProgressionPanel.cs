@@ -136,7 +136,7 @@ namespace BlackWhale.UI.View
                 case Page.Ability:
                     if (state.stockSystem)
                     {
-                        Message("<b>내 증강</b>\n\n" + string.Join("\n\n", (view?.portfolio?.augments ?? new string[0]).Select(id => "<b>" + StockRules.Name(id) + "</b>\n" + StockRules.Description(id))) + "\n\n증강은 1·3·5턴 정보 확인 후 선택합니다.");
+                        Message("<b>내 증강</b>\n\n" + string.Join("\n\n", (view?.portfolio?.augments ?? new string[0]).Select(id => "<b>" + StockRules.Name(id) + "</b>\n" + StockRules.Description(id))) + "\n\n증강은 1·4턴 시작에 선택합니다(최대 2개).");
                         break;
                     }
                     var ability = LiveScreenModels.Ability(state, view, abilityDraft, store.HasPending(CommandTypes.SelectAbility), seconds);

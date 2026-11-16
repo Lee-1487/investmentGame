@@ -51,7 +51,7 @@ namespace BlackWhale.UI.View
         public StockSystemPage(RectTransform parent, GameClientController controller) { root = parent; this.controller = controller; }
         private PublicState State => controller.Store.Public;
         private PortfolioState Portfolio => controller.Store.View?.portfolio;
-        private string BuildKey => State.turn + ":" + State.phase + ":" + State.selectionIndex + ":" + State.currentPlayerId;
+        private string BuildKey => State.turn + ":" + State.phase + ":" + State.selectionIndex + ":" + State.currentPlayerId + ":" + State.developerRevision;
         private bool Editable => controller.CanDraftShares();
         private int Holding(string id) => State.shareMarket?.FirstOrDefault(c => c.companyId == id)?.owners?.Where(v => v.playerId == controller.LocalPlayerId)
             .Sum(v => v.shares + v.reserved)
@@ -434,7 +434,7 @@ namespace BlackWhale.UI.View
         }
         private void BuildAugments()
         {
-            Label(root, "증강 선택 · 1·3·5턴에 하나씩 선택합니다", 0, 40, 20);
+            Label(root, "증강 선택 · 1·4턴에 하나씩, 최대 2개 선택합니다", 0, 40, 20);
             Label(root, "선택한 증강: " + string.Join(" / ", Portfolio.augments.Select(StockRules.Name)), 42, 35, 13);
             if (Portfolio.augmentChosen) { Label(root, "선택 완료 · 다른 플레이어를 기다리는 중입니다.", 100, 100, 18); return; }
             var choices = (Portfolio.candidates ?? new string[0]).Where(c => !string.IsNullOrEmpty(c)).ToArray();
@@ -453,16 +453,6 @@ namespace BlackWhale.UI.View
                 button.interactable = !State.paused && !controller.Store.HasPending(StockRules.Choose);
                 // 증강 후보가 처음 뜰 때 카드가 한 장씩 뒤집히며 공개
                 UiAnim.FlipIn(cell, "augment:" + State.turn + ":" + string.Join(",", choices) + ":" + i, 0.15f + i * 0.22f);
-            }
-            var targetLabel = Label(root, "집중 투자자 적용 기업: " + focus, 0, 0, 12);
-            targetLabel.rectTransform.anchorMin = Vector2.zero; targetLabel.rectTransform.anchorMax = new Vector2(1, 0);
-            targetLabel.rectTransform.offsetMin = new Vector2(6, 45); targetLabel.rectTransform.offsetMax = new Vector2(-6, 70);
-            for (int i = 0; i < UiRules.CompanyIds.Length; i++)
-            {
-                string id = UiRules.CompanyIds[i]; if (id == "BANK") continue; var b = UiKit.Button(root, id, 12, focus == id ? Palette.AccentSoft : Palette.Card, Palette.Accent,
-                    () => { focus = id; targetLabel.text = "집중 투자자 적용 기업: " + focus; });
-                b.name = "FocusCompany_" + id;
-                UiKit.Place((RectTransform)b.transform, new Vector2(0, 0), new Vector2(0, 0), new Vector2(6 + i * 90, 8), new Vector2(82, 30));
             }
         }
         private static Text Label(RectTransform parent, string text, float top, float height, int size = 14)

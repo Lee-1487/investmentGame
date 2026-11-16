@@ -7,7 +7,7 @@ using InvestmentGame.Rules.Information;
 namespace BlackWhale.Rules.Information
 {
     // A and D use Shared DTOs. C's domain models remain inside this server adapter.
-    public sealed partial class SharedInformationService : IInformationService, IProgressionService, IWindowInformationService
+    public sealed partial class SharedInformationService : IInformationService, IProgressionService, IWindowInformationService, IDeveloperCheckpoint
     {
         // 방 하나에 속한 C 정보 서비스의 상태를 묶는다. 방별로 Service를 따로 만들기
         // 때문에 같은 플레이어 ID가 다른 방에서 사용되어도 코인과 구매 내역이 섞이지 않는다.
@@ -36,6 +36,28 @@ namespace BlackWhale.Rules.Information
         // RoomId를 기준으로 C 정보 서비스 상태를 분리한다. 방이 다르면 같은 P1이라도
         // 서로 다른 코인과 구매 내역을 가진다.
         private readonly Dictionary<string, RoomState> rooms = new Dictionary<string, RoomState>();
+        public Action CaptureDeveloperCheckpoint(string roomId)
+        {
+            lock (gate)
+            {
+                var restoreCoins = rooms[roomId].Service.CaptureDeveloperCheckpoint();
+                WindowTurn CopyWindows(WindowTurn original)
+                {
+                    var copy = new WindowTurn { RoomId = original.RoomId, RandomPrepared = original.RandomPrepared };
+                    copy.UsedCategories.UnionWith(original.UsedCategories);
+                    foreach (var item in original.Requests) copy.Requests.Add(item.Key, item.Value);
+                    foreach (var r in original.Records) copy.Records.Add(new WindowRecord { Id = r.Id, Player = r.Player, Company = r.Company,
+                        Source = r.Source, Start = r.Start, Paid = r.Paid, Length = r.Length, Automatic = r.Automatic, HiddenUntil = r.HiddenUntil });
+                    return copy;
+                }
+                var snapshot = windowTurns.Where(item => item.Value.RoomId == roomId).ToDictionary(item => item.Key, item => CopyWindows(item.Value));
+                return () => { lock (gate) {
+                    restoreCoins();
+                    foreach (var key in windowTurns.Where(item => item.Value.RoomId == roomId).Select(item => item.Key).ToArray()) windowTurns.Remove(key);
+                    foreach (var item in snapshot) windowTurns.Add(item.Key, CopyWindows(item.Value));
+                } };
+            }
+        }
 
         // 시장 데이터 원본 없이는 공개 정보와 구매 결과를 만들 수 없으므로 생성 시 즉시
         // 오류를 발견한다.
@@ -69,6 +91,7 @@ namespace BlackWhale.Rules.Information
                     ? (context.Turn >= InformationConstants.LateGrantStartsAtTurn ? options.lateTurnCoins : options.earlyTurnCoins) : (int?)null;
                 room.Service.GrantTurnCoins(context.Turn, playerIds, UsesWindowInformation, grant);
                 room.CurrentTurn = context.Turn;
+                if (RandomInformation) foreach (string id in playerIds) GrantAnalystCoins(context, id);
             }
         }
 

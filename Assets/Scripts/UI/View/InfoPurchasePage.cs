@@ -472,7 +472,7 @@ namespace BlackWhale.UI.View
             var v = _c.Store.View;
             var phase = _c.Store.Public?.phase;
             var state = _c.Store.Public;
-            string draftKey = (state?.turn ?? 0) + ":" + (state?.phase ?? "");
+            string draftKey = (state?.turn ?? 0) + ":" + (state?.phase ?? "") + ":" + (state?.developerRevision ?? 0);
             if (draftKey != _draftPhaseKey) { _draftPhaseKey = draftKey; ClearUnconfirmed(); } // 다음 단계로 넘어가면 확정 안 한 선택은 지움
             bool windows = state?.windowInformation == true;
             bool showingResults = phase == Protocol.Reveal || phase == Protocol.Result;
@@ -489,8 +489,10 @@ namespace BlackWhale.UI.View
                   + (phase == Protocol.Info ? state?.publicSelectionActive == true ? " · " + state.publicSelectionPlayerId + " 공개 차례" : "   ·   1코인 = 1일"
                      : state?.stockSystem == true ? "" : "   ·   구매는 정보 탐색 단계에서만");
             if (state?.stockSystem == true && !showingResults && !state.publicSelectionActive)
-                _publicHistory.text = (phase == Protocol.Investment ? (state.lobbySettings?.daySeconds ?? StockRules.DaySeconds)
-                    + "초마다 하루가 공개됩니다. 주황색 세로 영역 = 현재 " + StockRules.CurrentDay(state, v?.portfolio) + "일차\n" : "1코인 = 새 날짜 1일 · 정보 할인 " + (v?.portfolio?.informationDiscount ?? 0) + "일 · 차트에서 구간을 예약하면 실시간 매매 중 표시됩니다.\n")
+                _publicHistory.text = (phase == Protocol.Investment ? state.developerMode && !state.developerTimerRunning
+                    ? "방장 확인 버튼으로 하루씩 진행합니다. 현재 " + StockRules.CurrentDay(state, v?.portfolio) + "일차\n"
+                    : (state.lobbySettings?.daySeconds ?? StockRules.DaySeconds) + "초마다 하루가 공개됩니다. 현재 " + StockRules.CurrentDay(state, v?.portfolio) + "일차\n"
+                    : "BANK 전체 공개 · 각 기업 랜덤 " + (state.lobbySettings?.publicRevealDays ?? 5) + "일 공동 공개 · 1코인 = 범위 내 미공개 랜덤 1일 · 드래그는 거래 구간 예약\n")
                     + string.Join(" / ", (v?.portfolio?.insights ?? Array.Empty<StockInsight>()).Select(i => i.companyId + " 이벤트 성공 가능성 " + DisplayFormat.Percent(i.probabilityBps, false)));
             foreach (var card in _cards) card.Refresh();
             if (_zoomCompany != null)

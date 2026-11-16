@@ -28,6 +28,44 @@ namespace BlackWhale.UI.Tests
     public class NetworkGameUiTests
     {
         [UnityTest]
+        public IEnumerator DeveloperStockControlsAndPublicAugmentPopupUseServerState()
+        {
+            var client = new PlanningClient(); var controller = new GameClientController(client);
+            var canvas = new GameObject("Developer stock UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.GetComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvas.GetComponent<CanvasScaler>().referenceResolution = new Vector2(1280, 720);
+            try
+            {
+                client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+                var state = new PublicState { turn = 1, phase = Protocol.Investment, totalTurns = 6, stockSystem = true,
+                    windowInformation = true, developerMode = true, developerCanGoBack = true, developerRevision = 2,
+                    players = new[] { "P1", "P2", "P3", "P4" }.Select(id => new Player { playerId = id, displayName = id,
+                        augments = id == "P2" ? new[] { "BIO_RESEARCH", "HIDDEN_LOSS_CONTROL" } : Array.Empty<string>() }).ToArray(),
+                    shareMarket = UiRules.CompanyIds.Select(id => new CompanyShareState { companyId = id, owners = new ShareOwner[0] }).ToArray() };
+                var view = new PlayerView { turn = 1, phase = Protocol.Investment, recipientPlayerId = "P1", assets = 10000,
+                    companies = UiRules.CompanyIds.Select(id => new VisibleCompany { companyId = id, visibleWindows = new VisibleInformationWindow[0] }).ToArray(),
+                    portfolio = new PortfolioState { processedDay = 7, holdings = UiRules.CompanyIds.Select(id => new PortfolioHolding { companyId = id }).ToArray(),
+                        augments = new string[0], candidates = new string[0] } };
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state }); client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                TabletView.Create((RectTransform)canvas.transform, controller);
+                yield return null; Canvas.ForceUpdateCanvases();
+                ClickPlanning(canvas, "DeveloperNext");
+                Assert.AreEqual("DEV_NEXT", client.Sent.Last().type); Assert.AreEqual(2, client.Sent.Last().developerRevision);
+                ClickPlanning(canvas, "DeveloperTimer"); Assert.AreEqual("DEV_TIMER", client.Sent.Last().type);
+                ClickPlanning(canvas, "DeveloperPrevious"); Assert.AreEqual("DEV_PREVIOUS", client.Sent.Last().type);
+                ClickPlanning(canvas, "DeveloperReset"); Assert.AreEqual("DEV_RESET", client.Sent.Last().type);
+                var icon = canvas.GetComponentsInChildren<ClickRelay>().Single(c => c.name == "RankSlot2");
+                icon.OnPointerClick(new PointerEventData(null));
+                string popup = string.Join("\n", canvas.GetComponentsInChildren<Text>().Select(t => t.text));
+                StringAssert.Contains(StockRules.Name("BIO_RESEARCH"), popup);
+                StringAssert.Contains("HIDDEN 손실 제어", popup);
+                StringAssert.Contains(StockRules.Description("HIDDEN_LOSS_CONTROL"), popup);
+            }
+            finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); }
+        }
+
+        [UnityTest]
         public IEnumerator LobbySettingsAreEditableByHostAndVisibleToGuests()
         {
             foreach (string player in new[] { "P1", "P2" }) {
@@ -45,7 +83,7 @@ namespace BlackWhale.UI.Tests
                     TabletView.Create((RectTransform)canvas.transform, controller);
                     yield return null; Canvas.ForceUpdateCanvases();
                     var fields = canvas.GetComponentsInChildren<InputField>();
-                    Assert.AreEqual(4, fields.Length);
+                    Assert.AreEqual(6, fields.Length);
                     Assert.IsTrue(fields.All(f => f.interactable == (player == "P1")));
                     Assert.AreEqual("15", fields.Single(f => f.name == "EarlyTurnCoins").text);
                     Assert.AreEqual("25", fields.Single(f => f.name == "LateTurnCoins").text);
@@ -58,7 +96,8 @@ namespace BlackWhale.UI.Tests
                         fields.Single(f => f.name == "PublicRevealDays").text = "8";
                         fields.Single(f => f.name == "DaySeconds").text = "5";
                         Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Single(b => b.name == "StartGame").interactable, "unapplied settings cannot accidentally start the old rules");
-                        ClickPlanning(canvas, "PublicRevealScattered");
+                        Assert.AreEqual("0", fields.Single(f => f.name == "InformationStartDay").text);
+                        Assert.AreEqual("25", fields.Single(f => f.name == "InformationEndDay").text);
                         Assert.AreEqual("7", canvas.GetComponentsInChildren<InputField>().Single(f => f.name == "EarlyTurnCoins").text, "mode change preserves numeric draft");
                         ClickPlanning(canvas, "ApplyLobbySettings");
                         var command = client.Sent.Single(c => c.type == CommandTypes.SetLobbySettings);
@@ -70,7 +109,8 @@ namespace BlackWhale.UI.Tests
                     }
                     else {
                         Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Any(b => b.name == "ApplyLobbySettings"));
-                        Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Single(b => b.name == "PublicRevealScattered").interactable);
+                        Assert.IsFalse(canvas.GetComponentsInChildren<InputField>().Single(f => f.name == "InformationStartDay").interactable);
+                        Assert.IsFalse(canvas.GetComponentsInChildren<InputField>().Single(f => f.name == "InformationEndDay").interactable);
                         state.lobbySettings = new LobbySettings { earlyTurnCoins = 7, lateTurnCoins = 11, publicRevealDays = 8, scatteredPublicDays = true, daySeconds = 5 };
                     }
                     client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
@@ -154,16 +194,16 @@ namespace BlackWhale.UI.Tests
                 Assert.IsTrue(canvas.GetComponentsInChildren<Slider>().Single(s => s.name == "ShareSlider_BIO").interactable);
                 Assert.GreaterOrEqual(canvas.GetComponentsInChildren<Text>().Single(t => t.name == "StockDraftPlayer_4").fontSize, 20);
                 CapturePlanningScreen(canvas.GetComponent<Canvas>(), "stock-system-second-round");
-                state.phase = StockRules.AugmentPhase; state.turn = 3; state.phaseEndsAtServerSeconds = 20;
-                view.turn = 3; view.phase = StockRules.AugmentPhase; portfolio.augmentChosen = false;
+                state.phase = StockRules.AugmentPhase; state.turn = 4; state.phaseEndsAtServerSeconds = 20;
+                view.turn = 4; view.phase = StockRules.AugmentPhase; portfolio.augmentChosen = false;
                 portfolio.candidates = new[] { "CONCENTRATION", "DIVERSIFY", "ANALYST" };
                 client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state }); client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
                 yield return null; Canvas.ForceUpdateCanvases();
                 Assert.AreEqual(3, canvas.GetComponentsInChildren<Button>().Count(b => b.name.StartsWith("ChooseAugment_")));
-                ClickPlanning(canvas, "FocusCompany_FOOD");
+                Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Any(b => b.name.StartsWith("FocusCompany_")));
                 CapturePlanningScreen(canvas.GetComponent<Canvas>(), "stock-system-augment-choice");
                 ClickPlanning(canvas, "ChooseAugment_CONCENTRATION");
-                Assert.AreEqual(StockRules.Choose, client.Sent.Last().type); Assert.AreEqual("FOOD", client.Sent.Last().payload.companyId);
+                Assert.AreEqual(StockRules.Choose, client.Sent.Last().type); Assert.AreEqual("CONCENTRATION", client.Sent.Last().payload.augmentId);
             }
             finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); }
         }
@@ -299,7 +339,7 @@ namespace BlackWhale.UI.Tests
         }
 
         [UnityTest]
-        public IEnumerator StockPublicInformationNeedsOnlyACompany()
+        public IEnumerator StockRandomInformationPurchaseNeedsOnlyACompany()
         {
             var client = new PlanningClient(); var controller = new GameClientController(client);
             var events = new GameObject("Stock reservation events", typeof(EventSystem));
@@ -310,7 +350,7 @@ namespace BlackWhale.UI.Tests
             try
             {
                 client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
-                var state = new PublicState { turn = 1, totalTurns = 6, phase = Protocol.Info, stockSystem = true, windowInformation = true, publicSelectionActive = true, publicSelectionPlayerId = "P1", phaseEndsAtServerSeconds = 30,
+                var state = new PublicState { turn = 1, totalTurns = 6, phase = Protocol.Info, stockSystem = true, windowInformation = true, phaseEndsAtServerSeconds = 30,
                     draftOrder = new[] { "P1", "P2", "P3", "P4", "P1", "P2", "P3", "P4" },
                     players = new[] { "P1", "P2", "P3", "P4" }.Select(id => new Player { playerId = id, displayName = id }).ToArray(),
                     shareMarket = UiRules.CompanyIds.Select(id => new CompanyShareState { companyId = id, totalShares = id == "BANK" ? 120 : 20,
@@ -322,9 +362,10 @@ namespace BlackWhale.UI.Tests
                 var tablet = TabletView.Create((RectTransform)canvas.transform, controller); tablet.ShowPage(1);
                 yield return new WaitForSecondsRealtime(.4f); ClickPlanning(canvas, "Expand_AI"); Canvas.ForceUpdateCanvases();
                 ClickPlanning(canvas, "ConfirmInformationWindow");
-                var reveal = client.Sent.Single(c => c.type == CommandTypes.RevealInformationWindow);
+                var reveal = client.Sent.Single(c => c.type == CommandTypes.BuyInformationWindow);
                 Assert.AreEqual("AI", reveal.payload.companyId);
                 Assert.AreEqual(0, reveal.payload.startDay);
+                Assert.AreEqual(1, reveal.payload.informationDays);
             }
             finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); UnityEngine.Object.DestroyImmediate(events); }
         }

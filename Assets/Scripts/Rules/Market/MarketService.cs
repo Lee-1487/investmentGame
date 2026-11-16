@@ -54,7 +54,7 @@ namespace BlackWhale.Rules
 
         public int[] GetWindow(int requestedTurn, string companyId, int startDay, int length = 5)
         {
-            if (startDay < 1 || length < 1 || startDay > 30 || length > 31 - startDay) throw new ArgumentOutOfRangeException(nameof(startDay));
+            if (startDay < 0 || length < 1 || startDay > 30 || length > 31 - startDay) throw new ArgumentOutOfRangeException(nameof(startDay));
             if (!markets.TryGetValue(requestedTurn, out var book) || !book.HasCompany(companyId))
                 throw new ArgumentException("Unknown market or company.");
             return Enumerable.Range(startDay, length).Select(d => book.ChangeBps(companyId, d)).ToArray();
@@ -62,7 +62,7 @@ namespace BlackWhale.Rules
         public int[] GetOpenWindow(int requestedTurn, string companyId, int startDay, int length = 5)
         {
             GetWindow(requestedTurn, companyId, startDay, length); // validate the same range
-            return Enumerable.Range(startDay, length).Select(d => markets[requestedTurn].ChangeBps(companyId, d - 1)).ToArray();
+            return Enumerable.Range(startDay, length).Select(d => markets[requestedTurn].ChangeBps(companyId, Math.Max(0, d - 1))).ToArray();
         }
 
         /// <summary>Provider mode: one market per turn, e.g. <see cref="RandomMarketGenerator.ForTurn"/>.</summary>

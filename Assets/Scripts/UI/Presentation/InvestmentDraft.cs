@@ -153,6 +153,8 @@ namespace BlackWhale.UI.Presentation
             WeightedCompanies = saved.Where(i => i.weightBps != 0).Select(DtoCopy.Copy).ToArray();
             HasLocalReservations = true;
         }
+        public void ResetForDeveloper()
+        { companies.Clear(); HasLocalReservations = false; WeightedCompanies = Array.Empty<Investment>(); }
         // The investment page already refreshes itself; do not rebuild the UI inside its input callbacks.
         public void SetDraft(Investment[] draft)
         {

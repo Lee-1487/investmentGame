@@ -25,6 +25,17 @@ namespace BlackWhale.UI.EditorTools
         [SerializeField] private bool showVolatility = true;
         private string volatilityMessage = "";
         private int previewCandleCount;
+        [SerializeField] private bool showCombination;
+        [SerializeField] private bool showComparison;
+        [SerializeField] private int comparisonMode = 2, comparisonColumns = 2;
+        [SerializeField] private int comparisonSeedCount = 6, comparisonSeedStep = 1;
+        private bool ComparisonSeedRangeValid => (long)seed + (Mathf.Clamp(comparisonSeedCount, 2, 24) - 1) * (long)Mathf.Clamp(comparisonSeedStep, 1, 1000000) <= int.MaxValue;
+        private Vector2 comparisonScroll;
+        private int comparisonSelected = -1;
+        [SerializeField] private int combinationPattern, combinationHidden;
+        private static readonly string[] HiddenNames = { "자동 (기업 규칙)", "UpDown", "DownUp", "Decline", "Lightning", "Crash", "없음" };
+        private static readonly HiddenPatternKind?[] HiddenChoices = { null, HiddenPatternKind.UpDown, HiddenPatternKind.DownUp,
+            HiddenPatternKind.Decline, HiddenPatternKind.Lightning, HiddenPatternKind.Crash, HiddenPatternKind.None };
         private string probabilityMessage = "";
         private int CanvasDays => Math.Max(30, draft.startDay + draft.TotalDays);
         private int DrawingDay(Vector2 point) => Mathf.RoundToInt(point.x * CanvasDays);
@@ -253,6 +264,12 @@ namespace BlackWhale.UI.EditorTools
                 if (company != authorCompany) { SelectAuthorCompany(company); Repaint(); GUIUtility.ExitGUI(); }
                 GUILayout.FlexibleSpace();
             }
+            int authorTab = GUILayout.Toolbar(showComparison ? 2 : showCombination ? 0 : 1,
+                new[] { "기본 패턴 + hidden 조합 실험", "직접 그리기 · 저장", "패턴·시드 비교" });
+            showComparison = authorTab == 2;
+            showCombination = authorTab == 0;
+            if (showComparison) { DrawPatternComparison(); return; }
+            if (showCombination) { DrawCombinationPreview(); return; }
             EditorGUILayout.HelpBox("1칸 = 1일. 빈 곳을 왼쪽 클릭하면 날짜 순서로 점을 추가·연결합니다. 구간 사이를 클릭하면 기존 선분이 새 점을 거치도록 나뉩니다. 기존 점은 드래그로 이동합니다. 기업을 바꿔도 그림은 유지됩니다. 기본 패턴은 모든 기업에, 사용자 패턴은 선택 기업에 반영됩니다.", MessageType.Info);
             using (new EditorGUILayout.HorizontalScope())
             {
@@ -327,6 +344,185 @@ namespace BlackWhale.UI.EditorTools
                     EditorGUILayout.EndScrollView();
                 }
             }
+        }
+
+        private StockPatternSample GenerateCombinationPreview(CustomStockPattern pattern, HiddenPatternKind? hidden)
+            => GenerateSeedPreview(pattern, hidden, seed);
+
+        private StockPatternSample GenerateSeedPreview(CustomStockPattern pattern, HiddenPatternKind? hidden, int previewSeed)
+        {
+            string company = InvestmentRules.CompanyIds[authorCompany];
+            var sample = new StockPatternSample { Seed = previewSeed, Turn = turn, CompanyId = company };
+            sample.DailyChangesBps = authoringLibrary.GenerateSelected(pattern, previewSeed, turn, company, sample, hiddenOverride: hidden);
+            return sample;
+        }
+
+        private void DrawCombinationPreview()
+        {
+            var patterns = authoringLibrary.patterns.FindAll(p => p.isBasePattern && BaseStockPatternGenerator.Shape(p) != BasePatternShape.Authored);
+            if (patterns.Count == 0)
+            {
+                EditorGUILayout.HelpBox("기본 패턴을 추가하면 hidden 구간과 조합해 볼 수 있습니다.", MessageType.Info);
+                return;
+            }
+            combinationPattern = Mathf.Clamp(combinationPattern, 0, patterns.Count - 1);
+            combinationHidden = Mathf.Clamp(combinationHidden, 0, HiddenChoices.Length - 1);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Label("기본 패턴", GUILayout.Width(65));
+                combinationPattern = EditorGUILayout.Popup(combinationPattern, patterns.ConvertAll(p => p.name).ToArray(), GUILayout.Width(180));
+                GUILayout.Label("hidden", GUILayout.Width(45));
+                combinationHidden = EditorGUILayout.Popup(combinationHidden, HiddenNames, GUILayout.Width(150));
+                seed = EditorGUILayout.IntField("시드", seed);
+                if (GUILayout.Button("새 시드", GUILayout.Width(70))) seed = RandomMarketGenerator.NewSeed();
+                if (GUILayout.Button("배율·위치 초기화", GUILayout.Width(125))) { marketZoom = 1; marketCenterBps = 0; }
+            }
+            EditorGUILayout.LabelField("조합 선택은 실험용입니다. 자동은 기업별 게임 규칙을 따르고, 직접 선택하면 기업과 관계없이 해당 hidden을 미리 봅니다. 휠: 확대·축소 / 가운데 버튼 또는 Alt+왼쪽 드래그: 세로 이동", EditorStyles.wordWrappedMiniLabel);
+            var sample = GenerateCombinationPreview(patterns[combinationPattern], HiddenChoices[combinationHidden]);
+            marketExtentBps = 50;
+            foreach (int value in sample.DailyChangesBps) marketExtentBps = Math.Max(marketExtentBps, Math.Abs((double)value));
+            marketExtentBps *= 1.24;
+            Rect preview = GUILayoutUtility.GetRect(100, 220, GUILayout.ExpandWidth(true));
+            // Market fog belongs to the six-company view; combination previews always show the full timeline.
+            bool previousFog = marketFog;
+            try { marketFog = false; DrawCard(preview, sample, false); }
+            finally { marketFog = previousFog; }
+        }
+
+        private List<StockPatternSample> GenerateComparisonSamples()
+        {
+            var patterns = authoringLibrary.patterns.FindAll(p => p.isBasePattern && BaseStockPatternGenerator.Shape(p) != BasePatternShape.Authored);
+            var result = new List<StockPatternSample>();
+            if (patterns.Count == 0) return result;
+            combinationPattern = Mathf.Clamp(combinationPattern, 0, patterns.Count - 1);
+            combinationHidden = Mathf.Clamp(combinationHidden, 0, HiddenChoices.Length - 1);
+            if (comparisonMode == 3)
+            {
+                if (!ComparisonSeedRangeValid) return result;
+                int count = Mathf.Clamp(comparisonSeedCount, 2, 24), step = Mathf.Clamp(comparisonSeedStep, 1, 1000000);
+                for (int i = 0; i < count; i++)
+                    result.Add(GenerateSeedPreview(patterns[combinationPattern], HiddenChoices[combinationHidden], seed + i * step));
+                return result;
+            }
+            foreach (var pattern in patterns)
+            {
+                if (comparisonMode == 1 && pattern != patterns[combinationPattern]) continue;
+                if (comparisonMode == 0)
+                    result.Add(GenerateCombinationPreview(pattern, HiddenChoices[combinationHidden]));
+                else
+                    // The five explicit hidden types are compared even on BANK/FOOD/AUTO.
+                    for (int hidden = 1; hidden <= 5; hidden++)
+                        result.Add(GenerateCombinationPreview(pattern, HiddenChoices[hidden]));
+            }
+            return result;
+        }
+
+        private void FitComparisonRange(IReadOnlyList<StockPatternSample> comparison)
+        {
+            marketExtentBps = 50;
+            foreach (var sample in comparison)
+                foreach (int value in sample.DailyChangesBps)
+                    marketExtentBps = Math.Max(marketExtentBps, Math.Abs((double)value));
+            marketExtentBps *= 1.24;
+        }
+
+        private void DrawPatternComparison()
+        {
+            var patterns = authoringLibrary.patterns.FindAll(p => p.isBasePattern && BaseStockPatternGenerator.Shape(p) != BasePatternShape.Authored);
+            if (patterns.Count == 0)
+            {
+                EditorGUILayout.HelpBox("비교할 기본 패턴을 먼저 추가하세요.", MessageType.Info);
+                return;
+            }
+            EditorGUI.BeginChangeCheck();
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                seed = EditorGUILayout.IntField(comparisonMode == 3 ? "시작 시드" : "공통 시드", seed, GUILayout.Width(240));
+                turn = EditorGUILayout.Popup(turn - 1, Turns, GUILayout.Width(75)) + 1;
+                if (GUILayout.Button("새 시드", GUILayout.Width(75))) { seed = RandomMarketGenerator.NewSeed(); GUI.changed = true; }
+                GUILayout.FlexibleSpace();
+                comparisonMode = EditorGUILayout.Popup(comparisonMode,
+                    new[] { "기본 패턴 비교 · hidden 고정", "hidden 5종 비교 · 기본 고정", "기본 패턴 × hidden 5종 전체", "여러 시드 비교 · 패턴 고정" }, GUILayout.Width(250));
+            }
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                combinationPattern = Mathf.Clamp(combinationPattern, 0, patterns.Count - 1);
+                combinationHidden = Mathf.Clamp(combinationHidden, 0, HiddenChoices.Length - 1);
+                if (comparisonMode == 0 || comparisonMode == 3)
+                {
+                    GUILayout.Label("공통 hidden", GUILayout.Width(85));
+                    combinationHidden = EditorGUILayout.Popup(combinationHidden, HiddenNames, GUILayout.Width(180));
+                }
+                if (comparisonMode == 1 || comparisonMode == 3)
+                {
+                    GUILayout.Label("공통 기본 패턴", GUILayout.Width(95));
+                    combinationPattern = EditorGUILayout.Popup(combinationPattern, patterns.ConvertAll(p => p.name).ToArray(), GUILayout.Width(180));
+                }
+            }
+            if (comparisonMode == 3)
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    GUILayout.Label("시드 개수 (2~24)", GUILayout.Width(110));
+                    comparisonSeedCount = Mathf.Clamp(EditorGUILayout.IntField(comparisonSeedCount, GUILayout.Width(65)), 2, 24);
+                    GUILayout.Label("시드 간격", GUILayout.Width(70));
+                    comparisonSeedStep = Mathf.Clamp(EditorGUILayout.IntField(comparisonSeedStep, GUILayout.Width(90)), 1, 1000000);
+                    GUILayout.Label("시작 시드부터 간격만큼 증가시켜 비교합니다.", EditorStyles.miniLabel);
+                }
+            if (EditorGUI.EndChangeCheck()) { comparisonSelected = -1; panningCompany = null; }
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Label("열 수", GUILayout.Width(40));
+                comparisonColumns = EditorGUILayout.Popup(Mathf.Clamp(comparisonColumns, 1, 3) - 1, new[] { "1열", "2열", "3열" }, GUILayout.Width(65)) + 1;
+                highlight = GUILayout.Toggle(highlight, "패턴 위치 강조", GUILayout.Width(115));
+                showMarketCloseLine = GUILayout.Toggle(showMarketCloseLine, "꺾은선", GUILayout.Width(75));
+                if (GUILayout.Button("배율·위치 초기화", GUILayout.Width(125))) { marketZoom = 1; marketCenterBps = 0; }
+                GUILayout.Label($"공통 % 축 · {marketZoom:0.##}배", EditorStyles.miniLabel);
+            }
+            EditorGUILayout.HelpBox((comparisonMode == 3
+                ? "같은 기업·기본 패턴·hidden 선택·턴·변동폭으로 시드만 바꾸어 생성합니다. hidden을 '자동'으로 두면 시드마다 유형도 달라질 수 있습니다. "
+                : "같은 기업·시드·턴·변동폭으로 생성합니다. ")
+                + "모든 카드에 같은 % 축을 적용합니다. 휠: 함께 확대·축소 / 가운데 버튼 또는 Alt+왼쪽 드래그: 함께 세로 이동 / 카드 클릭: 상세 보기. 직접 지정한 hidden은 기업별 출현 제한을 넘어 실험합니다.", MessageType.Info);
+            if (comparisonMode == 3 && !ComparisonSeedRangeValid)
+            {
+                EditorGUILayout.HelpBox("마지막 시드가 정수 최댓값(2,147,483,647)을 초과합니다. 시작 시드·개수·간격을 줄여 주세요.", MessageType.Warning);
+                return;
+            }
+            var comparison = GenerateComparisonSamples();
+            FitComparisonRange(comparison);
+            string seedSummary = comparisonMode == 3 ? $"시드 {seed}~{comparison[comparison.Count - 1].Seed} · 간격 {comparisonSeedStep}" : $"시드 {seed}";
+            EditorGUILayout.LabelField($"{InvestmentRules.CompanyIds[authorCompany]} · {seedSummary} · {turn}턴 · {comparison.Count}개 결과", EditorStyles.boldLabel);
+            comparisonScroll = EditorGUILayout.BeginScrollView(comparisonScroll);
+            bool previousFog = marketFog;
+            try
+            {
+                marketFog = false;
+                if (comparisonSelected >= 0 && comparisonSelected < comparison.Count)
+                {
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        GUILayout.Label("선택 조합 상세", EditorStyles.boldLabel);
+                        if (GUILayout.Button("상세 닫기", GUILayout.Width(90))) comparisonSelected = -1;
+                    }
+                    if (comparisonSelected >= 0)
+                        DrawCard(GUILayoutUtility.GetRect(100, 300, GUILayout.ExpandWidth(true)), comparison[comparisonSelected], true);
+                }
+                for (int row = 0; row * comparisonColumns < comparison.Count; row++)
+                {
+                    Rect strip = GUILayoutUtility.GetRect(100, 225, GUILayout.ExpandWidth(true));
+                    float width = (strip.width - 8 * (comparisonColumns - 1)) / comparisonColumns;
+                    for (int column = 0; column < comparisonColumns; column++)
+                    {
+                        int index = row * comparisonColumns + column;
+                        if (index >= comparison.Count) break;
+                        Rect card = new Rect(strip.x + column * (width + 8), strip.y, width, 217);
+                        DrawCard(card, comparison[index], index == comparisonSelected);
+                        if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && card.Contains(Event.current.mousePosition))
+                        { comparisonSelected = index == comparisonSelected ? -1 : index; Event.current.Use(); Repaint(); }
+                    }
+                }
+            }
+            finally { marketFog = previousFog; EditorGUILayout.EndScrollView(); }
+            if (Event.current.type == EventType.MouseMove || Event.current.type == EventType.MouseLeaveWindow) Repaint();
         }
 
         private void SaveDraft(bool duplicate)

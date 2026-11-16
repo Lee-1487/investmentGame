@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace BlackWhale.Rules
 {
     public enum BasePatternShape { Authored, M, W, Rectangle, Flag }
-    public enum HiddenPatternKind { None, StableReversal, Decline, Lightning, Crash }
+    public enum HiddenPatternKind { None, StableReversal, Decline, Lightning, Crash, UpDown, DownUp }
 
     [Serializable]
     public sealed class BasePatternSettings
@@ -28,7 +28,8 @@ namespace BlackWhale.Rules
         }
 
         public static int[] Generate(CustomStockPattern pattern, int seed, int turn, string company,
-            StockVolatilitySettings volatility, BasePatternSettings settings, StockPatternSample sample)
+            StockVolatilitySettings volatility, BasePatternSettings settings, StockPatternSample sample,
+            HiddenPatternKind? hiddenOverride = null)
         {
             settings = (settings ?? new BasePatternSettings()).Copy();
             var shape = Shape(pattern);
@@ -52,6 +53,12 @@ namespace BlackWhale.Rules
             {
                 int draw = random.Next(100);
                 hidden = draw < 60 ? HiddenPatternKind.Decline : draw < 70 ? HiddenPatternKind.Lightning : HiddenPatternKind.Crash;
+            }
+            if (hiddenOverride.HasValue)
+            {
+                if (!Enum.IsDefined(typeof(HiddenPatternKind), hiddenOverride.Value))
+                    throw new ArgumentOutOfRangeException(nameof(hiddenOverride));
+                hidden = hiddenOverride.Value;
             }
             int last = hidden == HiddenPatternKind.Lightning || hidden == HiddenPatternKind.Crash ? 21 : 25;
             int flags = shape == BasePatternShape.Flag ? random.Next(1, 4) : 0;
@@ -141,9 +148,12 @@ namespace BlackWhale.Rules
                     values[day] = values[day - 1] + move;
                 }
             }
-            else if (hidden == HiddenPatternKind.StableReversal)
+            else if (hidden == HiddenPatternKind.StableReversal || hidden == HiddenPatternKind.UpDown || hidden == HiddenPatternKind.DownUp)
             {
                 int split = random.Next(1, 5), sign = random.Next(2) == 0 ? -1 : 1;
+                if (hidden == HiddenPatternKind.UpDown) sign = 1;
+                else if (hidden == HiddenPatternKind.DownUp) sign = -1;
+                hidden = sign > 0 ? HiddenPatternKind.UpDown : HiddenPatternKind.DownUp;
                 for (int i = 0; i < 5; i++) values[26 + i] = values[25 + i] + (i < split ? sign : -sign) * random.Next(1, quiet + 1);
             }
             else if (hidden == HiddenPatternKind.Decline)

@@ -236,7 +236,7 @@ namespace BlackWhale.Rules
         }
 
         public int[] GenerateSelected(CustomStockPattern selected, int seed, int turn, string company, StockPatternSample sample = null,
-            StockVolatilitySettings volatilityOverride = null)
+            StockVolatilitySettings volatilityOverride = null, HiddenPatternKind? hiddenOverride = null)
         {
             selected.Validate();
             bool generated = BaseStockPatternGenerator.Shape(selected) != BasePatternShape.Authored;
@@ -250,7 +250,7 @@ namespace BlackWhale.Rules
                 sample.Pattern = (StockPatternKind)Math.Max(0, kind);
             }
             var settings = volatilityOverride ?? volatility ?? new StockVolatilitySettings();
-            return generated ? BaseStockPatternGenerator.Generate(selected, seed, turn, company, settings, baseSettings, sample)
+            return generated ? BaseStockPatternGenerator.Generate(selected, seed, turn, company, settings, baseSettings, sample, hiddenOverride)
                 : selected.GenerateTimeline(company, turn, settings, out _);
         }
     }

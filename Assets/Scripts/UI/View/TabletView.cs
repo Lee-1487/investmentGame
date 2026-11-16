@@ -65,6 +65,7 @@ namespace BlackWhale.UI.View
         private Image _turnNoticeBackground;
         private string _lastPublicSelector = "";
         private Button _doneButton;
+        private Button _developerTimer, _developerPrevious, _developerReset;
         private Button _pauseButton;
         private RectTransform _pauseOverlay;
 
@@ -269,6 +270,13 @@ namespace BlackWhale.UI.View
 
             _doneButton = UiKit.Button(col, "완료", 16, Palette.Accent, Color.white, OnDoneClicked);
             UiKit.Place((RectTransform)_doneButton.transform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, -12), new Vector2(140, 44));
+            _developerTimer = UiKit.Button(col, "현재 일차부터 타이머 적용", 11, Palette.AccentSoft, Palette.Accent, () => _c.DeveloperControl("DEV_TIMER"));
+            _developerPrevious = UiKit.Button(col, "이전 단계", 13, Palette.AccentSoft, Palette.Accent, () => _c.DeveloperControl("DEV_PREVIOUS"));
+            _developerReset = UiKit.Button(col, "현재 단계 초기화", 13, Palette.AccentSoft, Palette.Accent, () => _c.DeveloperControl("DEV_RESET"));
+            _developerTimer.name = "DeveloperTimer"; _developerPrevious.name = "DeveloperPrevious"; _developerReset.name = "DeveloperReset";
+            UiKit.Place((RectTransform)_developerTimer.transform, new Vector2(.5f, 1), new Vector2(.5f, 1), new Vector2(0, -100), new Vector2(146, 38));
+            UiKit.Place((RectTransform)_developerPrevious.transform, new Vector2(.5f, 1), new Vector2(.5f, 1), new Vector2(0, -146), new Vector2(140, 36));
+            UiKit.Place((RectTransform)_developerReset.transform, new Vector2(.5f, 1), new Vector2(.5f, 1), new Vector2(0, -190), new Vector2(140, 36));
 
             // 본인 직업 카드
             var job = UiKit.Panel(col, "OwnJob", Palette.Card, rounded: true, raycast: true);
@@ -412,7 +420,7 @@ namespace BlackWhale.UI.View
             var s = Store.Public;
             if (s != null)
             {
-                string phaseKey = s.turn + "|" + s.phase;
+                string phaseKey = s.turn + "|" + s.phase + "|" + s.developerRevision;
                 if (phaseKey != _lastPhaseKey)
                 {
                     ClearBanners();
@@ -609,6 +617,15 @@ namespace BlackWhale.UI.View
         private void UpdateTimer()
         {
             var s = Store.Public;
+            bool developer = s?.developerMode == true && s.stockSystem && _c.IsHost && s.turn > 0 && s.phase != Protocol.Ended;
+            _developerTimer.gameObject.SetActive(developer && s.phase == Protocol.Investment);
+            _developerPrevious.gameObject.SetActive(developer); _developerReset.gameObject.SetActive(developer);
+            UiKit.SetButton(_developerTimer, s?.developerTimerRunning == true ? "타이머 중지 · 수동 전환" : "현재 일차부터 타이머 적용",
+                developer && !s.paused, Palette.AccentSoft, Palette.Accent);
+            _developerPrevious.interactable = developer && !s.paused && s.developerCanGoBack;
+            _developerReset.interactable = developer && !s.paused;
+            UiKit.Place((RectTransform)_doneButton.transform, new Vector2(.5f, developer ? 1 : .5f), new Vector2(.5f, developer ? 1 : .5f),
+                new Vector2(0, developer ? -48 : -12), new Vector2(140, 44));
             if (s == null)
             {
                 _timerText.text = "접속 대기";
@@ -647,8 +664,8 @@ namespace BlackWhale.UI.View
                 : s.phase == Protocol.Investment ? (Store.OrderLocked ? "다른 참가자 대기" : s.stockSystem ? "실시간 매매 중" : "주문 확정 시 진행")
                 : s.phase == Protocol.Selection ? (s.stockSystem ? "매수 완료 시 진행" : "선택 시 자동 진행")
                 : "완료";
-            if (s.developerMode && can) label = "완료";
-            _doneButton.name = s.stockSystem && s.phase == Protocol.Investment ? "LiveTradingStatus" : "Button";
+            if (s.developerMode && can) label = s.stockSystem && s.phase == Protocol.Investment ? "확인 · 다음 일차" : "확인 · 다음 단계";
+            _doneButton.name = developer ? "DeveloperNext" : s.stockSystem && s.phase == Protocol.Investment ? "LiveTradingStatus" : "Button";
             UiKit.SetButton(_doneButton, label, can, can ? Palette.Accent : Palette.Disabled, can ? Color.white : Palette.DisabledText);
         }
 
@@ -706,7 +723,7 @@ namespace BlackWhale.UI.View
         private void OnDoneClicked()
         {
             var status = _c.CompleteStep();
-            if (status == CommandStatus.Sent) ShowBanner(Store.Public?.phase == Protocol.Investment ? "주문을 확정했습니다." : "완료했습니다. 다른 참가자를 기다립니다.");
+            if (status == CommandStatus.Sent) ShowBanner(Store.Public?.developerMode == true ? "개발자 확인을 적용했습니다." : Store.Public?.phase == Protocol.Investment ? "주문을 확정했습니다." : "완료했습니다. 다른 참가자를 기다립니다.");
         }
 
         // ------------------------------------------------------------------
@@ -716,7 +733,8 @@ namespace BlackWhale.UI.View
         internal void ShowPlayerPopup(RankRow row, RectTransform slot)
         {
             if (row == null) return;
-            var popup = OpenPopup(new Vector2(320, 230));
+            bool stock = Store.Public?.stockSystem == true;
+            var popup = OpenPopup(stock ? new Vector2(460, 420) : new Vector2(320, 230));
             PositionNextTo(popup, slot, rightSide: true);
 
             var r = row.Score;
@@ -726,8 +744,14 @@ namespace BlackWhale.UI.View
                 : "\n이번 턴 수익률  <b><color=#" + ColorUtility.ToHtmlStringRGB(Palette.ForBps(r.turnReturnBps)) + ">" + DisplayFormat.Percent(r.turnReturnBps) + "</color></b>"
                   + "\n누적 손익  <b>" + DisplayFormat.SignedMoney(r.cumulativeProfit) + "</b>   ·   누적 수익률  <b>" + DisplayFormat.Percent(r.cumulativeReturnBps) + "</b>"
                   + "\n총자산  <b>" + DisplayFormat.Money(r.totalAssets) + "</b>";
+            if (stock)
+            {
+                var augments = Store.Public.players?.FirstOrDefault(p => p.playerId == row.PlayerId)?.augments ?? System.Array.Empty<string>();
+                body += "\n\n<b>보유 증강 (" + augments.Length + "/2)</b>\n" + (augments.Length == 0 ? "선택한 증강이 없습니다." :
+                    string.Join("\n\n", augments.Select(id => "<b>" + StockRules.Name(id) + "</b> · " + StockRules.Description(id))));
+            }
             var text = UiKit.Label(popup, title + body, 14, Palette.Text, TextAnchor.UpperLeft);
-            UiKit.Stretch(text.rectTransform, 14, 10, 14, 10);
+            UiKit.Stretch(text.rectTransform, 14, 10, 14, r?.returnHistory?.Length > 0 ? 112 : 10);
 
             if (r?.returnHistory != null && r.returnHistory.Length > 0)
                 AddTrendChart(popup, new[] { r }, new Vector2(14, 12), 92);
@@ -874,7 +898,7 @@ namespace BlackWhale.UI.View
             _assets.resizeTextMinSize = 11;
             _assets.resizeTextMaxSize = 17;
 
-            UiKit.Hover(bg.gameObject, () => owner.ShowPlayerPopup(_row, _rt), owner.HidePopup);
+            UiKit.Click(bg.gameObject, () => owner.ShowPlayerPopup(_row, _rt));
         }
 
         /// <param name="fromIndex">이번에 순서가 바뀌었으면 이 플레이어가 있던 칸 번호, 아니면 -1</param>
