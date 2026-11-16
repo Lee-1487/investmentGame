@@ -430,21 +430,35 @@ namespace BlackWhale.UI.Tests
                 }
                 var liveChart = canvas.GetComponentsInChildren<BarChartGraphic>().Single(c => c.name == "TradeChart_AI");
                 liveChart.SetInformationRange(new Vector2Int(4, 9));
+                tablet.ShowBanner("지난 일차의 대기 알림");
                 view.portfolio.processedDay = 14;
+                foreach (var company in view.companies)
+                    company.visibleWindows = new[] { new VisibleInformationWindow { startDay = 1, source = "PUBLIC",
+                        dailyChangesBps = Enumerable.Range(1, 14).Select(d => (int)(System.Math.Sin(d * .7) * 500 + d * 75)).ToArray() } };
                 client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
                 Assert.AreEqual(15, liveChart.CurrentDay);
+                Assert.AreEqual(14, Field<int?>(liveChart, "_trendThroughDay"));
                 Assert.AreEqual(new Vector2Int(4, 9), Field<Vector2Int?>(liveChart, "_informationRange"), "current day does not replace the user's selected range");
-                StringAssert.Contains("15일차", liveChart.GetComponentsInChildren<Text>().Single(t => t.name == "CurrentDayLabel").text);
+                Assert.IsFalse(canvas.GetComponentsInChildren<Text>().Any(t => t.name == "CurrentDayLabel"), "day labels must not cover charts");
+                Assert.IsFalse(Field<Queue<string>>(tablet, "_bannerQueue").Any(m => m.Contains("지난 일차")), "pending notices expire when the day advances");
+                Assert.AreEqual("", Field<Text>(tablet, "_bannerText").text, "the previous visible notice expires immediately");
+                yield return null;
+                StringAssert.Contains("15일차", Field<Text>(tablet, "_bannerText").text);
+                tablet.ShowBanner("같은 일차의 안내");
+                client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                Assert.IsTrue(Field<Queue<string>>(tablet, "_bannerQueue").Contains("같은 일차의 안내"), "same-day refreshes preserve pending notices");
                 CapturePlanningScreen(canvas.GetComponent<Canvas>(), "stock-live-current-day");
                 ClickPlanning(canvas, "ExpandShare_AI");
                 yield return null; Canvas.ForceUpdateCanvases();
                 var zoom = canvas.GetComponentsInChildren<BarChartGraphic>().Single(c => c.name == "ZoomChart_AI");
                 Assert.AreEqual(15, zoom.CurrentDay, "zoom and trading charts share the current day");
+                Assert.AreEqual(14, Field<int?>(zoom, "_trendThroughDay"), "zoom shares the last publicly closed day");
                 CapturePlanningScreen(canvas.GetComponent<Canvas>(), "stock-live-current-day-zoom");
                 view.portfolio.processedDay = 29;
                 client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
                 Assert.AreEqual(30, zoom.CurrentDay);
                 Assert.AreEqual(30, liveChart.CurrentDay);
+                Assert.AreEqual(29, Field<int?>(liveChart, "_trendThroughDay"));
                 state.paused = true; client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
                 Assert.AreEqual(30, zoom.CurrentDay, "pause retains the active day");
                 state.paused = false; state.phase = Protocol.Reveal; view.phase = Protocol.Reveal;
@@ -891,8 +905,13 @@ namespace BlackWhale.UI.Tests
                 var tablet = TabletView.Create((RectTransform)canvas.transform, controller); tablet.ShowPage(1);
                 yield return null; Canvas.ForceUpdateCanvases();
                 float smallWidth = canvas.GetComponentsInChildren<BarChartGraphic>().First(c => c.name == "Chart").rectTransform.rect.width;
+                Assert.AreEqual(6, canvas.GetComponentsInChildren<Text>().Count(t => t.name == "HiddenTailLabel" && t.text == "hidden"), "each company marks its hidden tail");
                 ClickPlanning(canvas, "Expand_AI"); Canvas.ForceUpdateCanvases();
                 var chart = canvas.GetComponentsInChildren<ChartPointerLayer>().Single(c => c.name == "ZoomChart_AI");
+                var hiddenLabel = chart.GetComponentsInChildren<Text>().Single(t => t.name == "HiddenTailLabel");
+                Assert.AreEqual(new Vector2(26f / DayAxis.Count, 0), hiddenLabel.rectTransform.anchorMin);
+                Assert.AreEqual(Vector2.one, hiddenLabel.rectTransform.anchorMax);
+                Assert.IsFalse(hiddenLabel.raycastTarget, "hidden region remains available for chart interaction");
                 Assert.Greater(chart.GetComponent<BarChartGraphic>().rectTransform.rect.width, smallWidth * 2, "enlarged chart fills central tablet outside the pager mask");
                 Assert.IsFalse(chart.GetComponentsInParent<RectMask2D>().Any(), "large graph is not clipped to a company card or page");
                 Assert.IsNull(Field<DayBar[]>(chart.GetComponent<BarChartGraphic>(), "_bars")[20].Bps, "zoom never reveals hidden prices");
@@ -911,6 +930,7 @@ namespace BlackWhale.UI.Tests
                 tablet.ShowBanner("이전 정보 탐색 안내");
                 state.phase = Protocol.Selection; state.currentPlayerId = "P1";
                 client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                Assert.IsFalse(canvas.GetComponentsInChildren<Text>().Any(t => t.name == "HiddenTailLabel"), "hidden tail labels only appear during information purchase");
                 Assert.IsFalse(Field<Queue<string>>(tablet, "_bannerQueue").Any(m => m.Contains("이전 정보 탐색")), "queued messages expire on phase change");
                 Assert.AreEqual("", Field<Text>(tablet, "_bannerText").text, "visible old-phase message disappears immediately");
                 yield return null;

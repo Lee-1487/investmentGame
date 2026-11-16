@@ -44,12 +44,14 @@ namespace BlackWhale.Rules
             var random = new Random((int)(hash & 0x7fffffff));
             int limit = volatility.DailyLimitBps(company);
             int surge = (int)Math.Round(limit * settings.surgeMultiplier, MidpointRounding.AwayFromZero);
+            bool volatileHidden = company == "AI" || company == "BIO" || company == "SPACE";
+            int hiddenSurge = volatileHidden ? limit * 2 : surge;
             int quiet = Math.Max(1, (int)Math.Round(limit * .1));
 
             // Hidden is chosen before any timing or geometry: its prelude owns day 22 onward.
             HiddenPatternKind hidden = HiddenPatternKind.None;
             if (company == "FOOD" || company == "AUTO") hidden = HiddenPatternKind.StableReversal;
-            else if (company != "BANK")
+            else if (volatileHidden)
             {
                 int draw = random.Next(100);
                 hidden = draw < 60 ? HiddenPatternKind.Decline : draw < 70 ? HiddenPatternKind.Lightning : HiddenPatternKind.Crash;
@@ -143,7 +145,7 @@ namespace BlackWhale.Rules
                 for (int day = 22; day <= 30; day++)
                 {
                     int move = day >= eventStart && day < eventStart + eventLength
-                        ? (hidden == HiddenPatternKind.Lightning ? surge : -surge)
+                        ? (hidden == HiddenPatternKind.Lightning ? hiddenSurge : -hiddenSurge)
                         : sign * ((day - 22) % 2 == 0 ? quiet : -quiet);
                     values[day] = values[day - 1] + move;
                 }
@@ -154,14 +156,20 @@ namespace BlackWhale.Rules
                 if (hidden == HiddenPatternKind.UpDown) sign = 1;
                 else if (hidden == HiddenPatternKind.DownUp) sign = -1;
                 hidden = sign > 0 ? HiddenPatternKind.UpDown : HiddenPatternKind.DownUp;
-                for (int i = 0; i < 5; i++) values[26 + i] = values[25 + i] + (i < split ? sign : -sign) * random.Next(1, quiet + 1);
+                int reversalMove = company == "FOOD" || company == "AUTO"
+                    ? (int)Math.Round(limit * 1.5, MidpointRounding.AwayFromZero) : 0;
+                for (int i = 0; i < 5; i++)
+                    values[26 + i] = values[25 + i] + (i < split ? sign : -sign)
+                        * (reversalMove > 0 ? reversalMove : random.Next(1, quiet + 1));
             }
             else if (hidden == HiddenPatternKind.Decline)
             {
-                // Exactly two rising days within days 27..30; their two falls dominate day 26.
-                var moves = new[] { limit, limit, -surge, -surge };
+                // Two rises and three equal-sized falls retain a net decline.
+                // Starting with a rise also keeps day 30 strictly below day 26.
+                var moves = volatileHidden ? new[] { hiddenSurge, -hiddenSurge, -hiddenSurge, -hiddenSurge }
+                    : new[] { limit, limit, -surge, -surge };
                 for (int i = moves.Length - 1; i > 0; i--) { int j = random.Next(i + 1); int temp = moves[i]; moves[i] = moves[j]; moves[j] = temp; }
-                values[26] = values[25] + (random.Next(2) == 0 ? limit : -limit);
+                values[26] = values[25] + (volatileHidden ? hiddenSurge : (random.Next(2) == 0 ? limit : -limit));
                 for (int i = 0; i < moves.Length; i++) values[27 + i] = values[26 + i] + moves[i];
                 if (values[30] >= values[26]) values[30] = values[26] - 1;
             }
