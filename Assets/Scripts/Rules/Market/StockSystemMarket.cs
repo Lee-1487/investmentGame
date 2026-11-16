@@ -12,7 +12,6 @@ namespace BlackWhale.Rules
             public string Claim;
             public bool Active;
             public Interval[] Plan = Array.Empty<Interval>();
-            public decimal Value = 1;
         }
         private readonly Dictionary<string, List<StockFill>> fills = InvestmentRules.CompanyIds.ToDictionary(id => id, id => new List<StockFill>());
         private bool liveTrading;
@@ -61,7 +60,7 @@ namespace BlackWhale.Rules
                 p.Discount = p.PendingDiscount + (p.Augments.Contains("ANALYST") ? 2 : 0); p.PendingDiscount = 0;
                 // The previous turn's profit is already in assets/history. Each new turn
                 // starts with all thirty slots in BANK and every company supply unclaimed.
-                foreach (var slot in p.Slots) { slot.Claim = null; slot.Value = 1; slot.Active = false; slot.Plan = Array.Empty<Interval>(); }
+                foreach (var slot in p.Slots) { slot.Claim = null; slot.Active = false; slot.Plan = Array.Empty<Interval>(); }
                 foreach (string company in InvestmentRules.CompanyIds) {
                     p.Shares[company] = 0;
                     Array.Clear(p.DailyQuantity[company], 0, 31); p.Gain[company] = 0;
@@ -234,12 +233,11 @@ namespace BlackWhale.Rules
                     string company = liveTrading ? slot.Claim ?? "BANK" : Invested(slot, day) ? slot.Claim : "BANK";
                     // Outside the BANK reservation, idle slots remain cash without market returns.
                     if (!liveTrading && company == "BANK" && p.BankPlan.Length > 0 && !p.BankPlan.Any(i => i.entryDay <= day && day <= i.exitDay)) continue;
-                    decimal open = 10000 + market.ChangeBps(company, day - 1);
-                    decimal close = 10000 + market.ChangeBps(company, day);
-                    decimal change = slot.Value * (close / open - 1);
-                    if (company == "BANK") p.DepositDays += slot.Value;
+                    // Each slot represents a fixed share of the turn's starting capital.
+                    // Sum chart percentage-point differences across held days, without price ratios or compounding.
+                    decimal change = (market.ChangeBps(company, day) - market.ChangeBps(company, day - 1)) / 10000m;
+                    if (company == "BANK") p.DepositDays++;
                     p.Gain[company] += change;
-                    slot.Value += change;
                     p.DailyQuantity[company][day]++;
                     if (!liveTrading && slot.Claim != null && slot.Plan.Length > 0 && slot.Plan.Max(i => i.exitDay) == day)
                     {

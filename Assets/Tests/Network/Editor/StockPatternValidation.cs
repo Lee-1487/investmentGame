@@ -58,6 +58,7 @@ namespace BlackWhale.Tests
             Action<string, Action> run = (name, action) => { action(); passed.Add("STOCK-v3/" + name); };
             run("pattern-reproducibility-limits-and-legal-trade-survey", Patterns);
             run("authored-pattern-timing-vertices-bounds-and-library", AuthoredPatterns);
+            run("procedural-base-timing-flag-hidden-and-surge-rules", ProceduralRules);
             run("fixed-daily-volatility-all-turns-and-settings-isolation", FixedVolatility);
             run("company-pattern-probabilities-and-weighted-generation", PatternProbabilities);
             run("registered-only-shared-base-and-exact-live-preview", RegisteredPatternsOnly);
@@ -128,12 +129,91 @@ namespace BlackWhale.Tests
             custom.SetDuration(31);
             Check(PatternMarketGenerator.Generate(42, 1, library: library).companies[0].dailyChangesBps.SequenceEqual(PatternMarketGenerator.Generate(42, 1).companies[0].dailyChangesBps), "long patterns are excluded from 30-day games");
         }
+        private static void ProceduralRules()
+        {
+            var library = StockPatternLibrary.CreateDefault();
+            var hiddenCounts = new int[5];
+            var flagCounts = new HashSet<int>();
+            var timings = new HashSet<string>();
+            foreach (string company in InvestmentRules.CompanyIds)
+                foreach (StockPatternKind kind in Enum.GetValues(typeof(StockPatternKind)))
+                    for (int seed = 0; seed < 500; seed++)
+                    {
+                        var sample = PatternMarketGenerator.Inspect(seed, 1, company, kind, library: library);
+                        var values = sample.DailyChangesBps;
+                        int limit = library.volatility.DailyLimitBps(company), quiet = limit / 10;
+                        Check(sample.StartDay >= 0 && sample.StartDay <= 5 && sample.EndDay - sample.StartDay >= 10 && sample.EndDay <= 25, "base has independent ten-day minimum and bounded random timing");
+                        Check(values.Length == 31 && values[0] == 0, "baseline and thirty closes");
+                        Check(values.SequenceEqual(PatternMarketGenerator.Inspect(seed, 1, company, kind, library: library).DailyChangesBps), "procedural preview replays seed");
+                        timings.Add(sample.StartDay + ":" + sample.EndDay);
+                        if (sample.Hidden == HiddenPatternKind.Lightning || sample.Hidden == HiddenPatternKind.Crash)
+                        {
+                            Check(sample.EndDay <= 21, "hidden prelude never overwrites main pattern");
+                            Check(Enumerable.Range(22, sample.HiddenEventStartDay - 22).All(d => Math.Abs(values[d] - values[d - 1]) <= quiet), "prelude is quiet from day 22");
+                            Check(sample.HiddenEventStartDay >= 26 && sample.HiddenEventStartDay + sample.HiddenEventDays <= 31, "hidden event fits days 26 through 30");
+                            int sign = sample.Hidden == HiddenPatternKind.Lightning ? 1 : -1;
+                            Check(Enumerable.Range(sample.HiddenEventStartDay, sample.HiddenEventDays).All(d => values[d] - values[d - 1] == sign * limit * 3), "hidden surge uses exact configured multiple");
+                            if (sample.Hidden == HiddenPatternKind.Lightning)
+                            {
+                                Check(sample.HiddenEventDays == 1, "only one lightning day");
+                                int after = sample.HiddenEventStartDay + 1;
+                                Check(Enumerable.Range(after, 31 - after).All(d => Math.Abs(values[d] - values[d - 1]) <= quiet), "lightning retains elevated level with only quiet movements afterward");
+                                Check(values[30] > values[sample.HiddenEventStartDay - 1], "lightning never returns to its old price level");
+                            }
+                            else Check(sample.HiddenEventDays >= 2 && sample.HiddenEventDays <= 3, "crash spans two or three days");
+                        }
+                        if (sample.Hidden == HiddenPatternKind.StableReversal)
+                        {
+                            int changes = 0;
+                            for (int day = 27; day <= 30; day++)
+                                if (Math.Sign(values[day] - values[day - 1]) != Math.Sign(values[day - 1] - values[day - 2])) changes++;
+                            Check(changes == 1 && Enumerable.Range(26, 5).All(d => Math.Abs(values[d] - values[d - 1]) <= quiet), "stable hidden has exactly one direction reversal");
+                        }
+                        if (sample.Hidden == HiddenPatternKind.Decline)
+                            Check(values[30] < values[26] && Enumerable.Range(27, 4).Count(d => values[d] > values[d - 1]) >= 2, "decline mixes rises but ends below day 26");
+                        if (company == "BANK") Check(sample.Hidden == HiddenPatternKind.None && values.Skip(26).All(v => v == values[25]), "BANK has no hidden event");
+                        for (int day = 1; day <= 25; day++)
+                            if (day <= sample.StartDay || day > sample.EndDay)
+                                Check(Math.Abs(values[day] - values[day - 1]) <= quiet, "outside base pattern is quiet");
+                        if (kind == StockPatternKind.DoubleTop || kind == StockPatternKind.DoubleBottom)
+                        {
+                            Check(sample.VertexDays.Length == 5, "M/W have exactly five vertices");
+                            for (int i = 1; i < 5; i++) Check(sample.VertexDays[i] - sample.VertexDays[i - 1] >= 2 && sample.VertexDays[i] - sample.VertexDays[i - 1] <= 8, "M/W segment timing is 2 to 8 days");
+                        }
+                        if (kind == StockPatternKind.Flag)
+                        {
+                            flagCounts.Add(sample.FlagPlateauDays.Length);
+                            Check(sample.FlagPlateauDays.Length >= 1 && sample.FlagPlateauDays.Length <= 3, "one through three plateaus");
+                            Check(sample.FlagPlateauDays.All(d => d >= 4 && d <= 8) && sample.FlagSurgeDays.All(d => d >= 1 && d <= 2), "flag allocation retains all local minima and maxima");
+                            Check(sample.FlagSurgeDays.Length == sample.FlagPlateauDays.Length + 1 && sample.FlagPlateauDays.Sum() + sample.FlagSurgeDays.Sum() == sample.EndDay - sample.StartDay, "shared transitions fill the exact allotted duration");
+                            int day = sample.StartDay;
+                            for (int i = 0; i < sample.FlagSurgeDays.Length; i++)
+                            {
+                                for (int j = 0; j < sample.FlagSurgeDays[i]; j++, day++) Check(Math.Abs(values[day + 1] - values[day]) == limit * 3, "flag jumps use three times daily volatility");
+                                if (i < sample.FlagPlateauDays.Length) day += sample.FlagPlateauDays[i];
+                            }
+                        }
+                        if (kind == StockPatternKind.Rectangle) Check(sample.VertexDays.Length >= 6 && sample.VertexDays.Length <= 10, "box has six through ten vertices");
+                        if (company == "AI" && kind == StockPatternKind.DoubleTop) hiddenCounts[(int)sample.Hidden]++;
+                    }
+            Check(timings.Count > 30 && flagCounts.Count == 3, "seeds vary timing and reach all flag counts");
+            Check(hiddenCounts[(int)HiddenPatternKind.Decline] > 250 && hiddenCounts[(int)HiddenPatternKind.Lightning] > 25 && hiddenCounts[(int)HiddenPatternKind.Crash] > 100, "all weighted hidden types occur");
+            var plateau = new[] { 8, 8, 4 }; var surgeDays = new[] { 2, 2, 2, 2 };
+            typeof(BaseStockPatternGenerator).GetMethod("FitFlagDurations", BindingFlags.NonPublic | BindingFlags.Static)
+                .Invoke(null, new object[] { 25, plateau, surgeDays });
+            Check(plateau.SequenceEqual(new[] { 5, 8, 4 }) && surgeDays.All(d => d == 2), "overflow reclaims earlier plateaus before shortening final minimum or surges");
+            var saved = library.Copy();
+            library.baseSettings.surgeMultiplier = 4;
+            var changed = PatternMarketGenerator.Inspect(15, 1, "AI", StockPatternKind.Flag, library: library);
+            Check(Math.Abs(changed.DailyChangesBps[changed.StartDay + 1] - changed.DailyChangesBps[changed.StartDay]) == library.volatility.aiBps * 4, "editable multiplier changes actual flag candles");
+            Check(saved.baseSettings.surgeMultiplier == 3, "library snapshots isolate multiplier settings");
+        }
         private static void CollectionAssertEquivalent(int[] expected, int[] actual)
             => Check(expected.SequenceEqual(actual), "library snapshot is isolated");
         private static void RegisteredPatternsOnly()
         {
             var shared = CustomStockPattern.Preset("BANK", 0);
-            shared.id = "shared-only"; shared.name = "공유 패턴"; shared.isBasePattern = true;
+            shared.id = "shared-only"; shared.name = "공유 패턴"; shared.isBasePattern = true; shared.baseShape = BasePatternShape.Authored;
             var library = new StockPatternLibrary { registeredVersion = 1 };
             library.patterns.Add(shared);
             foreach (string company in InvestmentRules.CompanyIds)
@@ -240,7 +320,7 @@ namespace BlackWhale.Tests
                     var market = provider.ForTurn(turn);
                     foreach (var company in market.companies)
                     {
-                        Check(Enumerable.Range(1, 30).All(d => Math.Abs(company.dailyChangesBps[d] - company.dailyChangesBps[d - 1]) <= 25), "base/custom limit is fixed through turn ten");
+                        Check(Enumerable.Range(1, 30).All(d => Math.Abs(company.dailyChangesBps[d] - company.dailyChangesBps[d - 1]) <= 75), "base/custom limit is fixed through turn ten");
                         var single = new CompanyMarketData { companyId = company.companyId };
                         var metadata = new StockPatternSample();
                         original.Apply(single, seed, turn, metadata);
@@ -255,7 +335,7 @@ namespace BlackWhale.Tests
                     foreach (string company in companies)
                     {
                         var closes = new[] { 0 }.Concat(stock.GetWindow(turn, company, 1, 30)).ToArray();
-                        Check(Enumerable.Range(1, 30).All(d => Math.Abs(closes[d] - closes[d - 1]) <= 25), "stock events respect the saved limit on every turn");
+                        Check(Enumerable.Range(1, 30).All(d => Math.Abs(closes[d] - closes[d - 1]) <= 75), "stock events respect the saved limit on every turn");
                     }
                 }
         }
@@ -376,7 +456,7 @@ namespace BlackWhale.Tests
                                 var sample = PatternMarketGenerator.Inspect(seed, turn, company.companyId, pattern, outcome);
                                 Check(sample.Pattern == pattern && sample.Outcome == StockPatternOutcome.Completed && sample.StartDay >= 0 && sample.EndDay <= 30, "forced diagnostic metadata");
                                 int limit = new StockVolatilitySettings().DailyLimitBps(company.companyId), cap = RandomMarketGenerator.AbsoluteCapBps[company.companyId];
-                                Check(Enumerable.Range(1, 30).All(d => sample.DailyChangesBps[d] > -10000 && Math.Abs(sample.DailyChangesBps[d] - sample.DailyChangesBps[d - 1]) <= limit), "lab constraints match normal play");
+                                Check(Enumerable.Range(1, 30).All(d => Math.Abs(sample.DailyChangesBps[d] - sample.DailyChangesBps[d - 1]) <= limit * 3), "lab constraints match normal play");
                             }
                     }
                 }
@@ -402,7 +482,7 @@ namespace BlackWhale.Tests
                         Check(c.publicBundleIndices.Length == 0 && c.dailyChangesBps[0] == 0, "no preselected public dates");
                         Check(c.dailyChangesBps.SequenceEqual(repeat.companies.Single(r => r.companyId == c.companyId).dailyChangesBps), "deterministic path");
                         int limit = new StockVolatilitySettings().DailyLimitBps(c.companyId), cap = RandomMarketGenerator.AbsoluteCapBps[c.companyId];
-                        Check(Enumerable.Range(1, 30).All(d => c.dailyChangesBps[d] > -10000 && Math.Abs(c.dailyChangesBps[d] - c.dailyChangesBps[d - 1]) <= limit), "daily and absolute constraints");
+                        Check(Enumerable.Range(1, 30).All(d => Math.Abs(c.dailyChangesBps[d] - c.dailyChangesBps[d - 1]) <= limit * 3), "daily and absolute constraints");
                         int best = int.MinValue;
                         for (int a = 0; a <= 25; a++) for (int b = a + 5; b <= Math.Min(a + 10, 30); b++)
                             best = Math.Max(best, c.dailyChangesBps[b] - c.dailyChangesBps[a]);

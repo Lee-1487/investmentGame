@@ -10,6 +10,7 @@ namespace BlackWhale.Rules
         public string id = "", name = "새 패턴", companyId = "AI";
         public bool enabled = true;
         public bool isBasePattern;
+        public BasePatternShape baseShape;
         public bool useCustomProbability;
         public double probabilityPercent;
         public int amplitudeBps = 1000;
@@ -22,11 +23,14 @@ namespace BlackWhale.Rules
 
         public void Validate()
         {
+            if (!Enum.IsDefined(typeof(BasePatternShape), baseShape)) throw new ArgumentException("알 수 없는 기본 패턴 규칙입니다.");
             if (Array.IndexOf(InvestmentRules.CompanyIds, companyId) < 0) throw new ArgumentException("Unknown company.");
             if (useCustomProbability && (double.IsNaN(probabilityPercent) || double.IsInfinity(probabilityPercent) || probabilityPercent < 0 || probabilityPercent > 100))
                 throw new ArgumentException("패턴 확률은 0~100%입니다.");
             if (vertices == null || segmentDays == null || vertices.Count < 2 || segmentDays.Count != vertices.Count - 1)
                 throw new ArgumentException("두 개 이상의 점을 하나의 꺾은선으로 연결하세요.");
+            if (isBasePattern && (baseShape == BasePatternShape.M || baseShape == BasePatternShape.W) && vertices.Count < 5)
+                throw new ArgumentException("M/W 기본 패턴의 높이를 정의하려면 최소 5개의 점이 필요합니다.");
             if (vertices.Count > MaximumDays + 1 || amplitudeBps < 1 || amplitudeBps > 100000)
                 throw new ArgumentException("가격 폭 또는 정점 수가 허용 범위를 벗어났습니다.");
             foreach (double value in vertices)
@@ -112,7 +116,7 @@ namespace BlackWhale.Rules
         }
 
         public CustomStockPattern Copy() => new CustomStockPattern { id = id, name = name, companyId = companyId,
-            enabled = enabled, isBasePattern = isBasePattern, useCustomProbability = useCustomProbability, probabilityPercent = probabilityPercent,
+            enabled = enabled, isBasePattern = isBasePattern, baseShape = baseShape, useCustomProbability = useCustomProbability, probabilityPercent = probabilityPercent,
             amplitudeBps = amplitudeBps, startDay = startDay, vertices = new List<double>(vertices), segmentDays = new List<int>(segmentDays) };
 
         public static CustomStockPattern Preset(string company, int preset)
@@ -120,7 +124,9 @@ namespace BlackWhale.Rules
             double[][] shapes = { new[] { 0.0, 1, .25, 1, -.4, -.85 }, new[] { 0.0, -1, -.25, -1, .4, .85 },
                 new[] { 0.0, 1, .7, .8, .55, 1.6 }, new[] { 0.0, .85, -.65, .95, -.8, .75, .1 } };
             string[] names = { "M", "W", "FLAG", "박스권" };
-            var pattern = new CustomStockPattern { companyId = company, name = names[preset], vertices = new List<double>(shapes[preset]) };
+            var pattern = new CustomStockPattern { companyId = company, name = names[preset],
+                baseShape = new[] { BasePatternShape.M, BasePatternShape.W, BasePatternShape.Flag, BasePatternShape.Rectangle }[preset],
+                vertices = new List<double>(shapes[preset]) };
             for (int i = 1; i < pattern.vertices.Count; i++) pattern.segmentDays.Add(1);
             pattern.SetDuration(20);
             return pattern;
@@ -141,31 +147,41 @@ namespace BlackWhale.Rules
 
         public void UpgradeLegacy()
         {
-            if (registeredVersion >= 1) return;
+            if (registeredVersion >= 2) return;
             int[] presets = { 3, 0, 1, 2 };
             string[] ids = { "builtin-rectangle", "builtin-m", "builtin-w", "builtin-flag" };
             var defaults = new List<CustomStockPattern>();
             for (int i = 0; i < presets.Length; i++)
-                if (!patterns.Exists(p => p.id == ids[i]))
+                if (registeredVersion < 1 && !patterns.Exists(p => p.id == ids[i]))
                 {
                     var pattern = CustomStockPattern.Preset("AI", presets[i]);
                     pattern.id = ids[i]; pattern.isBasePattern = true;
                     defaults.Add(pattern);
                 }
             patterns.InsertRange(0, defaults);
-            registeredVersion = 1;
+            foreach (var pattern in patterns)
+            {
+                int index = Array.IndexOf(ids, pattern.id);
+                if (pattern.isBasePattern && index >= 0)
+                    pattern.baseShape = new[] { BasePatternShape.Rectangle, BasePatternShape.M, BasePatternShape.W, BasePatternShape.Flag }[index];
+            }
+            if (baseSettings == null) baseSettings = new BasePatternSettings();
+            registeredVersion = 2;
         }
         public StockVolatilitySettings volatility = new StockVolatilitySettings();
+        public BasePatternSettings baseSettings = new BasePatternSettings();
         public StockPatternLibrary Copy()
         {
-            var copy = new StockPatternLibrary { registeredVersion = registeredVersion, volatility = (volatility ?? new StockVolatilitySettings()).Copy() };
+            var copy = new StockPatternLibrary { registeredVersion = registeredVersion, volatility = (volatility ?? new StockVolatilitySettings()).Copy(),
+                baseSettings = (baseSettings ?? new BasePatternSettings()).Copy() };
             foreach (var pattern in patterns) { pattern.Validate(); copy.patterns.Add(pattern.Copy()); }
             foreach (string company in InvestmentRules.CompanyIds) copy.Probabilities(company);
             return copy;
         }
 
         public List<CustomStockPattern> AvailablePatterns(string company)
-            => patterns.FindAll(p => p.enabled && (p.isBasePattern || p.companyId == company) && p.startDay + p.TotalDays <= 30);
+            => patterns.FindAll(p => p.enabled && (p.isBasePattern || p.companyId == company) &&
+                (BaseStockPatternGenerator.Shape(p) != BasePatternShape.Authored || p.startDay + p.TotalDays <= 30));
 
         public int BasePatternCount(string company) => AvailablePatterns(company).FindAll(p => p.isBasePattern).Count;
 
@@ -215,7 +231,15 @@ namespace BlackWhale.Rules
         {
             var available = AvailablePatterns(company.companyId);
             var selected = available[PickPatternIndex(seed, turn, company.companyId)];
-            company.dailyChangesBps = selected.GenerateTimeline(company.companyId, turn, volatility, out _);
+            company.dailyChangesBps = GenerateSelected(selected, seed, turn, company.companyId, sample);
+            return true;
+        }
+
+        public int[] GenerateSelected(CustomStockPattern selected, int seed, int turn, string company, StockPatternSample sample = null,
+            StockVolatilitySettings volatilityOverride = null)
+        {
+            selected.Validate();
+            bool generated = BaseStockPatternGenerator.Shape(selected) != BasePatternShape.Authored;
             if (sample != null)
             {
                 sample.PatternId = selected.id; sample.CustomPatternName = selected.name;
@@ -225,7 +249,9 @@ namespace BlackWhale.Rules
                 int kind = Array.IndexOf(new[] { "builtin-rectangle", "builtin-m", "builtin-w", "builtin-flag" }, selected.id);
                 sample.Pattern = (StockPatternKind)Math.Max(0, kind);
             }
-            return true;
+            var settings = volatilityOverride ?? volatility ?? new StockVolatilitySettings();
+            return generated ? BaseStockPatternGenerator.Generate(selected, seed, turn, company, settings, baseSettings, sample)
+                : selected.GenerateTimeline(company, turn, settings, out _);
         }
     }
 }

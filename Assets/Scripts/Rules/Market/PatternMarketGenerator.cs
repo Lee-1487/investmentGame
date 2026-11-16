@@ -14,6 +14,11 @@ namespace BlackWhale.Rules
         public StockPatternKind Pattern;
         public StockPatternOutcome Outcome;
         public int[] DailyChangesBps;
+        public HiddenPatternKind Hidden;
+        public int HiddenEventStartDay, HiddenEventDays;
+        public int[] VertexDays = new int[0], FlagPlateauDays = new int[0], FlagSurgeDays = new int[0];
+        public bool BoxConverging, BoxReversed;
+        public int BoxDirection;
     }
     // Server only. Metadata and the room seed never belong in a player snapshot.
     // RandomMarketGenerator remains the v2 comparison generator for frozen fixtures.
@@ -67,14 +72,11 @@ namespace BlackWhale.Rules
             var sample = new StockPatternSample { Seed = seed, Turn = turn, CompanyId = companyId };
             if (pattern.HasValue)
             {
-                // Legacy diagnostic calls can select a registered default, but cannot synthesize another shape.
+                // Forced previews use exactly the same generation path as live selection.
                 string[] ids = { "builtin-rectangle", "builtin-m", "builtin-w", "builtin-flag" };
                 var selected = choices.AvailablePatterns(companyId).Find(p => p.id == ids[(int)pattern.Value]);
                 if (selected == null) throw new InvalidOperationException("요청한 기본 패턴이 실험실에 등록되어 있지 않습니다.");
-                sample.Pattern = pattern.Value; sample.PatternId = selected.id; sample.CustomPatternName = selected.name;
-                sample.IsBasePattern = true; sample.Outcome = StockPatternOutcome.Completed;
-                sample.StartDay = selected.startDay; sample.EndDay = selected.startDay + selected.TotalDays;
-                sample.DailyChangesBps = selected.GenerateTimeline(companyId, turn, volatility ?? choices.volatility, out _);
+                sample.DailyChangesBps = choices.GenerateSelected(selected, seed, turn, companyId, sample, volatility);
             }
             else
             {

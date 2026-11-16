@@ -18,6 +18,132 @@ namespace BlackWhale.UI.Tests
     public sealed class PatternLabEditorTests
     {
         [Test]
+        public void LegacyLibraryUpgradesRulesAndRoundTripsEditableSurgeMultiplier()
+        {
+            var legacy = StockPatternLibrary.CreateDefault();
+            legacy.registeredVersion = 1;
+            foreach (var pattern in legacy.patterns) pattern.baseShape = BasePatternShape.Authored;
+            string json = JsonUtility.ToJson(legacy);
+            var restored = JsonUtility.FromJson<StockPatternLibrary>(json);
+            restored.UpgradeLegacy();
+            Assert.AreEqual(2, restored.registeredVersion);
+            Assert.AreEqual(4, restored.patterns.Count);
+            Assert.AreEqual(BasePatternShape.M, restored.patterns.Find(p => p.id == "builtin-m").baseShape);
+            restored.baseSettings.surgeMultiplier = 4.5;
+            restored = JsonUtility.FromJson<StockPatternLibrary>(JsonUtility.ToJson(restored));
+            restored.UpgradeLegacy();
+            Assert.AreEqual(4.5, restored.Copy().baseSettings.surgeMultiplier);
+            foreach (string company in InvestmentRules.CompanyIds)
+                CollectionAssert.AreEqual(PatternMarketGenerator.Inspect(81, 1, company, library: restored).DailyChangesBps,
+                    PatternMarketGenerator.Inspect(81, 1, company, library: restored.Copy()).DailyChangesBps);
+            restored.patterns.RemoveAt(0);
+            restored.UpgradeLegacy();
+            Assert.AreEqual(3, restored.patterns.Count, "upgrading never restores a deliberately deleted candidate");
+        }
+
+        [Test]
+        public void RandomFogRevealStaysInInclusiveRangeNeverRepeatsAndStopsWhenExhausted()
+        {
+            var window = ScriptableObject.CreateInstance<PatternLabWindow>();
+            try
+            {
+                window.Configure(42, 1, true);
+                var type = typeof(PatternLabWindow);
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                Assert.AreEqual(0, type.GetField("randomRevealStartDay", flags).GetValue(window));
+                Assert.AreEqual(25, type.GetField("randomRevealEndDay", flags).GetValue(window));
+                var reveal = type.GetMethod("RevealRandomMarketFog", flags);
+                Assert.AreEqual(false, reveal.Invoke(window, null), "no fog means nothing to reveal");
+                type.GetMethod("SetMarketFog", flags).Invoke(window, new object[] { true });
+                type.GetField("randomRevealStartDay", flags).SetValue(window, 24);
+                type.GetField("randomRevealEndDay", flags).SetValue(window, 25);
+                var revealed = (HashSet<string>)type.GetField("revealedMarketDays", flags).GetValue(window);
+                // Include a manually opened date: random picks must also skip this one.
+                revealed.Add("BANK:24");
+                for (int count = 2; count <= 12; count++)
+                {
+                    Assert.AreEqual(true, reveal.Invoke(window, null));
+                    Assert.AreEqual(count, revealed.Count, "every click reveals exactly one new company/day");
+                    Assert.IsTrue(revealed.All(key => key.EndsWith(":24") || key.EndsWith(":25")));
+                }
+                Assert.AreEqual(false, reveal.Invoke(window, null));
+                Assert.AreEqual(12, revealed.Count);
+                type.GetField("randomRevealStartDay", flags).SetValue(window, 0);
+                type.GetField("randomRevealEndDay", flags).SetValue(window, 0);
+                Assert.AreEqual(false, reveal.Invoke(window, null), "day zero is always visible");
+            }
+            finally { Object.DestroyImmediate(window); }
+        }
+
+        [Test]
+        public void MarketFogRevealsOnlyClickedCompanyDayAndKeepsBaselineVisible()
+        {
+            var window = ScriptableObject.CreateInstance<PatternLabWindow>();
+            try
+            {
+                window.Configure(42, 1, true);
+                var type = typeof(PatternLabWindow);
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var setFog = type.GetMethod("SetMarketFog", flags);
+                var hidden = type.GetMethod("IsMarketDayHidden", flags);
+                setFog.Invoke(window, new object[] { true });
+                foreach (var sample in window.Samples)
+                    for (int day = 0; day <= 30; day++)
+                        Assert.AreEqual(day > 0, hidden.Invoke(window, new object[] { sample.CompanyId, day }));
+                var click = new Event { type = EventType.MouseDown, button = 0, mousePosition = new Vector2(155, 50) };
+                var input = type.GetMethod("HandleMarketPlotInput", flags);
+                Assert.IsTrue((bool)input.Invoke(window, new object[] { new Rect(0, 0, 310, 100), "BANK", click }));
+                Assert.AreEqual(EventType.Used, click.type, "opening fog must not select or close the card");
+                Assert.AreEqual(false, hidden.Invoke(window, new object[] { "BANK", 15 }));
+                Assert.AreEqual(true, hidden.Invoke(window, new object[] { "BANK", 14 }));
+                Assert.AreEqual(true, hidden.Invoke(window, new object[] { "BIO", 15 }));
+                setFog.Invoke(window, new object[] { true });
+                Assert.AreEqual(true, hidden.Invoke(window, new object[] { "BANK", 15 }));
+                setFog.Invoke(window, new object[] { false });
+                foreach (var sample in window.Samples)
+                    for (int day = 0; day <= 30; day++)
+                        Assert.AreEqual(false, hidden.Invoke(window, new object[] { sample.CompanyId, day }));
+                setFog.Invoke(window, new object[] { true });
+                input.Invoke(window, new object[] { new Rect(0, 0, 310, 100), "BANK", new Event { type = EventType.MouseDown, mousePosition = new Vector2(305, 50) } });
+                Assert.AreEqual(false, hidden.Invoke(window, new object[] { "BANK", 30 }));
+                window.Configure(43, 1, true);
+                Assert.AreEqual(true, hidden.Invoke(window, new object[] { "BANK", 30 }), "new samples reset individual reveals");
+            }
+            finally { Object.DestroyImmediate(window); }
+        }
+
+        [Test]
+        public void MarketPercentageRangeFitsAllCompaniesAndWheelZoomSurvivesFogChanges()
+        {
+            var window = ScriptableObject.CreateInstance<PatternLabWindow>();
+            try
+            {
+                window.Configure(42, 1, true);
+                var type = typeof(PatternLabWindow);
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var getRange = type.GetMethod("MarketRange", flags);
+                var original = (ChartVerticalRange)getRange.Invoke(window, null);
+                Assert.AreEqual(-original.MinBps, original.MaxBps);
+                foreach (int value in window.Samples.SelectMany(s => s.DailyChangesBps))
+                { Assert.Greater(original.MaxBps, value); Assert.Less(original.MinBps, value); }
+                var input = type.GetMethod("HandleMarketPlotInput", flags);
+                var wheel = new Event { type = EventType.ScrollWheel, mousePosition = new Vector2(150, 50), delta = new Vector2(0, -6) };
+                Assert.IsTrue((bool)input.Invoke(window, new object[] { new Rect(0, 0, 310, 100), "BANK", wheel }));
+                Assert.AreEqual(EventType.Used, wheel.type, "chart zoom consumes scrolling before the outer scroll view");
+                var zoomed = (ChartVerticalRange)getRange.Invoke(window, null);
+                Assert.Less(zoomed.Span, original.Span);
+                type.GetMethod("SetMarketFog", flags).Invoke(window, new object[] { true });
+                Assert.AreEqual(zoomed.Span, ((ChartVerticalRange)getRange.Invoke(window, null)).Span);
+                wheel = new Event { type = EventType.ScrollWheel, mousePosition = new Vector2(150, 50), delta = new Vector2(0, 6) };
+                input.Invoke(window, new object[] { new Rect(0, 0, 310, 100), "BIO", wheel });
+                Assert.AreEqual(original.Span, ((ChartVerticalRange)getRange.Invoke(window, null)).Span);
+                wheel = new Event { type = EventType.ScrollWheel, mousePosition = new Vector2(500, 50), delta = new Vector2(0, -6) };
+                Assert.IsFalse((bool)input.Invoke(window, new object[] { new Rect(0, 0, 310, 100), "BANK", wheel }));
+            }
+            finally { Object.DestroyImmediate(window); }
+        }
+
+        [Test]
         public void PreviewUsesGameCandleOpensDirectionsAndResourceMigrationDefaults()
         {
             int[] values = Enumerable.Range(0, 31).Select(day => day % 3 == 0 ? 0 : day % 3 == 1 ? 300 : -100).ToArray();

@@ -2,7 +2,7 @@ using System;
 
 namespace BlackWhale.Rules
 {
-    // Daily open-to-close maximum, in percentage points (100 bps = 1%). Never scales with turn.
+    // Ordinary daily movement in percentage points (100 bps = 1%). Rule-based surges use a separate multiplier.
     [Serializable]
     public sealed class StockVolatilitySettings
     {

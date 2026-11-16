@@ -43,10 +43,11 @@ namespace BlackWhale.UI.EditorTools
 
         private void DrawVolatilitySettings()
         {
-            showVolatility = EditorGUILayout.Foldout(showVolatility, "기업별 하루 변동 한도 · 모든 턴 동일", true);
+            showVolatility = EditorGUILayout.Foldout(showVolatility, "기업별 통상 하루 변동폭 · 기본 패턴 급등락 설정", true);
             if (!showVolatility) return;
             Undo.RecordObject(this, "기업별 하루 변동 한도 편집");
             if (authoringLibrary.volatility == null) authoringLibrary.volatility = new StockVolatilitySettings();
+            if (authoringLibrary.baseSettings == null) authoringLibrary.baseSettings = new BasePatternSettings();
             string[] companies = { "BANK", "FOOD", "AUTO", "AI", "BIO", "SPACE" };
             float oldLabelWidth = EditorGUIUtility.labelWidth;
             EditorGUIUtility.labelWidth = 92;
@@ -64,12 +65,15 @@ namespace BlackWhale.UI.EditorTools
                         }
             }
             finally { EditorGUIUtility.labelWidth = oldLabelWidth; }
+            double multiplier = EditorGUILayout.DoubleField("급등락 배율 (기업 변동폭 ×)", authoringLibrary.baseSettings.surgeMultiplier);
+            if (!double.IsNaN(multiplier) && !double.IsInfinity(multiplier))
+                authoringLibrary.baseSettings.surgeMultiplier = Math.Max(1, Math.Min(10, multiplier));
             if (EditorGUI.EndChangeCheck())
             { Rebuild(); Repaint(); volatilityMessage = "변경한 한도로 미리보기 중입니다. 저장하면 새 게임부터 적용됩니다."; GUIUtility.ExitGUI(); }
             using (new EditorGUILayout.HorizontalScope())
             {
-                EditorGUILayout.LabelField("하루 시가→종가 최대 변화폭 · 턴 배율/노이즈/추가 이벤트 없음", EditorStyles.miniLabel);
-                if (GUILayout.Button("변동 한도 저장", GUILayout.Width(115)))
+                EditorGUILayout.LabelField("급등락은 위 변동폭 × 배율 · 패턴 밖/전조는 0.1배 · 저장 시 새 게임부터 적용", EditorStyles.miniLabel);
+                if (GUILayout.Button("변동폭·배율 저장", GUILayout.Width(125)))
                 {
                     volatilityMessage = WriteLibrary() ? "변동 한도 저장 완료 · 새 게임부터 적용됩니다." : authorMessage;
                     Repaint(); GUIUtility.ExitGUI();
@@ -271,6 +275,17 @@ namespace BlackWhale.UI.EditorTools
                     EditorGUILayout.LabelField("패턴 종류", draft.isBasePattern ? "기본 패턴 · 모든 기업 공유" : "사용자 패턴 · 선택 기업 전용");
                     draft.name = EditorGUILayout.TextField("패턴 이름", draft.name);
                     draft.enabled = EditorGUILayout.Toggle("게임 후보에 포함", draft.enabled);
+                    if (draft.isBasePattern)
+                    {
+                        draft.baseShape = (BasePatternShape)EditorGUILayout.Popup("생성 규칙", (int)BaseStockPatternGenerator.Shape(draft),
+                            new[] { "직접 그린 모양 유지", "M", "W", "박스권", "FLAG" });
+                        if (draft.baseShape != BasePatternShape.Authored)
+                        {
+                            seed = EditorGUILayout.IntField("미리보기 시드", seed);
+                            if (GUILayout.Button("새 시드로 변형 미리보기")) seed = RandomMarketGenerator.NewSeed();
+                            EditorGUILayout.HelpBox("날짜와 길이는 시스템이 생성합니다(최소 10일). M/W는 아래 첫 5점의 높이를 사용하며, 박스권/FLAG는 규칙으로 구성합니다. 전조가 있으면 기본 패턴은 21일까지 끝납니다.", MessageType.Info);
+                        }
+                    }
                     Rect canvas = GUILayoutUtility.GetRect(200, 280, GUILayout.ExpandWidth(true));
                     DrawAuthorCanvas(canvas);
                     using (new EditorGUILayout.HorizontalScope())
@@ -287,9 +302,11 @@ namespace BlackWhale.UI.EditorTools
                     EditorGUILayout.LabelField("점 " + drawingPoints.Count + "개 · 시작 " + firstDay + " · 종료 " + lastDay);
                     Rect preview = GUILayoutUtility.GetRect(100, 160, GUILayout.ExpandWidth(true));
                     DrawAuthoredPreview(preview);
-                    if (draft.startDay + draft.TotalDays > 30)
+                    if (BaseStockPatternGenerator.Shape(draft) == BasePatternShape.Authored && draft.startDay + draft.TotalDays > 30)
                         EditorGUILayout.HelpBox("마지막 점이 30일을 초과하면 저장·미리보기만 가능하며 게임 후보에서 제외됩니다.", MessageType.Warning);
-                    bool connected = draft.vertices.Count >= 2 && connectedPoints.Count == drawingPoints.Count;
+                    var shape = BaseStockPatternGenerator.Shape(draft);
+                    int requiredPoints = shape == BasePatternShape.M || shape == BasePatternShape.W ? 5 : 2;
+                    bool connected = draft.vertices.Count >= requiredPoints && connectedPoints.Count == drawingPoints.Count;
                     using (new EditorGUI.DisabledScope(!connected || string.IsNullOrWhiteSpace(draft.name)))
                     using (new EditorGUILayout.HorizontalScope())
                     {
@@ -305,7 +322,7 @@ namespace BlackWhale.UI.EditorTools
                             else authoringLibrary = previous;
                             Repaint(); GUIUtility.ExitGUI();
                         }
-                    if (!connected) EditorGUILayout.HelpBox("저장하려면 모든 점을 하나의 꺾은선으로 연결하세요 (최소 2점).", MessageType.None);
+                    if (!connected) EditorGUILayout.HelpBox($"저장하려면 모든 점을 하나의 꺾은선으로 연결하세요 (최소 {requiredPoints}점).", MessageType.None);
                     if (!string.IsNullOrEmpty(authorMessage)) EditorGUILayout.HelpBox(authorMessage, MessageType.Info);
                     EditorGUILayout.EndScrollView();
                 }
@@ -441,14 +458,20 @@ namespace BlackWhale.UI.EditorTools
 
         private void DrawAuthoredPreview(Rect rect)
         {
-            if (draft.vertices.Count < 2)
+            var shape = BaseStockPatternGenerator.Shape(draft);
+            int requiredPoints = shape == BasePatternShape.M || shape == BasePatternShape.W ? 5 : 2;
+            if (draft.vertices.Count < requiredPoints)
             {
                 if (Event.current.type == EventType.Repaint) previewCandleCount = 0;
                 EditorGUI.DrawRect(rect, new Color(.06f, .08f, .12f));
-                GUI.Label(new Rect(rect.x + 12, rect.y + 12, rect.width - 24, 22), "점을 2개 이상 추가하면 일봉 미리보기가 표시됩니다.", EditorStyles.whiteMiniLabel);
+                GUI.Label(new Rect(rect.x + 12, rect.y + 12, rect.width - 24, 22), $"점을 {requiredPoints}개 이상 추가하면 일봉 미리보기가 표시됩니다.", EditorStyles.whiteMiniLabel);
                 return;
             }
-            var values = draft.GenerateTimeline(InvestmentRules.CompanyIds[authorCompany], turn, authoringLibrary.volatility, out double scale);
+            bool generated = BaseStockPatternGenerator.Shape(draft) != BasePatternShape.Authored;
+            double scale = 1;
+            var sample = new StockPatternSample();
+            var values = generated ? authoringLibrary.GenerateSelected(draft, seed, turn, InvestmentRules.CompanyIds[authorCompany], sample)
+                : draft.GenerateTimeline(InvestmentRules.CompanyIds[authorCompany], turn, authoringLibrary.volatility, out scale);
             var bars = DailyBarModel.FromDailyChanges(values);
             if (Event.current.type == EventType.Repaint) previewCandleCount = bars.Length;
             var range = ChartVerticalRange.FromVisibleValues(values);
@@ -474,9 +497,12 @@ namespace BlackWhale.UI.EditorTools
                 double value = range.MinBps + range.Span * fraction;
                 GUI.Label(new Rect(rect.x + 3, plot.yMax - fraction * plot.height - 8, 48, 18), (value / 100).ToString("0.##") + "%", EditorStyles.whiteMiniLabel);
             }
-            for (int day = 0; day <= CanvasDays; day += Math.Max(1, Mathf.CeilToInt(CanvasDays / 15f)))
+            int previewDays = generated ? 30 : CanvasDays;
+            for (int day = 0; day <= previewDays; day += Math.Max(1, Mathf.CeilToInt(previewDays / 15f)))
                 GUI.Label(new Rect(plot.x + (day + .5f) * slot - 10, plot.yMax + 3, 40, 18), day + "일", EditorStyles.whiteMiniLabel);
-            EditorGUILayout.LabelField("실제 게임과 동일한 가격 데이터 · 빨강: 양봉 · 파랑: 음봉 · 적용 배율 " + scale.ToString("P1"), EditorStyles.miniLabel);
+            EditorGUILayout.LabelField(generated
+                ? $"규칙 생성 · 기본 {sample.StartDay}~{sample.EndDay}일 · hidden {sample.Hidden} · 시드 {seed}"
+                : "실제 게임과 동일한 가격 데이터 · 빨강: 양봉 · 파랑: 음봉 · 적용 배율 " + scale.ToString("P1"), EditorStyles.miniLabel);
         }
     }
 }

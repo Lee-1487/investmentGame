@@ -70,6 +70,7 @@ namespace BlackWhale.Tests
             var names = new List<string>();
             Action<string, Action> run = (name, test) => { test(); names.Add("STOCK-SYSTEM/" + name); };
             run("intraday-position-changes-and-settlement", Draft);
+            run("percentage-point-settlement-at-zero-chart-price", PercentagePointSettlement);
             run("information-then-thirty-live-closes-and-market-reveal", Timeline);
             run("private-reservations-live-supply-limits-public-fills", PickBudget);
             run("company-only-public-picks-never-overlap", CompanyOnlyPublicPicks);
@@ -199,9 +200,39 @@ namespace BlackWhale.Tests
                 .Single(c => c.companyId == "AI").investments.Single(i => i.playerId == "P1");
             Check(investment.intervals.Single().entryDay == 1 && investment.intervals.Single().exitDay == 3, "history reflects only days invested");
             var prices = h.Market.GetWindow(1, "AI", 1, 3).Select(v => (10000m + v) / 10000m).ToArray();
-            decimal gain = 10 * (prices[0] - 1) + 4 * (prices[1] - prices[0]) +
-                (4 * prices[1] + 2 * prices[0]) * (prices[2] / prices[1] - 1);
+            decimal gain = 10 * (prices[0] - 1) + 4 * (prices[1] - prices[0]) + 6 * (prices[2] - prices[1]);
             Check(investment.returnBps == (int)Math.Round(10000m * gain / 10), "realized profits include partial exit and re-entry at the observed close");
+        }
+        private static void PercentagePointSettlement()
+        {
+            var library = new StockPatternLibrary { registeredVersion = 2 };
+            var flag = CustomStockPattern.Preset("SPACE", 2); flag.isBasePattern = true; flag.id = "zero-crossing";
+            library.patterns.Add(flag); library.volatility.spaceBps = 10000; library.baseSettings.surgeMultiplier = 1;
+            int seed = 0, zeroDay = -1;
+            int[] values = null;
+            for (; seed < 500; seed++)
+            {
+                values = PatternMarketGenerator.Inspect(seed, 1, "SPACE", library: library).DailyChangesBps;
+                zeroDay = Array.FindIndex(values, v => v == -10000);
+                if (zeroDay >= 1 && zeroDay < 30) break;
+            }
+            Check(zeroDay >= 1 && zeroDay < 30, "fixture reaches zero chart price before a held day");
+            int heldDay = zeroDay + 1;
+            var market = MarketService.CreateStockSystem(seed, library);
+            market.BeginTurn(new RequestContext("PP", 1, Protocol.Info), Players);
+            Check(market.SaveReservations(new RequestContext("PP", 1, Protocol.Info, "P1"), new[] {
+                new Investment { companyId = "SPACE", intervals = new[] { new Interval { entryDay = heldDay, exitDay = heldDay } } }
+            }).Success, "one-day plan starts at zero chart price");
+            Check(market.TradeShares(new RequestContext("PP", 1, Protocol.Selection, "P1"), new[] {
+                new ShareOrder { companyId = "SPACE", targetShares = 10 }
+            }).Success, "ten slots allocated to percentage-point trade");
+            market.LockPortfolios();
+            var board = market.SettleTurn(new RequestContext("PP", 1, Protocol.Reveal));
+            int delta = values[heldDay] - values[zeroDay];
+            var profit = market.GetSettlementDetail(1).Single(p => p.playerId == "P1").companyProfits.Single(p => p.companyId == "SPACE");
+            Check(profit.returnBps == Math.Max(-10000, delta), "single-day return equals chart delta even when entry chart price is zero");
+            Check(Math.Abs(profit.profit - (decimal)10000 * 10 / 30 * profit.returnBps / 10000) <= 1, "turn capital and allocated slots determine profit without price division");
+            Check(board.rows.All(p => p.totalAssets >= 0), "final assets retain existing zero floor");
         }
         private static void Timeline()
         {
@@ -329,11 +360,11 @@ namespace BlackWhale.Tests
             m.LockPortfolios();
             var board=m.SettleTurn(new RequestContext("S",1,Protocol.Reveal));
             Func<string,int,decimal> price=(id,d)=>10000m+m.GetWindow(1,id,d,1)[0];
-            decimal mixed=price("BANK",2)/10000m*price("AI",5)/price("AI",2)*price("BANK",30)/price("BANK",5);
-            decimal expected=10000m*(mixed/3m+price("BANK",30)/10000m*2m/3m);
+            decimal mixed = price("BANK",2) - 10000m + price("AI",5) - price("AI",2) + price("BANK",30) - price("BANK",5);
+            decimal expected = 10000m + mixed / 3m + (price("BANK",30) - 10000m) * 2m / 3m;
             Check(Math.Abs(board.rows.Single(v=>v.playerId=="P1").totalAssets-expected)<=1, "actual entry/exit and BANK valuation");
             var bankPrices = new[] { 0 }.Concat(m.GetWindow(1, "BANK", 1, 30)).ToArray();
-            Check(Enumerable.Range(1, 30).All(d => Math.Abs(bankPrices[d] - bankPrices[d - 1]) <= 200), "fixed BANK daily limit");
+            Check(Enumerable.Range(1, 30).All(d => Math.Abs(bankPrices[d] - bankPrices[d - 1]) <= 600), "BANK base patterns respect configured surge limit");
         }
         private sealed class LocalClient : IGameClient
         {
@@ -410,12 +441,12 @@ namespace BlackWhale.Tests
             Check(m.SaveReservations(p4, new[] { bank }).Success && m.SaveReservations(p4, Array.Empty<Investment>()).Success, "removing BANK reservation restores default");
             m.LockPortfolios(); var board = m.SettleTurn(new RequestContext("B", 1, Protocol.Reveal));
             Func<int, decimal> price = d => 10000m + m.GetWindow(1, "BANK", d, 1)[0];
-            decimal expected = 10000m * price(5) / price(2) * price(12) / price(9);
+            decimal expected = 10000m + price(5) - price(2) + price(12) - price(9);
             Check(Math.Abs(board.rows.Single(v => v.playerId == "P1").totalAssets - expected) <= 1, "BANK interest only accrues within reserved intervals");
             Check(board.rows.Single(v => v.playerId == "P2").totalAssets == 10000 + m.GetWindow(1, "BANK", 30, 1)[0], "unconfigured BANK preserves full-period return");
             long nextAssets = board.rows.Single(v => v.playerId == "P1").totalAssets;
-            decimal stockFactor = (10000m + m.GetWindow(1, "AI", 5, 1)[0]) / (10000m + m.GetWindow(1, "AI", 2, 1)[0]);
-            decimal mixed = 10000m * (stockFactor / 3 + price(5) / price(2) * 2 / 3) * price(12) / price(9);
+            decimal stockGain = m.GetWindow(1, "AI", 5, 1)[0] - m.GetWindow(1, "AI", 2, 1)[0];
+            decimal mixed = 10000m + stockGain / 3 + (price(5) - price(2)) * 2 / 3 + price(12) - price(9);
             Check(Math.Abs(board.rows.Single(v => v.playerId == "P3").totalAssets - mixed) <= 2, "BANK accrues only on idle slots, without double counting stock gains");
             Check(board.rows.Single(v => v.playerId == "P4").totalAssets == board.rows.Single(v => v.playerId == "P2").totalAssets, "deleted BANK reservation restores full-period return");
             m.BeginTurn(new RequestContext("B", 2, Protocol.Info), Players);
@@ -549,7 +580,7 @@ namespace BlackWhale.Tests
                     OwnedAugments(holding, "P1").AddRange(new[] { "SPACE_PIONEER", "LONG_TERM" });
                 }
                 Check(holding.TradeShares(new RequestContext("H", t, Protocol.Selection, "P1"), new[] { new ShareOrder { companyId = "SPACE", targetShares = 10 } }).Success, "repurchase the same company each turn");
-                int expectedRate = holding.GetWindow(t, "SPACE", 30, 1)[0] + (t >= 2 ? 200 : 0) + (t >= 3 ? 200 : 0);
+                int expectedRate = Math.Max(-10000, holding.GetWindow(t, "SPACE", 30, 1)[0]) + (t >= 2 ? 200 : 0) + (t >= 3 ? 200 : 0);
                 holding.LockPortfolios(); holding.SettleTurn(new RequestContext("H", t, Protocol.Reveal));
                 Check(holding.GetSettlementDetail(t).Single(v => v.playerId == "P1").companyProfits.Single(v => v.companyId == "SPACE").returnBps == expectedRate, "two-turn SPACE and three-turn long-term bonuses apply at exact boundaries");
             }
@@ -558,7 +589,7 @@ namespace BlackWhale.Tests
             holding.BeginTurn(new RequestContext("H", 5, Protocol.Info), Players);
             Check(holding.TradeShares(new RequestContext("H", 5, Protocol.Selection, "P1"), new[] { new ShareOrder { companyId = "SPACE", targetShares = 10 } }).Success, "repurchase after skipping one turn");
             holding.LockPortfolios(); holding.SettleTurn(new RequestContext("H", 5, Protocol.Reveal));
-            Check(holding.GetSettlementDetail(5).Single(p => p.playerId == "P1").companyProfits.Single(c => c.companyId == "SPACE").returnBps == holding.GetWindow(5, "SPACE", 30, 1)[0],
+            Check(holding.GetSettlementDetail(5).Single(p => p.playerId == "P1").companyProfits.Single(c => c.companyId == "SPACE").returnBps == Math.Max(-10000, holding.GetWindow(5, "SPACE", 30, 1)[0]),
                 "skipping a turn breaks the consecutive-investment bonuses");
             var diversified = MarketService.CreateStockSystem(42); diversified.BeginTurn(new RequestContext("D", 1, Protocol.Info), Players); OwnedAugments(diversified, "P1").Add("DIVERSIFY");
             var firms = InvestmentRules.CompanyIds.Where(id => id != "BANK").OrderBy(id => diversified.GetWindow(1, id, 30, 1)[0]).Take(3).ToArray();
@@ -569,7 +600,7 @@ namespace BlackWhale.Tests
             diversified.LockPortfolios(); diversified.SettleTurn(new RequestContext("D", 1, Protocol.Reveal));
             foreach (var v in diversified.GetSettlementDetail(1).Single(p => p.playerId == "P1").companyProfits)
             {
-                int raw = diversified.GetWindow(1, v.companyId, 30, 1)[0]; Check(v.returnBps == (raw < 0 ? raw * 80 / 100 : raw), "diversification reduces losses and leaves gains unchanged");
+                int raw = Math.Max(-10000, diversified.GetWindow(1, v.companyId, 30, 1)[0]); Check(v.returnBps == (raw < 0 ? raw * 80 / 100 : raw), "diversification reduces losses and leaves gains unchanged");
             }
         }
     }
