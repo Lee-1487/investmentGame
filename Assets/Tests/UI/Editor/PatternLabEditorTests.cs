@@ -17,6 +17,218 @@ namespace BlackWhale.UI.Tests
 {
     public sealed class PatternLabEditorTests
     {
+        [TestCase(-20, 1)]
+        [TestCase(9123, 7)]
+        public void MultipleSeedsComparisonKeepsPatternHiddenAndCompanyFixed(int firstSeed, int step)
+        {
+            var window = ScriptableObject.CreateInstance<PatternLabWindow>();
+            try
+            {
+                window.Configure(firstSeed, 4);
+                var type = typeof(PatternLabWindow);
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var library = StockPatternLibrary.CreateDefault();
+                type.GetField("authoringLibrary", flags).SetValue(window, library);
+                type.GetField("authorCompany", flags).SetValue(window, System.Array.IndexOf(InvestmentRules.CompanyIds, "AI"));
+                type.GetField("comparisonMode", flags).SetValue(window, 3);
+                type.GetField("combinationPattern", flags).SetValue(window, 2);
+                type.GetField("combinationHidden", flags).SetValue(window, 4); // Lightning.
+                type.GetField("comparisonSeedCount", flags).SetValue(window, 6);
+                type.GetField("comparisonSeedStep", flags).SetValue(window, step);
+                string before = JsonUtility.ToJson(library);
+                var generate = type.GetMethod("GenerateComparisonSamples", flags);
+                var comparison = (List<StockPatternSample>)generate.Invoke(window, null);
+                Assert.AreEqual(6, comparison.Count);
+                CollectionAssert.AreEqual(Enumerable.Range(0, 6).Select(i => firstSeed + i * step), comparison.Select(s => s.Seed));
+                Assert.AreEqual(1, comparison.Select(s => s.PatternId).Distinct().Count());
+                foreach (var sample in comparison)
+                {
+                    Assert.AreEqual("AI", sample.CompanyId);
+                    Assert.AreEqual(4, sample.Turn);
+                    Assert.AreEqual(HiddenPatternKind.Lightning, sample.Hidden);
+                    var pattern = library.patterns.Single(p => p.id == sample.PatternId);
+                    CollectionAssert.AreEqual(library.GenerateSelected(pattern, sample.Seed, 4, "AI", hiddenOverride: HiddenPatternKind.Lightning), sample.DailyChangesBps);
+                }
+                Assert.IsTrue(comparison.Skip(1).Any(s => !s.DailyChangesBps.SequenceEqual(comparison[0].DailyChangesBps)), "different seeds produce variations");
+                var replay = (List<StockPatternSample>)generate.Invoke(window, null);
+                for (int i = 0; i < comparison.Count; i++) CollectionAssert.AreEqual(comparison[i].DailyChangesBps, replay[i].DailyChangesBps);
+                Assert.AreEqual(firstSeed, type.GetField("seed", flags).GetValue(window), "comparison does not mutate the starting seed");
+                Assert.AreEqual(before, JsonUtility.ToJson(library));
+            }
+            finally { Object.DestroyImmediate(window); }
+        }
+
+        [Test]
+        public void MultipleSeedsComparisonBoundsCountAndRejectsOverflowWithoutWrappingSeeds()
+        {
+            var window = ScriptableObject.CreateInstance<PatternLabWindow>();
+            try
+            {
+                var type = typeof(PatternLabWindow);
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                type.GetField("authoringLibrary", flags).SetValue(window, StockPatternLibrary.CreateDefault());
+                type.GetField("comparisonMode", flags).SetValue(window, 3);
+                type.GetField("comparisonSeedCount", flags).SetValue(window, 1000);
+                type.GetField("comparisonSeedStep", flags).SetValue(window, 0);
+                window.Configure(0, 1);
+                var generate = type.GetMethod("GenerateComparisonSamples", flags);
+                var comparison = (List<StockPatternSample>)generate.Invoke(window, null);
+                Assert.AreEqual(24, comparison.Count);
+                Assert.AreEqual(23, comparison.Last().Seed);
+                window.Configure(int.MaxValue - 22, 1);
+                Assert.AreEqual(0, ((List<StockPatternSample>)generate.Invoke(window, null)).Count);
+                window.Configure(int.MaxValue - 23, 1);
+                Assert.AreEqual(int.MaxValue, ((List<StockPatternSample>)generate.Invoke(window, null)).Last().Seed);
+            }
+            finally { Object.DestroyImmediate(window); }
+        }
+
+        [Test]
+        public void SameSeedComparisonCoversEveryBaseHiddenPairAndMatchesIndividualPreviews()
+        {
+            var window = ScriptableObject.CreateInstance<PatternLabWindow>();
+            try
+            {
+                window.Configure(9123, 4);
+                var type = typeof(PatternLabWindow);
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var library = StockPatternLibrary.CreateDefault();
+                type.GetField("authoringLibrary", flags).SetValue(window, library);
+                type.GetField("authorCompany", flags).SetValue(window, System.Array.IndexOf(InvestmentRules.CompanyIds, "AI"));
+                type.GetField("comparisonMode", flags).SetValue(window, 2);
+                string before = JsonUtility.ToJson(library);
+                var generate = type.GetMethod("GenerateComparisonSamples", flags);
+                var comparison = (List<StockPatternSample>)generate.Invoke(window, null);
+                Assert.AreEqual(20, comparison.Count);
+                Assert.AreEqual(20, comparison.Select(s => s.PatternId + ":" + s.Hidden).Distinct().Count());
+                foreach (var sample in comparison)
+                {
+                    Assert.AreEqual("AI", sample.CompanyId);
+                    Assert.AreEqual(9123, sample.Seed);
+                    Assert.AreEqual(4, sample.Turn);
+                    var pattern = library.patterns.Single(p => p.id == sample.PatternId);
+                    CollectionAssert.AreEqual(library.GenerateSelected(pattern, 9123, 4, "AI", hiddenOverride: sample.Hidden), sample.DailyChangesBps);
+                }
+                type.GetMethod("FitComparisonRange", flags).Invoke(window, new object[] { comparison });
+                var range = (ChartVerticalRange)type.GetMethod("MarketRange", flags).Invoke(window, null);
+                foreach (int value in comparison.SelectMany(s => s.DailyChangesBps))
+                { Assert.Greater(range.MaxBps, value); Assert.Less(range.MinBps, value); }
+                var replay = (List<StockPatternSample>)generate.Invoke(window, null);
+                for (int i = 0; i < comparison.Count; i++) CollectionAssert.AreEqual(comparison[i].DailyChangesBps, replay[i].DailyChangesBps);
+                Assert.AreEqual(before, JsonUtility.ToJson(library));
+            }
+            finally { Object.DestroyImmediate(window); }
+        }
+
+        [Test]
+        public void SameSeedComparisonCanHoldHiddenOrBaseFixedAndHandlesEmptyLibrary()
+        {
+            var window = ScriptableObject.CreateInstance<PatternLabWindow>();
+            try
+            {
+                var type = typeof(PatternLabWindow);
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var library = StockPatternLibrary.CreateDefault();
+                type.GetField("authoringLibrary", flags).SetValue(window, library);
+                type.GetField("authorCompany", flags).SetValue(window, System.Array.IndexOf(InvestmentRules.CompanyIds, "FOOD"));
+                type.GetField("comparisonMode", flags).SetValue(window, 0);
+                type.GetField("combinationHidden", flags).SetValue(window, 4); // Lightning.
+                var generate = type.GetMethod("GenerateComparisonSamples", flags);
+                var comparison = (List<StockPatternSample>)generate.Invoke(window, null);
+                Assert.AreEqual(4, comparison.Count);
+                Assert.IsTrue(comparison.All(s => s.Hidden == HiddenPatternKind.Lightning && s.CompanyId == "FOOD" && s.EndDay <= 21));
+                type.GetField("comparisonMode", flags).SetValue(window, 1);
+                type.GetField("combinationPattern", flags).SetValue(window, 2);
+                comparison = (List<StockPatternSample>)generate.Invoke(window, null);
+                Assert.AreEqual(5, comparison.Count);
+                Assert.AreEqual(1, comparison.Select(s => s.PatternId).Distinct().Count());
+                Assert.AreEqual(5, comparison.Select(s => s.Hidden).Distinct().Count());
+                library.patterns.Clear();
+                Assert.AreEqual(0, ((List<StockPatternSample>)generate.Invoke(window, null)).Count);
+            }
+            finally { Object.DestroyImmediate(window); }
+        }
+
+        [Test]
+        public void FogTargetSelectsOneCompanyOrOneDayPerCompanyAndSkipsExhaustedCompanies()
+        {
+            var window = ScriptableObject.CreateInstance<PatternLabWindow>();
+            try
+            {
+                window.Configure(42, 1, true);
+                var type = typeof(PatternLabWindow);
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                type.GetMethod("SetMarketFog", flags).Invoke(window, new object[] { true });
+                type.GetField("randomRevealStartDay", flags).SetValue(window, 24);
+                type.GetField("randomRevealEndDay", flags).SetValue(window, 25);
+                var target = type.GetField("randomRevealCompany", flags);
+                var reveal = type.GetMethod("RevealRandomMarketFog", flags);
+                var revealed = (HashSet<string>)type.GetField("revealedMarketDays", flags).GetValue(window);
+                target.SetValue(window, System.Array.IndexOf(InvestmentRules.CompanyIds, "BIO") + 1);
+                Assert.AreEqual(true, reveal.Invoke(window, null));
+                Assert.AreEqual(true, reveal.Invoke(window, null));
+                Assert.AreEqual(false, reveal.Invoke(window, null));
+                CollectionAssert.AreEquivalent(new[] { "BIO:24", "BIO:25" }, revealed);
+                target.SetValue(window, InvestmentRules.CompanyIds.Length + 1);
+                Assert.AreEqual(true, reveal.Invoke(window, null));
+                Assert.AreEqual(7, revealed.Count, "exhausted BIO is skipped while each other company reveals one day");
+                foreach (string company in InvestmentRules.CompanyIds.Where(c => c != "BIO"))
+                    Assert.AreEqual(1, revealed.Count(key => key.StartsWith(company + ":")));
+                Assert.AreEqual(true, reveal.Invoke(window, null));
+                Assert.AreEqual(12, revealed.Count);
+                Assert.AreEqual(false, reveal.Invoke(window, null));
+            }
+            finally { Object.DestroyImmediate(window); }
+        }
+
+        [Test]
+        public void MarketVerticalDragMovesCenterWithoutChangingSpanOrRevealingFog()
+        {
+            var window = ScriptableObject.CreateInstance<PatternLabWindow>();
+            try
+            {
+                window.Configure(42, 1, true);
+                var type = typeof(PatternLabWindow);
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                type.GetMethod("SetMarketFog", flags).Invoke(window, new object[] { true });
+                var range = type.GetMethod("MarketRange", flags);
+                var before = (ChartVerticalRange)range.Invoke(window, null);
+                var input = type.GetMethod("HandleMarketPlotInput", flags);
+                var rect = new Rect(0, 0, 310, 100);
+                input.Invoke(window, new object[] { rect, "BANK", new Event { type = EventType.MouseDown, button = 2, mousePosition = new Vector2(100, 50) } });
+                input.Invoke(window, new object[] { rect, "BANK", new Event { type = EventType.MouseDrag, button = 2, mousePosition = new Vector2(100, 0) } });
+                var after = (ChartVerticalRange)range.Invoke(window, null);
+                Assert.AreEqual(before.Span, after.Span);
+                Assert.AreEqual(-before.Span / 2, (after.MinBps + after.MaxBps) / 2, .001, "dragging up centers lower prices");
+                Assert.AreEqual(0, ((HashSet<string>)type.GetField("revealedMarketDays", flags).GetValue(window)).Count);
+                input.Invoke(window, new object[] { rect, "BANK", new Event { type = EventType.MouseUp, button = 2, mousePosition = new Vector2(100, -10) } });
+                Assert.IsNull(type.GetField("panningCompany", flags).GetValue(window));
+            }
+            finally { Object.DestroyImmediate(window); }
+        }
+
+        [Test]
+        public void CompanyCombinationPreviewHonorsSelectedBaseAndHiddenWithoutEditingLibrary()
+        {
+            var window = ScriptableObject.CreateInstance<PatternLabWindow>();
+            try
+            {
+                var type = typeof(PatternLabWindow);
+                var flags = BindingFlags.Instance | BindingFlags.NonPublic;
+                var library = (StockPatternLibrary)type.GetField("authoringLibrary", flags).GetValue(window);
+                var pattern = library.patterns.First(p => BaseStockPatternGenerator.Shape(p) != BasePatternShape.Authored);
+                string before = JsonUtility.ToJson(library);
+                type.GetField("authorCompany", flags).SetValue(window, System.Array.IndexOf(InvestmentRules.CompanyIds, "FOOD"));
+                var sample = (StockPatternSample)type.GetMethod("GenerateCombinationPreview", flags).Invoke(window, new object[] { pattern, HiddenPatternKind.Lightning });
+                Assert.AreEqual("FOOD", sample.CompanyId);
+                Assert.AreEqual(pattern.id, sample.PatternId);
+                Assert.AreEqual(HiddenPatternKind.Lightning, sample.Hidden);
+                Assert.LessOrEqual(sample.EndDay, 21);
+                Assert.AreEqual(before, JsonUtility.ToJson(library));
+            }
+            finally { Object.DestroyImmediate(window); }
+        }
+
         [Test]
         public void LegacyLibraryUpgradesRulesAndRoundTripsEditableSurgeMultiplier()
         {

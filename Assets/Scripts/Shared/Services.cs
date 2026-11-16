@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace BlackWhale.Shared
 {
@@ -63,6 +64,17 @@ namespace BlackWhale.Shared
         PlayerView BuildPlayerView(RequestContext context, OwnInvestmentState ownState);
     }
     public interface IServerClock { double Seconds { get; } }
+    // Opaque server-only snapshots. Restoring the same checkpoint repeatedly must make fresh copies.
+    public interface IDeveloperCheckpoint { Action CaptureDeveloperCheckpoint(string roomId); }
+    public static class DeveloperCheckpoint
+    {
+        public static Action Map<K, V>(Dictionary<K, V> target, Func<V, V> copy)
+        {
+            var snapshot = new Dictionary<K, V>();
+            foreach (var item in target) snapshot.Add(item.Key, copy(item.Value));
+            return () => { target.Clear(); foreach (var item in snapshot) target.Add(item.Key, copy(item.Value)); };
+        }
+    }
     // Explicit v3 capability: fixed v2 fixtures retain their original bundle contract.
     public interface IWindowMarketDataSource
     {
@@ -74,6 +86,9 @@ namespace BlackWhale.Shared
     {
         bool UsesWindowInformation { get; }
         void ConfigureRoom(string roomId, LobbySettings settings);
+        void PrepareRandomInformation(RequestContext context);
+        RuleResult BuyRandomDays(RequestContext context, string companyId, int count = 1);
+        void GrantAnalystCoins(RequestContext context, string playerId);
         RuleResult RevealPublicDays(RequestContext context, string companyId, int[] days, bool automatic);
         RuleResult RevealWindow(RequestContext context, string companyId, int startDay, bool automatic);
         RuleResult BuyWindow(RequestContext context, string companyId, int startDay, int endDay = 0);

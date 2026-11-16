@@ -20,7 +20,7 @@ namespace BlackWhale.UI.Dev
         private readonly PhaseClock clock = new PhaseClock();
         private PublicState syncedState;
         private string stateKey = "";
-        private int currentTurn = -1, purchases, failures, orderAttempts;
+        private int currentTurn = -1, currentRevision = -1, purchases, failures, orderAttempts;
         private float since;
         private readonly HashSet<string> attempted = new HashSet<string>();
         public IGameClient Client { get; }
@@ -51,8 +51,8 @@ namespace BlackWhale.UI.Dev
             if (s.paused) { since = now; return; }
             if (!ReferenceEquals(syncedState, s)) { syncedState = s; clock.Sync(s.serverElapsedSeconds, now); }
             if (s.phase == Protocol.Lobby && Enum.TryParse(s.botDifficulty, out BotDifficulty selected) && selected != difficulty) SetDifficulty(selected);
-            if (currentTurn != s.turn) { currentTurn = s.turn; purchases = failures = orderAttempts = 0; attempted.Clear(); }
-            string key = s.turn + "|" + s.phase + "|" + s.selectionIndex + "|" + s.currentPlayerId;
+            if (currentTurn != s.turn || currentRevision != s.developerRevision) { currentTurn = s.turn; currentRevision = s.developerRevision; purchases = failures = orderAttempts = 0; attempted.Clear(); }
+            string key = s.turn + "|" + s.phase + "|" + s.selectionIndex + "|" + s.currentPlayerId + "|" + s.developerRevision;
             if (key != stateKey) { stateKey = key; since = now; }
             if (now - since < thinkSeconds) return;
             var view = controller.Store.View;
@@ -127,11 +127,12 @@ namespace BlackWhale.UI.Dev
                     if (purchases < strategy.Policy.PurchaseBudget && failures < 3 &&
                         (!PhaseClock.HasDeadline(s) || clock.RemainingSeconds(s, now) > 2))
                     {
-                        var buy = strategy.NextPurchase(view, attempted);
+                        var buy = s.stockSystem ? strategy.NextRandomPurchase(view, s.lobbySettings) : strategy.NextPurchase(view, attempted);
                         if (buy != null)
                         {
                             attempted.Add(buy.CompanyId + ":" + (s.windowInformation ? buy.StartDay : buy.BundleIndex)); purchases++;
-                            if (s.windowInformation) controller.SelectInformationWindow(buy.CompanyId, buy.StartDay, buy.EndDay);
+                            if (s.stockSystem) controller.BuyRandomInformation(buy.CompanyId);
+                            else if (s.windowInformation) controller.SelectInformationWindow(buy.CompanyId, buy.StartDay, buy.EndDay);
                             else controller.BuyInformation(buy.CompanyId, buy.BundleIndex);
                             break;
                         }

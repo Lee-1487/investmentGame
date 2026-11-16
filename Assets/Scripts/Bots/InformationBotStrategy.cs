@@ -45,6 +45,18 @@ namespace BlackWhale.Bots
             }
             return null;
         }
+        public InformationPurchase NextRandomPurchase(PlayerView view, LobbySettings settings)
+        {
+            if (view == null || view.coins <= 0) return null;
+            var options = settings ?? new LobbySettings();
+            int first = Math.Max(1, options.informationStartDay);
+            var candidates = (view.companies ?? Array.Empty<VisibleCompany>()).Where(c => c.companyId != "BANK")
+                .Select(c => new { Company = c.companyId, Unknown = Enumerable.Range(first, Math.Max(0, options.informationEndDay - first + 1))
+                    .Count(day => !InformationWindowRules.KnownDays(c)[day].HasValue) }).Where(c => c.Unknown > 0).ToArray();
+            if (candidates.Length == 0) return null;
+            var choices = Policy.Difficulty == BotDifficulty.Hard ? candidates.Where(c => c.Unknown == candidates.Max(v => v.Unknown)).ToArray() : candidates;
+            return new InformationPurchase { CompanyId = choices[random.Next(choices.Length)].Company };
+        }
         public InformationPurchase NextPurchase(PlayerView view, ISet<string> attempted)
         {
             if (view == null || view.coins <= 0 && (view.ability?.freeInformationCredits ?? 0) == 0) return null;

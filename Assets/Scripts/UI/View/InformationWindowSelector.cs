@@ -33,7 +33,7 @@ namespace BlackWhale.UI.View
             status = UiKit.Label(Root, "", 10, Palette.SubText, TextAnchor.UpperLeft);
             status.name = "InformationRangeCost"; UiKit.Stretch(status.rectTransform, 0, 0, 0, 26);
             confirm = UiKit.Button(Root, "정보 사기", 11, Palette.Accent, Color.white, () => {
-                if (controller.Store.Public?.stockSystem == true && controller.Store.Public.publicSelectionActive) controller.SelectInformationWindow(companyId(), 0);
+                if (controller.Store.Public?.stockSystem == true) controller.BuyRandomInformation(companyId());
                 else if (Selection.HasSelection && EndDay >= Math.Max(1, StartDay)) controller.SelectInformationWindow(companyId(), Math.Max(1, StartDay), EndDay);
             });
             confirm.name = "ConfirmInformationWindow";
@@ -62,6 +62,24 @@ namespace BlackWhale.UI.View
             Selection.FixedPublicWindow = state.publicSelectionActive;
             string id = companyId();
             var company = controller.Store.View?.companies?.FirstOrDefault(c => c.companyId == id);
+            if (state.stockSystem)
+            {
+                var options = state.lobbySettings ?? new LobbySettings();
+                var known = InformationWindowRules.KnownDays(company);
+                int first = Math.Max(1, options.informationStartDay);
+                int remaining = Enumerable.Range(first, Math.Max(0, options.informationEndDay - first + 1)).Count(day => !known[day].HasValue);
+                bool pendingRandom = controller.Store.HasPending(CommandTypes.BuyInformationWindow);
+                bool activeRandom = !state.paused && string.IsNullOrEmpty(controller.Store.EndReason);
+                bool canRandom = id != "BANK" && state.phase == Protocol.Info && activeRandom && !pendingRandom && remaining > 0 && (controller.Store.View?.coins ?? 0) > 0;
+                status.text = id == "BANK" ? "BANK 0~30일 전체 공개" : $"{first}~{options.informationEndDay}일 중 미공개 {remaining}일 · 날짜는 무작위";
+                UiKit.SetButton(confirm, pendingRandom ? "요청 중…" : id == "BANK" ? "전체 공개" : "랜덤 1일 · 1코인", canRandom,
+                    canRandom ? Palette.Accent : Palette.Disabled, canRandom ? Color.white : Palette.DisabledText);
+                bool existingRandom = Selection.SelectedIndex >= 0;
+                bool canReserveRandom = activeRandom && Selection.HasSelection && (existingRandom ? CanCancel?.Invoke() == true : CanReserve?.Invoke() == true);
+                UiKit.SetButton(reserve, existingRandom ? "예약 취소" : "예약하기", canReserveRandom,
+                    canReserveRandom ? Palette.AccentSoft : Palette.Disabled, canReserveRandom ? Palette.Accent : Palette.DisabledText);
+                return;
+            }
             int start = Math.Max(1, StartDay), count = Selection.HasSelection ? InformationWindowRules.NewDays(company, start, EndDay) : 0;
             bool choosing = state.publicSelectionActive, mine = choosing && state.publicSelectionPlayerId == controller.LocalPlayerId;
             int free = Math.Min(count, (controller.Store.View?.ability?.freeInformationCredits ?? 0) + (controller.Store.View?.portfolio?.informationDiscount ?? 0)), cost = count - free;

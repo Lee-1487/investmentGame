@@ -4,8 +4,8 @@ namespace BlackWhale.Shared
 {
     public static class Protocol
     {
-        public const string Version = "prototype-v5-stock";
-        public const string RulesVersion = "rules-v5-six-turn-shares";
+        public const string Version = "prototype-v6-stock";
+        public const string RulesVersion = "rules-v6-random-information-eight-augments";
         public const string Info = "INFO", Selection = "SELECTION", Investment = "INVESTMENT";
         public const string Reveal = "MARKET_REVEAL", Result = "RESULT", Lobby = "LOBBY", Ended = "ENDED";
         public const string AbilitySelection = "ABILITY_SELECTION", Auction = "AUCTION";
@@ -24,6 +24,7 @@ namespace BlackWhale.Shared
         public string companyId;
         public int bundleIndex;
         public int startDay, endDay;
+        public int informationDays = 1;
         public string itemId, targetPlayerId;
         public int historyTurn;
         public Investment[] investments;
@@ -40,19 +41,24 @@ namespace BlackWhale.Shared
     {
         public int earlyTurnCoins = 15, lateTurnCoins = 25, publicRevealDays = 5;
         public int daySeconds = StockRules.DaySeconds;
-        public bool scatteredPublicDays;
+        public int informationStartDay = 0, informationEndDay = 25;
+        public bool scatteredPublicDays = true;
         public bool IsValid => earlyTurnCoins >= 0 && earlyTurnCoins <= 999 && lateTurnCoins >= 0 && lateTurnCoins <= 999
-            && publicRevealDays >= 0 && publicRevealDays <= 30 && daySeconds >= 1 && daySeconds <= 60;
+            && informationStartDay >= 0 && informationEndDay <= 25 && informationStartDay <= informationEndDay
+            && publicRevealDays >= 0 && publicRevealDays <= informationEndDay - Math.Max(1, informationStartDay) + 1
+            && daySeconds >= 1 && daySeconds <= 60;
         public LobbySettings Copy() => new LobbySettings { earlyTurnCoins = earlyTurnCoins, lateTurnCoins = lateTurnCoins,
-            publicRevealDays = publicRevealDays, scatteredPublicDays = scatteredPublicDays, daySeconds = daySeconds };
+            publicRevealDays = publicRevealDays, scatteredPublicDays = scatteredPublicDays, daySeconds = daySeconds,
+            informationStartDay = informationStartDay, informationEndDay = informationEndDay };
         public bool SameAs(LobbySettings other) => other != null && earlyTurnCoins == other.earlyTurnCoins
             && lateTurnCoins == other.lateTurnCoins && publicRevealDays == other.publicRevealDays && scatteredPublicDays == other.scatteredPublicDays
-            && daySeconds == other.daySeconds;
+            && daySeconds == other.daySeconds && informationStartDay == other.informationStartDay && informationEndDay == other.informationEndDay;
     }
     [Serializable] public sealed class Command
     {
         public string type, requestId;
         public int turn;
+        public int developerRevision;
         public CommandPayload payload;
     }
     [Serializable] public sealed class ResultPayload
@@ -84,13 +90,15 @@ namespace BlackWhale.Shared
         public string playerId, displayName;
         public bool connected, ready;
         public bool isBot;
+        public string[] augments;
     }
     [Serializable] public sealed class CompanySeat { public string companyId; public int remainingSeats; }
     [Serializable] public sealed class PublicState
     {
         public string schemaVersion = "1.0", roomId, phase, currentPlayerId = "";
         public int turn, selectionIndex;
-        public bool paused, developerMode;
+        public bool paused, developerMode, developerTimerRunning, developerCanGoBack;
+        public int developerRevision;
         public double serverElapsedSeconds, phaseEndsAtServerSeconds, selectionDeadlineAtServerSeconds;
         public Player[] players;
         public CompanySeat[] companySeats;

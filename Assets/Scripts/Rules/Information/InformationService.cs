@@ -69,6 +69,24 @@ namespace InvestmentGame.Rules.Information
         private readonly IReadOnlyList<string> companyIds;
         // 플레이어 ID를 개인 상태로 연결하는 서버 메모리 저장소이다.
         private readonly Dictionary<string, PlayerState> players = new Dictionary<string, PlayerState>();
+        public Action CaptureDeveloperCheckpoint()
+        {
+            PlayerState Copy(PlayerState original)
+            {
+                var copy = new PlayerState { Coins = original.Coins };
+                foreach (var item in original.CoinsByTurn) copy.CoinsByTurn.Add(item.Key, item.Value);
+                copy.GrantedTurns.UnionWith(original.GrantedTurns); copy.Rewards.UnionWith(original.Rewards);
+                foreach (var item in original.PurchasedByTurn) copy.PurchasedByTurn.Add(item.Key, new HashSet<BundleKey>(item.Value));
+                foreach (var item in original.Requests) copy.Requests.Add(item.Key, item.Value);
+                foreach (var item in original.Sources) copy.Sources.Add(item.Key, item.Value);
+                return copy;
+            }
+            lock (sync)
+            {
+                var restore = BlackWhale.Shared.DeveloperCheckpoint.Map(players, Copy);
+                return () => { lock (sync) restore(); };
+            }
+        }
 
         /// <summary>
         /// 시장 조회기와 기업 목록, 필요하면 fixture 또는 복원 상태의 플레이어를 주입한다.

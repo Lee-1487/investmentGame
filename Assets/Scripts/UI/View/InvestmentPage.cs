@@ -217,27 +217,18 @@ namespace BlackWhale.UI.View
             bool editable = _c.IsHost && !_c.Store.HasPending(CommandTypes.SetLobbySettings);
             var panel = UiKit.Rect(root, "LobbySettings");
             panel.anchorMin = new Vector2(.5f, 1); panel.anchorMax = Vector2.one;
-            panel.offsetMin = new Vector2(8, -332); panel.offsetMax = new Vector2(-20, -48);
+            panel.offsetMin = new Vector2(8, -382); panel.offsetMax = new Vector2(-20, -48);
             var title = UiKit.Label(panel, "게임 설정" + (_c.IsHost ? " · 방장" : " · 방장이 변경할 수 있습니다"), 15, Palette.Text, TextAnchor.UpperLeft, FontStyle.Bold);
-            UiKit.Stretch(title.rectTransform, 0, 0, 0, 258);
+            UiKit.Stretch(title.rectTransform, 0, 0, 0, 308);
             LobbyNumber(panel, "EarlyTurnCoins", "1~5턴 지급 코인 (0~999)", _lobbySettingsDraft.earlyTurnCoins, 30, editable, v => _lobbySettingsDraft.earlyTurnCoins = v);
             LobbyNumber(panel, "LateTurnCoins", "6턴 이후 지급 코인 (0~999)", _lobbySettingsDraft.lateTurnCoins, 68, editable, v => _lobbySettingsDraft.lateTurnCoins = v);
-            LobbyNumber(panel, "PublicRevealDays", "선택당 공개 일수 (0~30)", _lobbySettingsDraft.publicRevealDays, 106, editable, v => _lobbySettingsDraft.publicRevealDays = v);
+            LobbyNumber(panel, "PublicRevealDays", "기업마다 랜덤 공개 일수 (0~25)", _lobbySettingsDraft.publicRevealDays, 106, editable, v => _lobbySettingsDraft.publicRevealDays = v);
             LobbyNumber(panel, "DaySeconds", "일차당 시간 (1~60초)", _lobbySettingsDraft.daySeconds, 144, editable, v => _lobbySettingsDraft.daySeconds = v);
-            bool scattered = _lobbySettingsDraft.scatteredPublicDays;
-            for (int i = 0; i < 2; i++) {
-                bool mode = i == 1, selected = scattered == mode;
-                var button = UiKit.Button(panel, mode ? "무작위 날짜" : "연속 구간", 12, selected ? Palette.Accent : Palette.AccentSoft,
-                    selected ? Color.white : Palette.Accent, () => { _lobbySettingsDraft.scatteredPublicDays = mode; Refresh(); });
-                button.name = mode ? "PublicRevealScattered" : "PublicRevealContiguous";
-                button.interactable = editable;
-                var rect = (RectTransform)button.transform;
-                rect.anchorMin = new Vector2(i * .5f, 1); rect.anchorMax = new Vector2((i + 1) * .5f, 1);
-                rect.offsetMin = new Vector2(0, -216); rect.offsetMax = new Vector2(-4, -184);
-            }
-            var hint = UiKit.Label(panel, "매 턴 지급 · 공개 0일 = 공개 생략 · 설정 변경 시 준비 해제", 10, Palette.SubText, TextAnchor.UpperLeft);
+            LobbyNumber(panel, "InformationStartDay", "정보 추첨 시작일 (0~25)", _lobbySettingsDraft.informationStartDay, 182, editable, v => _lobbySettingsDraft.informationStartDay = v);
+            LobbyNumber(panel, "InformationEndDay", "정보 추첨 종료일 (0~25)", _lobbySettingsDraft.informationEndDay, 220, editable, v => _lobbySettingsDraft.informationEndDay = v);
+            var hint = UiKit.Label(panel, "BANK·0일차는 항상 공개 · 랜덤 날짜는 전원 동일 · 변경 시 준비 해제", 10, Palette.SubText, TextAnchor.UpperLeft);
             hint.rectTransform.anchorMin = new Vector2(0, 1); hint.rectTransform.anchorMax = Vector2.one;
-            hint.rectTransform.offsetMin = new Vector2(0, -242); hint.rectTransform.offsetMax = new Vector2(0, -222);
+            hint.rectTransform.offsetMin = new Vector2(0, -280); hint.rectTransform.offsetMax = new Vector2(0, -258);
             if (_c.IsHost) {
                 var apply = UiKit.Button(panel, editable ? "설정 적용" : "적용 중…", 12, Palette.Accent, Color.white,
                     () => _c.SetLobbySettings(_lobbySettingsDraft));

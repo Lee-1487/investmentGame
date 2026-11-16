@@ -59,6 +59,7 @@ namespace BlackWhale.Tests
             run("pattern-reproducibility-limits-and-legal-trade-survey", Patterns);
             run("authored-pattern-timing-vertices-bounds-and-library", AuthoredPatterns);
             run("procedural-base-timing-flag-hidden-and-surge-rules", ProceduralRules);
+            run("forced-base-hidden-combinations-and-reversal-directions", ForcedHiddenCombinations);
             run("fixed-daily-volatility-all-turns-and-settings-isolation", FixedVolatility);
             run("company-pattern-probabilities-and-weighted-generation", PatternProbabilities);
             run("registered-only-shared-base-and-exact-live-preview", RegisteredPatternsOnly);
@@ -162,8 +163,9 @@ namespace BlackWhale.Tests
                             }
                             else Check(sample.HiddenEventDays >= 2 && sample.HiddenEventDays <= 3, "crash spans two or three days");
                         }
-                        if (sample.Hidden == HiddenPatternKind.StableReversal)
+                        if (sample.Hidden == HiddenPatternKind.UpDown || sample.Hidden == HiddenPatternKind.DownUp)
                         {
+                            Check(Math.Sign(values[26] - values[25]) == (sample.Hidden == HiddenPatternKind.UpDown ? 1 : -1), "stable hidden name matches initial direction");
                             int changes = 0;
                             for (int day = 27; day <= 30; day++)
                                 if (Math.Sign(values[day] - values[day - 1]) != Math.Sign(values[day - 1] - values[day - 2])) changes++;
@@ -207,6 +209,35 @@ namespace BlackWhale.Tests
             var changed = PatternMarketGenerator.Inspect(15, 1, "AI", StockPatternKind.Flag, library: library);
             Check(Math.Abs(changed.DailyChangesBps[changed.StartDay + 1] - changed.DailyChangesBps[changed.StartDay]) == library.volatility.aiBps * 4, "editable multiplier changes actual flag candles");
             Check(saved.baseSettings.surgeMultiplier == 3, "library snapshots isolate multiplier settings");
+        }
+
+        private static void ForcedHiddenCombinations()
+        {
+            var library = StockPatternLibrary.CreateDefault();
+            var kinds = new[] { HiddenPatternKind.UpDown, HiddenPatternKind.DownUp, HiddenPatternKind.Decline, HiddenPatternKind.Lightning, HiddenPatternKind.Crash };
+            foreach (string company in InvestmentRules.CompanyIds)
+                foreach (var pattern in library.patterns)
+                    foreach (var hidden in kinds)
+                        for (int seed = 0; seed < 40; seed++)
+                        {
+                            var sample = new StockPatternSample();
+                            var values = library.GenerateSelected(pattern, seed, 1, company, sample, hiddenOverride: hidden);
+                            Check(sample.Hidden == hidden, "forced hidden is honored on every company and base pattern");
+                            Check(values.SequenceEqual(library.GenerateSelected(pattern, seed, 1, company, hiddenOverride: hidden)), "forced preview replays exactly");
+                            Check(sample.EndDay <= (hidden == HiddenPatternKind.Lightning || hidden == HiddenPatternKind.Crash ? 21 : 25), "forced hidden reserves its prelude");
+                            if (hidden == HiddenPatternKind.UpDown || hidden == HiddenPatternKind.DownUp)
+                            {
+                                int sign = hidden == HiddenPatternKind.UpDown ? 1 : -1;
+                                Check(Math.Sign(values[26] - values[25]) == sign && Math.Sign(values[30] - values[29]) == -sign, "forced reversal starts and ends in requested directions");
+                                Check(Enumerable.Range(27, 4).Count(d => Math.Sign(values[d] - values[d - 1]) != Math.Sign(values[d - 1] - values[d - 2])) == 1, "forced reversal changes direction exactly once");
+                            }
+                            if (hidden == HiddenPatternKind.Decline) Check(values[30] < values[26], "forced decline ends lower");
+                            if (hidden == HiddenPatternKind.Lightning || hidden == HiddenPatternKind.Crash)
+                            {
+                                int surge = (int)(library.volatility.DailyLimitBps(company) * library.baseSettings.surgeMultiplier);
+                                Check(Enumerable.Range(sample.HiddenEventStartDay, sample.HiddenEventDays).All(d => values[d] - values[d - 1] == (hidden == HiddenPatternKind.Lightning ? surge : -surge)), "forced event moves at configured surge magnitude");
+                            }
+                        }
         }
         private static void CollectionAssertEquivalent(int[] expected, int[] actual)
             => Check(expected.SequenceEqual(actual), "library snapshot is isolated");

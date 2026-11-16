@@ -10,8 +10,15 @@ namespace BlackWhale.UI.Presentation
             switch (errorCode)
             {
                 case "DRAFT_SHARE_LIMIT": return "한 차례에는 새로 매수하는 수량을 합쳐 최대 15주까지 투자할 수 있습니다.";
-                case "INVALID_LOBBY_SETTINGS": return "코인은 0~999개, 공개 일수는 0~30일, 일차당 시간은 1~60초로 입력하세요.";
+                case "INVALID_LOBBY_SETTINGS": return "코인은 0~999개, 정보 범위는 0~25일, 일차당 시간은 1~60초로 입력하세요. 공개 일수는 범위 안의 날짜 수 이하여야 합니다.";
+                case "SHARE_LIMIT": return "증강으로 정해진 해당 기업의 개인 보유 한도를 초과했습니다.";
+                case "PORTFOLIO_FULL": return "전체 보유량은 30주를 넘을 수 없습니다.";
+                case "INSUFFICIENT_SHARES": return "해당 기업의 남은 주식이 부족합니다.";
                 case "NO_PUBLIC_DAYS": return "설정한 일수만큼 공개할 수 없는 기업입니다. 다른 기업을 선택하세요.";
+                case "NOT_ENOUGH_INFORMATION_DAYS": return "선택한 기업에 요청한 수만큼의 미공개 날짜가 남아 있지 않습니다.";
+                case "STALE_DEVELOPER_STATE": return "단계가 복원되어 이전 요청을 취소했습니다. 현재 화면에서 다시 시도하세요.";
+                case "DEVELOPER_ONLY": return "개발자 모드에서만 사용할 수 있습니다.";
+                case "NO_PREVIOUS_PHASE": return "이번 턴에 돌아갈 이전 단계가 없습니다.";
                 case "INVALID_WINDOW": return "1~30일 안에서 시작일과 끝일을 선택하세요.";
                 case "PUBLIC_SELECTION_PENDING": return "4명의 공용 공개를 마친 뒤 개인 탐색을 시작합니다.";
                 case "PUBLIC_SELECTION_COMPLETE": return "공용 공개가 모두 끝났습니다.";

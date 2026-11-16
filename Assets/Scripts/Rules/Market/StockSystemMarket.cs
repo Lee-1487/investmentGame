@@ -5,7 +5,7 @@ using BlackWhale.Shared;
 
 namespace BlackWhale.Rules
 {
-    public sealed partial class MarketService : IStockMarketSystem
+    public sealed partial class MarketService : IStockMarketSystem, IDeveloperCheckpoint
     {
         private sealed class Slot
         {
@@ -35,6 +35,45 @@ namespace BlackWhale.Rules
         private readonly Dictionary<string, StockPlayer> stockPlayers = new Dictionary<string, StockPlayer>();
         private readonly Dictionary<int, Dictionary<string, Dictionary<string, int>>> stockHistory = new Dictionary<int, Dictionary<string, Dictionary<string, int>>>();
         private int stockSeed;
+        private static StockPlayer CopyStockPlayer(StockPlayer original)
+        {
+            var copy = new StockPlayer { Chosen = original.Chosen, PriorityUsed = original.PriorityUsed, Focus = original.Focus,
+                Candidates = (string[])original.Candidates.Clone(), BankPlan = Copy(original.BankPlan), DepositDays = original.DepositDays,
+                Discount = original.Discount, OpportunityTurn = original.OpportunityTurn, PendingDiscount = original.PendingDiscount,
+                DraftSharesRemaining = original.DraftSharesRemaining };
+            copy.Augments.AddRange(original.Augments);
+            foreach (var company in InvestmentRules.CompanyIds) {
+                copy.Shares[company] = original.Shares[company]; copy.Streak[company] = original.Streak[company];
+                copy.Gain[company] = original.Gain[company]; copy.DailyQuantity[company] = (int[])original.DailyQuantity[company].Clone();
+            }
+            for (int i = 0; i < original.Slots.Length; i++) {
+                copy.Slots[i].Claim = original.Slots[i].Claim; copy.Slots[i].Active = original.Slots[i].Active;
+                copy.Slots[i].Plan = Copy(original.Slots[i].Plan);
+            }
+            return copy;
+        }
+        private static Interval[] Copy(Interval[] values) => values.Select(i => new Interval { entryDay = i.entryDay, exitDay = i.exitDay }).ToArray();
+        public Action CaptureDeveloperCheckpoint(string roomId)
+        {
+            int savedDay = ProcessedDay; bool savedLive = liveTrading, savedLocked = allLocked;
+            var restore = new[] {
+                DeveloperCheckpoint.Map(stockPlayers, CopyStockPlayer),
+                DeveloperCheckpoint.Map(fills, values => new List<StockFill>(values)),
+                DeveloperCheckpoint.Map(orders, Copy), DeveloperCheckpoint.Map(reservations, Copy),
+                DeveloperCheckpoint.Map(selected, values => new List<string>(values)),
+                DeveloperCheckpoint.Map(assets, value => value), DeveloperCheckpoint.Map(turnStartAssets, value => value),
+                DeveloperCheckpoint.Map(costs, value => value), DeveloperCheckpoint.Map(costRequests, value => value),
+                DeveloperCheckpoint.Map(lastTurnReturn, value => value), DeveloperCheckpoint.Map(bestTurnReturn, value => value),
+                DeveloperCheckpoint.Map(history, values => values.Select(v => new ReturnPoint { turn = v.turn, returnBps = v.returnBps }).ToList()),
+                DeveloperCheckpoint.Map(settledBoards, CopyBoard),
+                DeveloperCheckpoint.Map(settledPlayers, values => values.Select(p => new PlayerSettlement { playerId = p.playerId,
+                    startingAssets = p.startingAssets, profit = p.profit, endingAssets = p.endingAssets, turnReturnBps = p.turnReturnBps,
+                    companyProfits = p.companyProfits.Select(c => new CompanyProfit { companyId = c.companyId, allocatedAssets = c.allocatedAssets, profit = c.profit, returnBps = c.returnBps }).ToList() }).ToArray()),
+                DeveloperCheckpoint.Map(stockReturns, values => values.ToDictionary(p => p.Key, p => p.Value.ToDictionary(c => c.Key, c => c.Value))),
+                DeveloperCheckpoint.Map(stockHistory, values => values.ToDictionary(p => p.Key, p => p.Value.ToDictionary(c => c.Key, c => c.Value)))
+            };
+            return () => { foreach (var action in restore) action(); ProcessedDay = savedDay; liveTrading = savedLive; allLocked = savedLocked; };
+        }
         public bool StockEnabled { get; private set; }
         public static MarketService CreateStockSystem(int seed, StockPatternLibrary library = null)
         {
@@ -57,7 +96,7 @@ namespace BlackWhale.Rules
             foreach (string id in players)
             {
                 if (!stockPlayers.TryGetValue(id, out var p)) stockPlayers.Add(id, p = new StockPlayer());
-                p.Discount = p.PendingDiscount + (p.Augments.Contains("ANALYST") ? 2 : 0); p.PendingDiscount = 0;
+                p.Discount = 0; p.PendingDiscount = 0;
                 // The previous turn's profit is already in assets/history. Each new turn
                 // starts with all thirty slots in BANK and every company supply unclaimed.
                 foreach (var slot in p.Slots) { slot.Claim = null; slot.Active = false; slot.Plan = Array.Empty<Interval>(); }
@@ -103,7 +142,7 @@ namespace BlackWhale.Rules
             string company = order.companyId;
             int target = order.targetShares;
             int delta = target - p.Shares[company];
-            if (target < 0 || target > StockRules.PersonalLimit) return new RuleResult("SHARE_LIMIT");
+            if (target < 0 || target > StockRules.ShareLimit(p.Augments.ToArray(), company)) return new RuleResult("SHARE_LIMIT");
             if (delta == 0) return new RuleResult();
             if (delta > StockRules.Slots - p.Shares.Values.Sum()) return new RuleResult("PORTFOLIO_FULL");
             int supply = company == "BANK" ? StockRules.BankSupply : StockRules.Supply;
@@ -132,8 +171,7 @@ namespace BlackWhale.Rules
                 draftSharesRemaining = p.DraftSharesRemaining,
                 priorityUsed = p.PriorityUsed, concentrationCompany = p.Focus, augments = p.Augments.ToArray(), candidates = (string[])p.Candidates.Clone(),
                 holdings = p.Shares.Select(v => new PortfolioHolding { companyId = v.Key, shares = v.Value, activeShares = ActiveShares(p, v.Key), consecutiveTurns = p.Streak[v.Key] }).ToArray(),
-                insights = p.Augments.Contains("BIO_RESEARCH") ? new[] { new StockInsight { companyId = "BIO", probabilityBps = BioSuccessChance(stockSeed, turn),
-                    message = "등록 패턴 기반 시장 · 별도 BIO 연구 이벤트 없음" } } : new StockInsight[0] };
+                insights = Array.Empty<StockInsight>() };
         }
         public RuleResult TradeShares(RequestContext c, ShareOrder[] requested)
         {
@@ -147,7 +185,7 @@ namespace BlackWhale.Rules
             {
                 if (v.companyId == "BANK") return new RuleResult("AUTOMATIC_BANK");
                 if (v.companyId == null || !candidate.ContainsKey(v.companyId)) return new RuleResult("INVALID_COMPANY");
-                int cap = p.Focus == v.companyId ? 12 : StockRules.PersonalLimit;
+                int cap = StockRules.ShareLimit(p.Augments.ToArray(), v.companyId);
                 if (v.targetShares < 0 || v.targetShares > cap) return new RuleResult("SHARE_LIMIT");
                 candidate[v.companyId] = v.targetShares;
             }
@@ -193,7 +231,7 @@ namespace BlackWhale.Rules
             {
                 var p = stockPlayers[id];
                 var random = new Random(unchecked(stockSeed ^ turn * 7919 ^ Array.IndexOf(players, id) * 397));
-                p.Candidates = StockRules.Augments.Where(a => a != "FLEXIBLE" && a != "PRIORITY" && a != "CONCENTRATION" && !p.Augments.Contains(a)).OrderBy(a => random.Next()).Take(3).ToArray();
+                p.Candidates = StockRules.Augments.Where(a => !p.Augments.Contains(a)).OrderBy(a => random.Next()).Take(3).ToArray();
                 p.Chosen = false;
             }
         }
@@ -203,10 +241,7 @@ namespace BlackWhale.Rules
             var p = stockPlayers[c.PlayerId];
             if (p.Chosen) return new RuleResult("AUGMENT_ALREADY_CHOSEN");
             if (id == null || !p.Candidates.Contains(id)) return new RuleResult("INVALID_AUGMENT");
-            if (id == "CONCENTRATION" && (company == "BANK" || !InvestmentRules.CompanyIds.Contains(company))) return new RuleResult("INVALID_COMPANY");
             p.Augments.Add(id); p.Chosen = true;
-            if (id == "ANALYST") p.Discount = Math.Min(4, p.Discount + 2);
-            if (id == "CONCENTRATION") p.Focus = company;
             return new RuleResult();
         }
         public bool AllAugmentsChosen => players.All(id => stockPlayers[id].Chosen);
@@ -229,14 +264,17 @@ namespace BlackWhale.Rules
             {
                 foreach (var slot in p.Slots)
                 {
-                    if (liveTrading && !slot.Active) continue;
-                    string company = liveTrading ? slot.Claim ?? "BANK" : Invested(slot, day) ? slot.Claim : "BANK";
+                    string company = liveTrading ? slot.Active ? slot.Claim ?? "BANK" : "BANK" : Invested(slot, day) ? slot.Claim : "BANK";
                     // Outside the BANK reservation, idle slots remain cash without market returns.
                     if (!liveTrading && company == "BANK" && p.BankPlan.Length > 0 && !p.BankPlan.Any(i => i.entryDay <= day && day <= i.exitDay)) continue;
                     // Each slot represents a fixed share of the turn's starting capital.
                     // Sum chart percentage-point differences across held days, without price ratios or compounding.
                     decimal change = (market.ChangeBps(company, day) - market.ChangeBps(company, day - 1)) / 10000m;
+                    // Hidden protection changes the holder's daily return, never the shared chart or its prelude.
+                    if (day >= 26 && company != "BANK" && p.Augments.Contains("HIDDEN_LOSS_CONTROL"))
+                        change *= change < 0 ? .2m : .5m;
                     if (company == "BANK") p.DepositDays++;
+                    if (company == "BANK" && p.Augments.Contains("CASH_INTEREST")) change += .005m;
                     p.Gain[company] += change;
                     p.DailyQuantity[company][day]++;
                     if (!liveTrading && slot.Claim != null && slot.Plan.Length > 0 && slot.Plan.Max(i => i.exitDay) == day)
@@ -270,7 +308,7 @@ namespace BlackWhale.Rules
                 orders[id] = stockPlayers[id].DailyQuantity.Where(v => v.Value.Max() > 0).Select(v => new Investment {
                     companyId = v.Key, weightBps = v.Value.Max() * 10000 / StockRules.Slots, intervals = HeldIntervals(v.Value) }).ToArray();
             stockReturns[turn] = players.ToDictionary(id => id, id => stockPlayers[id].Gain.ToDictionary(
-                v => v.Key, v => (int)Math.Round(10000m * v.Value / Math.Max(1, stockPlayers[id].DailyQuantity[v.Key].Max()))));
+                v => v.Key, v => StockCompanyRate(id, v.Key, (int)Math.Round(10000m * v.Value / Math.Max(1, stockPlayers[id].DailyQuantity[v.Key].Max())))));
             stockHistory[turn] = players.ToDictionary(id => id, id => stockPlayers[id].DailyQuantity.ToDictionary(v => v.Key, v => v.Value.Max()));
             allLocked = true;
         }
@@ -297,9 +335,8 @@ namespace BlackWhale.Rules
         private int StockCompanyRate(string player, string company, int raw)
         {
             var p = stockPlayers[player]; int rate = Math.Max(-10000, raw);
-            if (p.Augments.Contains("DIVERSIFY") && p.Shares.Values.Count(q => q >= 3) >= 3 && rate < 0) rate = rate * 80 / 100;
-            if (p.Augments.Contains("SPACE_PIONEER") && company == "SPACE" && p.Streak[company] + 1 >= 2) rate += 200;
-            if (p.Augments.Contains("LONG_TERM") && p.Streak[company] + 1 >= 3) rate += 200;
+            if (p.Augments.Contains("DIVERSIFY") && p.DailyQuantity.Values.Count(q => q[30] >= 3) >= 3 && rate < 0) rate = rate * 80 / 100;
+            if (p.Augments.Contains("LONG_TERM") && p.DailyQuantity[company].Skip(1).Count(q => q > 0) >= 10 && rate > 0) rate *= 3;
             return rate;
         }
         private PlayerSettlement SettleStockPlayer(string player)
@@ -317,8 +354,6 @@ namespace BlackWhale.Rules
                 result.companyProfits.Add(new CompanyProfit { companyId = v.Key, allocatedAssets = allocated, profit = amount, returnBps = rate });
                 profit += amount;
             }
-            if (p.Augments.Contains("CASH_INTEREST"))
-                profit += Math.Min((long)(investable * p.DepositDays / (30 * StockRules.Slots) * .02m), investable / 100);
             result.endingAssets = Math.Max(0, investable + profit); result.profit = result.endingAssets - result.startingAssets;
             result.turnReturnBps = Settlement.ReturnBps(result.startingAssets, result.endingAssets);
             return result;
@@ -330,7 +365,6 @@ namespace BlackWhale.Rules
             if (turn <= 1 || !stockPlayers.TryGetValue(playerId, out var p)) return new VisibleInformationWindow[0];
             var previous = markets[turn - 1];
             return InvestmentRules.CompanyIds.Where(id =>
-                p.Augments.Contains("CONTRARIAN") && previous.ChangeBps(id, 30) < 0 ||
                 p.Augments.Contains("TREND") && Enumerable.Range(28, 3).All(d => previous.ChangeBps(id, d) > previous.ChangeBps(id, d - 1)))
                 .Select(id => new VisibleInformationWindow { companyId = id, recordId = "augment-" + turn + "-" + playerId + "-" + id, source = "AUGMENT", startDay = 1,
                     dailyChangesBps = GetWindow(turn, id, 1, 3), dailyOpenBps = GetOpenWindow(turn, id, 1, 3) }).ToArray();
