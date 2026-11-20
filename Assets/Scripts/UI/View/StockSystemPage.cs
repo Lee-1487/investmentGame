@@ -106,15 +106,7 @@ namespace BlackWhale.UI.View
 
             // 주변 테두리 효과(마지막 3초 붉은 가장자리)는 쓰지 않음
 
-            if (!myTurnNow) return;
-            var banner = UiKit.Panel(root, "MyTurnBanner", Palette.Accent, rounded: true);
-            UiKit.Place(banner.rectTransform, new Vector2(.5f, .5f), new Vector2(.5f, .5f), new Vector2(0, 20), new Vector2(360, 64));
-            banner.raycastTarget = false;
-            var text = UiKit.Label(banner.transform, "<b>내 차례!</b>  <size=15>" + (State.developerMode ? "매수 후 완료를 누르세요" : StockRules.DraftSeconds + "초 안에 매수") + "</size>", 26, Color.white, TextAnchor.MiddleCenter);
-            UiKit.Stretch(text.rectTransform);
-            UiAnim.Rise(banner.rectTransform, 0f, 30f, 0.3f);
-            UiAnim.Pulse(banner.rectTransform, 0.3f, 1.08f);
-            UiAnim.FadeOut(banner.rectTransform, 1.1f, 0.35f);
+            // 내 차례 알림도 가운데 큰 네모 배너 대신, 차례 줄 왼쪽 위의 주황 원으로만 표시한다.
         }
 
         /// <summary>매 프레임(선택 단계). 현재 차례 시간 막대를 줄이고, 3초 이하면 깜박임·초 단위 강조.</summary>
@@ -160,16 +152,17 @@ namespace BlackWhale.UI.View
             for (int i = first; i < Math.Min(ids.Length, first + 4); i++)
             {
                 bool current = i == State.selectionIndex && State.phase == Protocol.Selection;
-                var panel = UiKit.Panel(root, "StockDraftSlot_" + i, current ? Palette.AccentSoft : Palette.Card, rounded: true);
+                var panel = UiKit.Panel(root, "StockDraftSlot_" + i, Palette.Card, rounded: true);
                 panel.rectTransform.anchorMin = new Vector2((i - first) / 4f, 1); panel.rectTransform.anchorMax = new Vector2((i - first + 1) / 4f, 1);
                 panel.rectTransform.offsetMin = new Vector2(3, -45); panel.rectTransform.offsetMax = new Vector2(-3, 0);
                 var text = UiKit.Label(panel.transform, ids[i] + "  <size=12>" + (i / 4 + 1) + (State.developerMode ? "차 · 완료 시 진행" : "차 · 7초") + (current ? " · 지금" : "") + "</size>", 22, Palette.Player(ids[i]), TextAnchor.MiddleCenter, FontStyle.Bold);
                 text.name = "StockDraftPlayer_" + i; UiKit.Stretch(text.rectTransform, 4, 1, 4, 1);
                 if (current)
                 {
-                    // 현재 차례: 테두리 강조 + 남은 시간 막대(초록→주황→빨강) + 등장 연출
-                    var outline = panel.gameObject.AddComponent<Outline>();
-                    outline.effectColor = Palette.Player(ids[i]); outline.effectDistance = new Vector2(2, -2);
+                    // 현재 차례: 큰 네모 테두리 대신 왼쪽 위 주황 원 + 남은 시간 막대(초록→주황→빨강)
+                    var dot = UiKit.Panel(panel.transform, "CurrentTurnDot", Palette.Accent);
+                    dot.sprite = UiKit.Pill; dot.type = Image.Type.Simple; dot.preserveAspect = true;
+                    UiKit.Place(dot.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(8, -7), new Vector2(12, 12));
                     var track = UiKit.Panel(panel.transform, "DraftTimerTrack", Palette.Disabled, rounded: true);
                     track.rectTransform.anchorMin = Vector2.zero; track.rectTransform.anchorMax = new Vector2(1, 0);
                     track.rectTransform.offsetMin = new Vector2(8, 3); track.rectTransform.offsetMax = new Vector2(-8, 7);
@@ -177,8 +170,8 @@ namespace BlackWhale.UI.View
                     currentBar.rectTransform.anchorMin = Vector2.zero; currentBar.rectTransform.anchorMax = Vector2.one;
                     currentBar.rectTransform.offsetMin = Vector2.zero; currentBar.rectTransform.offsetMax = Vector2.zero;
                     track.gameObject.SetActive(!State.developerMode);
-                    currentSlot = panel.rectTransform; currentSlotText = text;
-                    UiAnim.Pulse(panel.rectTransform, 0f, 1.08f);
+                    currentSlot = dot.rectTransform; currentSlotText = text; // 마지막 몇 초 깜박임도 주황 원만
+                    UiAnim.Pulse(dot.rectTransform, 0f, 1.6f);
                 }
             }
         }

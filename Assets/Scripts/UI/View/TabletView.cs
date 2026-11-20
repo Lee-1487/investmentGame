@@ -286,6 +286,10 @@ namespace BlackWhale.UI.View
             var underline = UiKit.Panel(job.transform, "Underline", Color.white);
             underline.rectTransform.anchorMin = Vector2.zero; underline.rectTransform.anchorMax = new Vector2(1, 0);
             underline.rectTransform.offsetMin = new Vector2(6, 0); underline.rectTransform.offsetMax = new Vector2(-6, 2);
+            // 왼쪽 세로줄을 더해 'ㄴ'자로 감싼다
+            var leftLine = UiKit.Panel(job.transform, "LeftLine", Color.white);
+            leftLine.rectTransform.anchorMin = Vector2.zero; leftLine.rectTransform.anchorMax = new Vector2(0, 1);
+            leftLine.rectTransform.offsetMin = new Vector2(6, 0); leftLine.rectTransform.offsetMax = new Vector2(8, 0);
             var inner = UiKit.Rect(job.transform, "Inner");
             UiKit.Stretch(inner, 0, 0, 0, 6);
             // 제목은 위에 고정, 목록은 아래부터 쌓인다(새 증강이 생기면 기존 것 위에 하나씩 추가).
