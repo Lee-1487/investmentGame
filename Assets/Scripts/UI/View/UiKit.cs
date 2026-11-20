@@ -15,7 +15,8 @@ namespace BlackWhale.UI.View
         public static readonly Color Background = new Color32(0x00, 0x00, 0x00, 0xFF);
         public static readonly Color Bezel = new Color32(0x05, 0x05, 0x05, 0xFF);
         public static readonly Color Screen = new Color32(0x00, 0x00, 0x00, 0xFF);
-        public static readonly Color Card = new Color32(0x0F, 0x0F, 0x0F, 0xFF);
+        public static readonly Color Card = new Color32(0x07, 0x07, 0x07, 0xFF);       // 카드(그래프 칸) 바탕: 검정에 가깝게
+        public static readonly Color ChartFrame = new Color32(0x14, 0x14, 0x14, 0xFF); // 그래프 카드 테두리: 거의 안 보이게
         public static readonly Color CardBorder = new Color32(0x2A, 0x2A, 0x2A, 0xFF);
         public static readonly Color Text = new Color32(0xF5, 0xF5, 0xF5, 0xFF);
         public static readonly Color SubText = new Color32(0x8C, 0x8C, 0x8C, 0xFF);

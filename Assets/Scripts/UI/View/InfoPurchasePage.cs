@@ -538,7 +538,7 @@ namespace BlackWhale.UI.View
             _companyId = companyId;
             _c = controller;
 
-            var bg = _border = UiKit.Panel(cell, "Bg", Palette.CardBorder, rounded: true);
+            var bg = _border = UiKit.Panel(cell, "Bg", Palette.ChartFrame, rounded: true);
             UiKit.Stretch(bg.rectTransform);
             var inner = UiKit.Panel(bg.transform, "Inner", Palette.Card, rounded: true);
             UiKit.Stretch(inner.rectTransform, 1, 1, 1, 1);
@@ -646,7 +646,7 @@ namespace BlackWhale.UI.View
             bool investing = s?.stockSystem == true && s.phase == Protocol.Investment && !_c.Store.OrderLocked;
             int shares = _c.Store.View?.portfolio?.holdings?.Where(h => h.companyId == _companyId).Sum(h => h.shares) ?? 0;
             bool tradable = investing && shares > 0;
-            _border.color = tradable ? Palette.Accent : Palette.CardBorder;
+            _border.color = tradable ? Palette.Accent : Palette.ChartFrame;
             _border.transform.GetChild(0).GetComponent<RectTransform>().offsetMin = Vector2.one * (tradable ? 3f : 1f);
             _border.transform.GetChild(0).GetComponent<RectTransform>().offsetMax = -Vector2.one * (tradable ? 3f : 1f);
             _tradeBadge.gameObject.SetActive(tradable);
