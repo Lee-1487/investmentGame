@@ -26,12 +26,11 @@ namespace BlackWhale.UI.View
 
             // 주변 테두리 번쩍임 효과는 쓰지 않음
 
-            // 가운데 카드
-            var card = UiKit.Panel(root, "Card", ScreenKit.Ink, rounded: true);
-            UiKit.Place(card.rectTransform, new Vector2(.5f, .5f), new Vector2(.5f, .5f), new Vector2(0, 10), new Vector2(430, 200));
+            // 네모 카드 대신 '결과 발표'와 같은 가로 띠 배경(화면 가로 전체, 테두리 없음)
+            var card = UiKit.Panel(root, "Card", new Color(0.06f, 0.06f, 0.06f, 0.94f));
             card.raycastTarget = false;
-            var border = card.gameObject.AddComponent<Outline>();
-            border.effectColor = gain ? ScreenKit.Amber : tone; border.effectDistance = new Vector2(3, -3);
+            card.rectTransform.anchorMin = new Vector2(0, .5f); card.rectTransform.anchorMax = new Vector2(1, .5f);
+            card.rectTransform.anchoredPosition = Vector2.zero; card.rectTransform.sizeDelta = new Vector2(0, 200);
 
             string head = final ? "최종 정산" : turn + "턴 정산";
             string rankText = rank > 0 ? (rank == 1 ? "<color=#FFFFFF><b>1위!</b></color>" : rank + "위") : "";
@@ -46,8 +45,7 @@ namespace BlackWhale.UI.View
             UiKit.Stretch(assets.rectTransform, 10, 0, 10, 18);
             UiAnim.Count(assets, prevAssets, nowAssets, v => "자산 " + DisplayFormat.Money(prevAssets) + "  →  <b>" + DisplayFormat.Money(v) + "</b>", 1.4f, 0.35f);
 
-            UiAnim.Rise(card.rectTransform, 0f, 50f, 0.35f);
-            // 흔들림·튀는(커졌다 작아지는) 효과는 쓰지 않음
+            // 흔들림·튀는 효과, 올라오는 움직임 없이 결과 발표 띠처럼 그 자리에 나타났다가 서서히 사라짐
 
             UiAnim.FadeOut(card.rectTransform, Seconds - 0.5f, 0.5f);
             if (Application.isPlaying) Object.Destroy(root.gameObject, Seconds + 0.3f);
