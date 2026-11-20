@@ -243,17 +243,14 @@ namespace BlackWhale.UI.View
             Action onClick, bool rounded = true)
         {
             var img = Panel(parent, "Button", background, rounded, raycast: true);
-            // 모든 버튼은 길쭉한 알약 모양(양 끝 반원). 크기가 바뀌면 PillShape가 둥글기를 다시 맞춘다.
-            img.gameObject.AddComponent<PillShape>();
             var button = img.gameObject.AddComponent<Button>();
             button.targetGraphic = img;
-            var colors = button.colors;
-            colors.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
-            colors.pressedColor = new Color(0.8f, 0.8f, 0.8f, 1f);
-            colors.disabledColor = new Color(0.85f, 0.85f, 0.85f, 0.6f);
-            button.colors = colors;
-            var text = Label(img.transform, label, fontSize, Readable(background, textColor));
+            button.transition = Selectable.Transition.None; // 도형·색 변화 없이 글자 + 마우스 올림 밑줄로만 표시
+            var text = Label(img.transform, label, fontSize, textColor);
             Stretch(text.rectTransform, 4, 2, 4, 2);
+            var look = img.gameObject.AddComponent<HoverUnderline>();
+            look.Init(button, text);
+            look.Apply(background, textColor);
             if (onClick != null) button.onClick.AddListener(() => onClick());
             return button;
         }
@@ -290,10 +287,11 @@ namespace BlackWhale.UI.View
         public static void SetButton(Button button, string label, bool interactable, Color background, Color textColor)
         {
             button.interactable = interactable;
-            ((Image)button.targetGraphic).color = background;
             var t = LabelOf(button);
             t.text = label;
-            t.color = Readable(background, textColor);
+            var look = button.GetComponent<HoverUnderline>();
+            if (look != null) look.Apply(background, textColor);
+            else { ((Image)button.targetGraphic).color = background; t.color = Readable(background, textColor); }
         }
 
         /// <summary>밝은 바탕에 밝은 글자(예: 흰 강조 버튼 + 흰 글자)면 글자를 검정으로 바꿔 읽히게 한다.</summary>
@@ -374,6 +372,84 @@ namespace BlackWhale.UI.View
             _image.sprite = UiKit.Pill;
             // 스프라이트 반지름 32px(100ppu) → 화면 반지름 = 32 / 배율. 짧은 변의 절반이 되도록.
             _image.pixelsPerUnitMultiplier = Mathf.Max(0.01f, 64f / shortSide);
+        }
+    }
+
+    /// <summary>
+    /// 버튼 모양: 도형(바탕) 없이 글자만 보이고, 마우스를 올리면 글자 아래 흰 밑줄이 나타난다.
+    /// 바탕이 밝은(주 버튼·선택됨) 경우는 글자를 굵게 해 구분한다.
+    /// 로고·그림 등 자식 요소가 있는 카드형 버튼은 원래 바탕을 유지한다.
+    /// </summary>
+    [DisallowMultipleComponent]
+    public sealed class HoverUnderline : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+    {
+        private Button _button;
+        private Text _label;
+        private Image _image, _line;
+        private Color _background, _text;
+        private bool _hover;
+
+        public void Init(Button button, Text label)
+        {
+            _button = button; _label = label; _image = (Image)button.targetGraphic;
+            _line = UiKit.Panel(transform, "HoverUnderline", Palette.Text);
+            _line.rectTransform.anchorMin = _line.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            _line.rectTransform.pivot = new Vector2(0.5f, 1f);
+            _line.gameObject.SetActive(false);
+        }
+
+        /// <summary>카드형: 글자 말고 다른 자식(로고·그림 등)이 붙은 버튼.</summary>
+        private bool IsCard
+        {
+            get
+            {
+                for (int i = 0; i < transform.childCount; i++)
+                {
+                    var c = transform.GetChild(i);
+                    if (c != _label.transform && c != _line.transform) return true;
+                }
+                return false;
+            }
+        }
+
+        public void Apply(Color background, Color text)
+        {
+            _background = background; _text = text;
+            if (_image == null || _label == null) return;
+            if (IsCard) { _image.color = background; _label.color = UiKit.Readable(background, text); return; }
+            _image.color = Color.clear; // 클릭 판정은 그대로(투명 바탕)
+            float lum = background.r * 0.299f + background.g * 0.587f + background.b * 0.114f;
+            bool primary = background.a > 0.5f && lum > 0.7f; // 흰 강조 바탕 = 주 버튼/선택됨
+            bool disabled = _button != null && !_button.interactable;
+            _label.color = disabled ? Palette.DisabledText : primary ? Palette.Text : text;
+            _label.fontStyle = primary ? FontStyle.Bold : FontStyle.Normal;
+            Refresh();
+        }
+
+        private bool _lastInteractable = true;
+        private void Start() { Apply(_background, _text); _lastInteractable = _button == null || _button.interactable; } // 자식(로고 등)이 다 붙은 뒤 카드형 여부 다시 판단
+        private void Update()
+        {
+            // interactable을 SetButton 없이 바꾼 경우에도 글자색(비활성 회색)을 맞춘다
+            bool now = _button == null || _button.interactable;
+            if (now == _lastInteractable) return;
+            _lastInteractable = now; Apply(_background, _text);
+        }
+        private void OnDisable() { _hover = false; Refresh(); }
+        public void OnPointerEnter(PointerEventData e) { _hover = true; Refresh(); }
+        public void OnPointerExit(PointerEventData e) { _hover = false; Refresh(); }
+
+        private void Refresh()
+        {
+            if (_line == null || _label == null) return;
+            bool show = _hover && (_button == null || _button.interactable) && !string.IsNullOrEmpty(_label.text) && !IsCard;
+            _line.gameObject.SetActive(show);
+            if (!show) return;
+            var rect = ((RectTransform)transform).rect;
+            float w = Mathf.Min(_label.preferredWidth, rect.width - 8f);
+            float y = -Mathf.Min(rect.height * 0.5f - 1f, _label.fontSize * 0.62f + 2f);
+            _line.rectTransform.anchoredPosition = new Vector2(0, y);
+            _line.rectTransform.sizeDelta = new Vector2(Mathf.Max(8f, w), 1.5f);
         }
     }
 }
