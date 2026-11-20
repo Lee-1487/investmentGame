@@ -1,7 +1,7 @@
 // 태블릿형 게임 화면(REQ-018). 배치는 팀 스케치 기준:
 //  - 위 가장자리: 서버 상태로 만든 D 아이템 상점 화면(구매는 준비 중)
 //  - 왼쪽 가장자리: 매수 창으로 넘김 / 오른쪽 가장자리: 정보 구매 창으로 넘김
-//  - 아래 가장자리: 서버가 지급한 보유 아이템
+//  - 아래 가장자리: 없음(아이템이 기획에서 빠져 보유 아이템 창 열기를 제거)
 //  - 상단 중앙: 전광판 주요 알림(5초 표시 후 사라짐)
 //  - 왼쪽 열: 1~4등 칸. 마우스를 올리면 그 플레이어의 이번 턴 수익률·누적 손익·추이(주변 암전)
 //  - 상단 오른쪽: 남은 시간 / 오른쪽: 완료 버튼 / 오른쪽 아래: 내 능력 상태 카드
@@ -164,7 +164,6 @@ namespace BlackWhale.UI.View
         private void BuildEdges()
         {
             Edge("Edge_Top", 0, 1, 1, 1, new Vector2(0, -EdgeSize), Vector2.zero, "아이템 상점 열기", ToggleShop);
-            Edge("Edge_Bottom", 0, 0, 1, 0, Vector2.zero, new Vector2(0, EdgeSize), "보유 아이템 열기", ToggleInventory);
             Edge("Edge_Left", 0, 0, 0, 1, new Vector2(0, EdgeSize), new Vector2(EdgeSize, -EdgeSize), "매수 창으로", () => ShowPage(0));
             Edge("Edge_Right", 1, 0, 1, 1, new Vector2(-EdgeSize, EdgeSize), new Vector2(0, -EdgeSize), "정보 구매 창으로", () => ShowPage(1));
         }
