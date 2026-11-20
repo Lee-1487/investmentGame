@@ -120,6 +120,38 @@ namespace BlackWhale.UI.View
             }
         }
 
+        private static Sprite _pill;
+        /// <summary>양 끝이 완전한 반원인 알약(길쭉한 원형) 버튼용 9-slice 스프라이트. 반지름 32px.</summary>
+        public static Sprite Pill
+        {
+            get
+            {
+                if (_pill != null) return _pill;
+                const int size = 64;
+                const float radius = 32f;
+                var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+                {
+                    wrapMode = TextureWrapMode.Clamp,
+                    filterMode = FilterMode.Bilinear,
+                    hideFlags = HideFlags.DontSave
+                };
+                var pixels = new Color32[size * size];
+                for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(radius, radius));
+                    float a = Mathf.Clamp01(radius - d + 0.5f);
+                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)(a * 255));
+                }
+                tex.SetPixels32(pixels);
+                tex.Apply();
+                _pill = Sprite.Create(tex, new UnityEngine.Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0,
+                    SpriteMeshType.FullRect, new Vector4(radius - 1, radius - 1, radius - 1, radius - 1));
+                _pill.hideFlags = HideFlags.DontSave;
+                return _pill;
+            }
+        }
+
         // ------------------------------------------------------------------
         // 배치
         // ------------------------------------------------------------------
@@ -209,6 +241,8 @@ namespace BlackWhale.UI.View
             Action onClick, bool rounded = true)
         {
             var img = Panel(parent, "Button", background, rounded, raycast: true);
+            // 모든 버튼은 길쭉한 알약 모양(양 끝 반원). 크기가 바뀌면 PillShape가 둥글기를 다시 맞춘다.
+            img.gameObject.AddComponent<PillShape>();
             var button = img.gameObject.AddComponent<Button>();
             button.targetGraphic = img;
             var colors = button.colors;
@@ -299,5 +333,37 @@ namespace BlackWhale.UI.View
     {
         public Action Clicked;
         public void OnPointerClick(PointerEventData eventData) => Clicked?.Invoke();
+    }
+
+    /// <summary>
+    /// 버튼 바탕을 알약 모양으로: 양 끝 반원 반지름 = 짧은 변의 절반.
+    /// 큰 카드형 버튼(짧은 변 60 초과)은 일반 둥근 모서리를 유지한다.
+    /// </summary>
+    [DisallowMultipleComponent]
+    public sealed class PillShape : MonoBehaviour
+    {
+        private Image _image;
+        private void Awake() { _image = GetComponent<Image>(); Apply(); }
+        private void OnEnable() => Apply();
+        private void OnRectTransformDimensionsChange() => Apply();
+
+        private void Apply()
+        {
+            if (_image == null) _image = GetComponent<Image>();
+            if (_image == null) return;
+            var r = ((RectTransform)transform).rect;
+            float shortSide = Mathf.Min(r.width, r.height);
+            if (shortSide <= 0f) return;
+            _image.type = Image.Type.Sliced;
+            if (shortSide > 60f)
+            {
+                _image.sprite = UiKit.Rounded;
+                _image.pixelsPerUnitMultiplier = 2f;
+                return;
+            }
+            _image.sprite = UiKit.Pill;
+            // 스프라이트 반지름 32px(100ppu) → 화면 반지름 = 32 / 배율. 짧은 변의 절반이 되도록.
+            _image.pixelsPerUnitMultiplier = Mathf.Max(0.01f, 64f / shortSide);
+        }
     }
 }
