@@ -104,8 +104,7 @@ namespace BlackWhale.UI.View
             urgency = null;
             if (State.phase != Protocol.Selection) return;
 
-            // 가장자리만 붉게(가운데 내용은 가리지 않음)
-            urgency = new UrgencyEdges(root, new Color(0.86f, 0.12f, 0.12f), 0.32f, 4f);
+            // 주변 테두리 효과(마지막 3초 붉은 가장자리)는 쓰지 않음
 
             if (!myTurnNow) return;
             var banner = UiKit.Panel(root, "MyTurnBanner", Palette.Accent, rounded: true);

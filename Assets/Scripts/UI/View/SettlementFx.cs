@@ -24,9 +24,7 @@ namespace BlackWhale.UI.View
             bool gain = turnReturnBps > 0, loss = turnReturnBps < 0;
             Color tone = gain ? Palette.Up : loss ? Palette.Down : Palette.SubText;
 
-            // 가장자리 번쩍임(수익: 금빛, 손실: 붉은빛). 화면 전체는 덮지 않는다.
-            if (gain || loss)
-                EdgeFlash.Play(root, gain ? new Color(0.98f, 0.75f, 0.14f) : new Color(0.86f, 0.12f, 0.12f), 0.9f);
+            // 주변 테두리 번쩍임 효과는 쓰지 않음
 
             // 가운데 카드
             var card = UiKit.Panel(root, "Card", ScreenKit.Ink, rounded: true);
@@ -94,7 +92,6 @@ namespace BlackWhale.UI.View
             var root = UiKit.Rect(screen, "ResultAnnouncement");
             UiKit.Stretch(root);
 
-            EdgeFlash.Play(root, new Color(0.98f, 0.75f, 0.14f), 1.2f);
             var band = UiKit.Panel(root, "Band", new Color(0.07f, 0.09f, 0.15f, 0.92f));
             band.raycastTarget = false;
             band.rectTransform.anchorMin = new Vector2(0, .5f); band.rectTransform.anchorMax = new Vector2(1, .5f);

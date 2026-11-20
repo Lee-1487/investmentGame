@@ -25,7 +25,7 @@ namespace BlackWhale.UI.View
         private GameClientController _c;
         private LobbyActions _lobby;
         private ProgressionPanel _features;
-        private Text _abilityLabel;
+        private Text _abilityLabel, _abilityTitle;
         private ClientStateStore Store => _c.Store;
 
         public RectTransform Root { get; private set; }
@@ -132,7 +132,7 @@ namespace BlackWhale.UI.View
             BuildRightColumn();
             BuildTimer();
             BuildBanner();
-            _urgency = new UrgencyEdges(ScreenRect); // 마감 10초 전 붉은 가장자리(팝업보다 아래)
+            _urgency = null; // 주변 테두리 효과(마감 10초 전 붉은 가장자리)는 쓰지 않음
             BuildOverlays();
             BuildTurnIndicator();
             _features = ProgressionPanel.Create(Root, _c, _lobby);
@@ -288,8 +288,11 @@ namespace BlackWhale.UI.View
             underline.rectTransform.offsetMin = new Vector2(6, 0); underline.rectTransform.offsetMax = new Vector2(-6, 2);
             var inner = UiKit.Rect(job.transform, "Inner");
             UiKit.Stretch(inner, 0, 0, 0, 6);
-            _abilityLabel = UiKit.Label(inner, "", 14, Palette.Text);
-            UiKit.Stretch(_abilityLabel.rectTransform, 4, 4, 4, 4);
+            // 제목은 위에 고정, 목록은 아래부터 쌓인다(새 증강이 생기면 기존 것 위에 하나씩 추가).
+            _abilityTitle = UiKit.Label(inner, "", 14, Palette.Text, TextAnchor.UpperCenter, FontStyle.Bold);
+            UiKit.Stretch(_abilityTitle.rectTransform, 4, 4, 4, 4);
+            _abilityLabel = UiKit.Label(inner, "", 13, Palette.Text, TextAnchor.LowerCenter);
+            UiKit.Stretch(_abilityLabel.rectTransform, 4, 26, 4, 4);
             UiKit.Hover(job.gameObject, () => ShowAllPlayersPopup(job.rectTransform), HidePopup);
             UiKit.Click(job.gameObject, () => { HidePopup(); _features?.OpenAbility(); });
         }
@@ -412,8 +415,10 @@ namespace BlackWhale.UI.View
             _infoPage.Refresh();
             RefreshTurnIndicator();
             var ability = LiveScreenModels.AbilityId(Store.View?.ability?.selectedId);
-            _abilityLabel.text = "<b>내 고유능력</b>\n\n" + (AbilityCatalog.Get(ability)?.Name ?? "선택 대기") + "\n<size=11>클릭하여 상태 보기</size>";
-            if (s?.stockSystem == true) _abilityLabel.text = "<b>내 증강</b>\n\n" + string.Join("\n", (Store.View?.portfolio?.augments ?? new string[0]).Select(StockRules.Name));
+            _abilityTitle.text = s?.stockSystem == true ? "내 증강" : "내 고유능력";
+            _abilityLabel.text = (AbilityCatalog.Get(ability)?.Name ?? "선택 대기") + "\n<size=11>클릭하여 상태 보기</size>";
+            // 첫 증강이 맨 아래, 새로 얻은 증강은 그 위에 쌓인다.
+            if (s?.stockSystem == true) _abilityLabel.text = string.Join("\n", (Store.View?.portfolio?.augments ?? new string[0]).Select(StockRules.Name).Reverse());
             UpdateTimer();
             _renderedPublic = Store.Public; _renderedView = Store.View;
         }
