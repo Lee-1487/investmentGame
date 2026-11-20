@@ -280,13 +280,15 @@ namespace BlackWhale.UI.View
             UiKit.Place((RectTransform)_developerReset.transform, new Vector2(.5f, 1), new Vector2(.5f, 1), new Vector2(0, -190), new Vector2(140, 36));
 
             // 본인 직업 카드
-            var job = UiKit.Panel(col, "OwnJob", Palette.Card, rounded: true, raycast: true);
+            // 네모 칸 대신 흰 밑줄만(방송 화면 스타일). 투명 바탕은 클릭·마우스 판정용.
+            var job = UiKit.Panel(col, "OwnJob", Color.clear, raycast: true);
             UiKit.Place(job.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 0), new Vector2(120, 120));
-            var border = UiKit.Panel(job.transform, "Border", Palette.Player(_c.LocalPlayerId), rounded: true);
-            UiKit.Stretch(border.rectTransform);
-            var inner = UiKit.Panel(border.transform, "Inner", Palette.Card, rounded: true);
-            UiKit.Stretch(inner.rectTransform, 3, 3, 3, 3);
-            _abilityLabel = UiKit.Label(inner.transform, "", 14, Palette.Text);
+            var underline = UiKit.Panel(job.transform, "Underline", Color.white);
+            underline.rectTransform.anchorMin = Vector2.zero; underline.rectTransform.anchorMax = new Vector2(1, 0);
+            underline.rectTransform.offsetMin = new Vector2(6, 0); underline.rectTransform.offsetMax = new Vector2(-6, 2);
+            var inner = UiKit.Rect(job.transform, "Inner");
+            UiKit.Stretch(inner, 0, 0, 0, 6);
+            _abilityLabel = UiKit.Label(inner, "", 14, Palette.Text);
             UiKit.Stretch(_abilityLabel.rectTransform, 4, 4, 4, 4);
             UiKit.Hover(job.gameObject, () => ShowAllPlayersPopup(job.rectTransform), HidePopup);
             UiKit.Click(job.gameObject, () => { HidePopup(); _features?.OpenAbility(); });
@@ -876,13 +878,15 @@ namespace BlackWhale.UI.View
         public RankSlot(RectTransform column, int index, TabletView owner)
         {
             _index = index;
-            var bg = UiKit.Panel(column, "RankSlot" + (index + 1), Palette.Card, rounded: true, raycast: true);
+            // 네모 칸 대신 흰 밑줄만(방송 화면 스타일). 투명 바탕은 클릭 판정용.
+            var bg = UiKit.Panel(column, "RankSlot" + (index + 1), Color.clear, raycast: true);
             _rt = bg.rectTransform;
             UiKit.Place(_rt, new Vector2(0.5f, 1), new Vector2(0.5f, 1), PositionOf(index), new Vector2(84, 86));
-            _border = UiKit.Panel(_rt, "Border", Palette.CardBorder, rounded: true);
-            UiKit.Stretch(_border.rectTransform);
-            var inner = UiKit.Panel(_border.transform, "Inner", Palette.Card, rounded: true);
-            UiKit.Stretch(inner.rectTransform, 3, 3, 3, 3);
+            _border = UiKit.Panel(_rt, "Underline", Color.white);
+            _border.rectTransform.anchorMin = Vector2.zero; _border.rectTransform.anchorMax = new Vector2(1, 0);
+            _border.rectTransform.offsetMin = new Vector2(4, 0); _border.rectTransform.offsetMax = new Vector2(-4, 2);
+            var inner = UiKit.Panel(_rt, "Inner", Color.clear);
+            UiKit.Stretch(inner.rectTransform, 3, 3, 3, 5);
             _text = UiKit.Label(inner.transform, "", 13, Palette.Text, TextAnchor.UpperCenter);
             UiKit.Stretch(_text.rectTransform, 2, 5, 2, 36);
             // 보유 금액(총자산): 크게 표시. '직업 미정' 줄은 없앴다.
@@ -918,11 +922,12 @@ namespace BlackWhale.UI.View
             }
             else if (fromIndex >= 0 || !samePlayer) _delta = "";
 
-            _border.color = Palette.Player(row.PlayerId);
+            // 밑줄은 흰색 고정. 누구인지는 이름 앞 플레이어 색 점으로 구분.
             string rank = row.Rank > 0 ? row.Rank + "등" : "-";
             string me = row.PlayerId == localPlayerId ? " (나)" : "";
+            string dot = "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(row.PlayerId)) + ">●</color> ";
             string conn = row.Connected ? "" : "\n<color=#FF4D4F>연결 끊김</color>";
-            _text.text = "<b>" + rank + "</b>" + _delta + "\n" + row.PlayerId + me + conn;
+            _text.text = "<b>" + rank + "</b>" + _delta + "\n" + dot + row.PlayerId + me + conn;
 
             if (row.Score == null) { _assets.text = ""; return; }
             long now = row.Score.totalAssets;
