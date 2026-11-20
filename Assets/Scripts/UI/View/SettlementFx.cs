@@ -47,8 +47,7 @@ namespace BlackWhale.UI.View
             UiAnim.Count(assets, prevAssets, nowAssets, v => "자산 " + DisplayFormat.Money(prevAssets) + "  →  <b>" + DisplayFormat.Money(v) + "</b>", 1.4f, 0.35f);
 
             UiAnim.Rise(card.rectTransform, 0f, 50f, 0.35f);
-            UiAnim.Pulse(card.rectTransform, 0.35f, gain ? 1.12f : 1.05f);
-            if (loss) Shake.Play(card.rectTransform, 0.4f, 0.45f, 9f);
+            // 흔들림·튀는(커졌다 작아지는) 효과는 쓰지 않음
 
             UiAnim.FadeOut(card.rectTransform, Seconds - 0.5f, 0.5f);
             if (Application.isPlaying) Object.Destroy(root.gameObject, Seconds + 0.3f);
@@ -101,7 +100,6 @@ namespace BlackWhale.UI.View
             var sub = UiKit.Label(band.transform, "이번 턴 수익과 순위가 확정되었습니다", 18, Color.white, TextAnchor.LowerCenter);
             UiKit.Stretch(sub.rectTransform, 0, 0, 0, 16);
 
-            UiAnim.Pulse(title.rectTransform, 0.05f, 1.25f);
             UiAnim.FadeOut(band.rectTransform, 1.8f, 0.45f);
             if (Application.isPlaying) Object.Destroy(root.gameObject, 2.6f);
         }
@@ -121,8 +119,6 @@ namespace BlackWhale.UI.View
             var label = UiKit.Label(band.transform, "<size=30><b>역전!</b></size>   " + text, 18, Color.white, TextAnchor.MiddleCenter);
             UiKit.Stretch(label.rectTransform, 10, 0, 10, 0);
             UiAnim.Rise(band.rectTransform, delay, -40f, 0.35f); // 위에서 내려오기
-            UiAnim.Pulse(band.rectTransform, delay + 0.35f, 1.12f);
-            Shake.Play(band.rectTransform, delay + 0.5f, 0.35f, 6f);
             UiAnim.FadeOut(band.rectTransform, delay + 3.0f, 0.4f);
             if (Application.isPlaying) Object.Destroy(root.gameObject, delay + 3.6f);
         }
