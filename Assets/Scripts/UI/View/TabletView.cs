@@ -492,8 +492,7 @@ namespace BlackWhale.UI.View
             var v = Store.View;
             if (v != null)
             {
-                if (_lastCoins >= 0 && v.coins < _lastCoins && s?.phase == Protocol.Info && v.turn == s.turn && v.phase == Protocol.Info)
-                    ShowBanner("정보를 구매했습니다. 남은 코인 " + v.coins + "개");
+                // 코인으로 정보를 살 때마다 뜨던 알림은 너무 자주 나와서 띄우지 않는다(남은 코인은 정보 구매 창 위쪽에 항상 표시됨)
                 _lastCoins = v.coins;
             }
 
