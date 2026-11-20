@@ -42,6 +42,21 @@ namespace BlackWhale.UI.View
         // 전광판
         private CanvasGroup _bannerGroup;
         private Text _bannerText;
+        private Image _bannerLine, _turnNoticeLine;
+        private RectTransform _augmentList;
+        private string _augmentKey;
+
+        /// <summary>글자 폭만큼의 밑줄을 영역 아래 가운데에 맞춘다.</summary>
+        private static void FitUnderline(Image line, Text text)
+        {
+            if (line == null || text == null) return;
+            var rt = line.rectTransform;
+            rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0); rt.pivot = new Vector2(0.5f, 0);
+            float max = ((RectTransform)line.transform.parent).rect.width - 24f;
+            float w = text.preferredWidth;
+            rt.sizeDelta = new Vector2(Mathf.Clamp(w, 8f, max > 8f ? max : w), 1.5f);
+            rt.anchoredPosition = new Vector2(0, 2f);
+        }
         private readonly Queue<string> _bannerQueue = new Queue<string>();
         private float _bannerLeft;
 
@@ -297,6 +312,9 @@ namespace BlackWhale.UI.View
             UiKit.Stretch(_abilityTitle.rectTransform, 4, 4, 4, 4);
             _abilityLabel = UiKit.Label(inner, "", 13, Palette.Text, TextAnchor.LowerLeft);
             UiKit.Stretch(_abilityLabel.rectTransform, 10, 26, 6, 4);
+            // 주식 모드 증강 목록: 이름마다 밑줄. 새 증강이 맨 아래, 기존은 위로 밀림.
+            _augmentList = UiKit.Rect(inner, "AugmentList");
+            UiKit.Stretch(_augmentList, 12, 26, 6, 6);
             UiKit.Hover(job.gameObject, () => ShowAllPlayersPopup(job.rectTransform), HidePopup);
             UiKit.Click(job.gameObject, () => { HidePopup(); _features?.OpenAbility(); });
         }
@@ -311,20 +329,16 @@ namespace BlackWhale.UI.View
 
         private void BuildBanner()
         {
-            var banner = UiKit.Panel(ScreenRect, "Banner", Palette.Card, rounded: true);
+            var banner = UiKit.Panel(ScreenRect, "Banner", Color.clear); // 네모 없이 글자 + 밑줄
             var rt = banner.rectTransform;
             rt.anchorMin = new Vector2(0, 1);
             rt.anchorMax = new Vector2(1, 1);
             rt.pivot = new Vector2(0.5f, 1);
             rt.offsetMin = new Vector2(116, -64);
             rt.offsetMax = new Vector2(-168, -12);
-            var border = UiKit.Panel(rt, "Border", Palette.CardBorder, rounded: true);
-            UiKit.Stretch(border.rectTransform);
-            border.transform.SetAsFirstSibling();
-            var inner = UiKit.Panel(rt, "Inner", Palette.Card, rounded: true);
-            UiKit.Stretch(inner.rectTransform, 1, 1, 1, 1);
-            _bannerText = UiKit.Label(inner.transform, "", 16, Palette.Text);
-            UiKit.Stretch(_bannerText.rectTransform, 12, 4, 12, 4);
+            _bannerText = UiKit.Label(rt, "", 16, Palette.Text);
+            UiKit.Stretch(_bannerText.rectTransform, 12, 4, 12, 8);
+            _bannerLine = UiKit.Panel(rt, "Underline", Palette.Text);
             _bannerGroup = banner.gameObject.AddComponent<CanvasGroup>();
             _bannerGroup.alpha = 0f;
             _bannerGroup.blocksRaycasts = false;
@@ -354,13 +368,14 @@ namespace BlackWhale.UI.View
                     edge.sizeDelta = horizontal ? new Vector2(0, 5) : new Vector2(5, 0);
                     edge.anchoredPosition = Vector2.zero;
                 }
-            _turnNoticeBackground = UiKit.Panel(ScreenRect, "PublicTurnNotice", Palette.Accent, rounded: true);
+            _turnNoticeBackground = UiKit.Panel(ScreenRect, "PublicTurnNotice", Color.clear); // 네모 없이 글자 + 밑줄
             _turnNotice = _turnNoticeBackground.rectTransform;
             _turnNotice.anchorMin = new Vector2(0, 1); _turnNotice.anchorMax = Vector2.one;
             _turnNotice.offsetMin = new Vector2(116, -68); _turnNotice.offsetMax = new Vector2(-168, -8);
-            _turnNoticeText = UiKit.Label(_turnNotice, "", 20, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
+            _turnNoticeText = UiKit.Label(_turnNotice, "", 20, Palette.Text, TextAnchor.MiddleCenter, FontStyle.Bold);
             _turnNoticeText.name = "PublicTurnNoticeText";
-            UiKit.Stretch(_turnNoticeText.rectTransform, 12, 4, 12, 4);
+            UiKit.Stretch(_turnNoticeText.rectTransform, 12, 4, 12, 8);
+            _turnNoticeLine = UiKit.Panel(_turnNotice, "Underline", Palette.Text);
             _turnHighlight.gameObject.SetActive(false); _turnNotice.gameObject.SetActive(false);
         }
 
@@ -369,13 +384,14 @@ namespace BlackWhale.UI.View
             var state = Store.Public;
             bool active = state?.publicSelectionActive == true && !state.paused && string.IsNullOrEmpty(Store.EndReason);
             bool mine = active && state.publicSelectionPlayerId == _c.LocalPlayerId;
-            _turnHighlight.gameObject.SetActive(mine); _turnNotice.gameObject.SetActive(active);
+            _turnHighlight.gameObject.SetActive(false); _turnNotice.gameObject.SetActive(active); // 화면 테두리 강조는 쓰지 않음
             if (!active) return;
-            _turnNoticeBackground.color = mine ? Palette.Accent : Palette.AccentSoft;
-            _turnNoticeText.color = mine ? Palette.OnAccent : Palette.Text;
+            _turnNoticeBackground.color = Color.clear;
+            _turnNoticeText.color = mine ? Palette.Text : Palette.SubText;
             _turnNoticeText.text = mine
                 ? "<size=23>지금 내 차례입니다!</size>  공용 정보 선택\n<size=13>공개할 기업을 선택하세요.</size>"
                 : "<size=20>" + state.publicSelectionPlayerId + " 님의 공용 정보 선택 차례</size>\n<size=13>다음 차례까지 공개되는 정보를 확인하세요.</size>";
+            FitUnderline(_turnNoticeLine, _turnNoticeText);
             _turnHighlight.SetAsLastSibling(); _turnNotice.SetAsLastSibling();
         }
 
@@ -422,7 +438,8 @@ namespace BlackWhale.UI.View
             _abilityTitle.text = s?.stockSystem == true ? "내 증강" : "내 고유능력";
             _abilityLabel.text = (AbilityCatalog.Get(ability)?.Name ?? "선택 대기") + "\n<size=11>클릭하여 상태 보기</size>";
             // 새로 얻은 증강이 맨 아래에 붙고, 기존 증강은 위로 밀려 올라간다. 왼쪽 정렬 + 앞에 '-'.
-            if (s?.stockSystem == true) _abilityLabel.text = string.Join("\n", (Store.View?.portfolio?.augments ?? new string[0]).Select(a => "- " + StockRules.Name(a)));
+            if (s?.stockSystem == true) { _abilityLabel.text = ""; RefreshAugmentList(Store.View?.portfolio?.augments ?? new string[0]); }
+            else if (_augmentList != null && _augmentList.childCount > 0) { UiKit.Clear(_augmentList); _augmentKey = null; }
             UpdateTimer();
             _renderedPublic = Store.Public; _renderedView = Store.View;
         }
@@ -685,11 +702,36 @@ namespace BlackWhale.UI.View
             UiKit.SetButton(_doneButton, label, can, can ? Palette.Accent : Palette.Disabled, can ? Color.white : Palette.DisabledText);
         }
 
+        private void RefreshAugmentList(string[] augments)
+        {
+            string key = string.Join(",", augments);
+            if (key == _augmentKey) return;
+            _augmentKey = key; UiKit.Clear(_augmentList);
+            const float rowHeight = 20f;
+            for (int i = 0; i < augments.Length; i++)
+            {
+                float y = (augments.Length - 1 - i) * rowHeight; // 마지막(새) 증강이 맨 아래
+                var row = UiKit.Rect(_augmentList, "Augment_" + augments[i]);
+                row.anchorMin = new Vector2(0, 0); row.anchorMax = new Vector2(1, 0); row.pivot = new Vector2(0, 0);
+                row.offsetMin = new Vector2(0, y); row.offsetMax = new Vector2(0, y + rowHeight);
+                var label = UiKit.Label(row, "- " + StockRules.Name(augments[i]), 13, Palette.Text, TextAnchor.MiddleLeft);
+                label.horizontalOverflow = HorizontalWrapMode.Overflow;
+                var line = UiKit.Panel(row, "Underline", Palette.Text);
+                line.rectTransform.anchorMin = line.rectTransform.anchorMax = Vector2.zero; line.rectTransform.pivot = Vector2.zero;
+                float dash = label.cachedTextGenerator.GetPreferredWidth("- ", label.GetGenerationSettings(Vector2.zero)) / label.pixelsPerUnit;
+                line.rectTransform.anchoredPosition = new Vector2(dash, 1f);
+                line.rectTransform.sizeDelta = new Vector2(Mathf.Max(8f, label.preferredWidth - dash), 1.5f);
+            }
+        }
+
         private void UpdateBanner()
         {
+            // 공용 정보 차례 안내가 같은 자리에 떠 있으면 알림은 잠시 기다린다(바탕이 없어 글자가 겹치지 않게)
+            if (_turnNotice != null && _turnNotice.gameObject.activeSelf) { _bannerGroup.alpha = 0f; return; }
             if (_bannerLeft <= 0f && _bannerQueue.Count > 0)
             {
                 _bannerText.text = _bannerQueue.Dequeue();
+                FitUnderline(_bannerLine, _bannerText);
                 _bannerLeft = _bannerQueue.Count > 2 ? 1.5f : BannerSeconds; // 밀려 있으면 빨리 넘김
             }
             if (_bannerLeft > 0f)
