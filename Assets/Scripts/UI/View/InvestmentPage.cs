@@ -123,7 +123,7 @@ namespace BlackWhale.UI.View
         private void BuildLobby(PublicState s)
         {
             _status.text = "대기실 · 4명이 모두 준비하면 방장이 시작합니다";
-            var card = UiKit.Panel(_body, "Lobby", Palette.Card, rounded: true);
+            var card = UiKit.Panel(_body, "Lobby", Color.clear); // 큰 네모 바탕 없이
             UiKit.Stretch(card.rectTransform, 28, 12, 28, 12);
             var root = card.rectTransform;
 
@@ -135,7 +135,11 @@ namespace BlackWhale.UI.View
             for (int i = 0; i < 4; i++)
             {
                 var p = i < players.Length ? players[i] : null;
-                var row = UiKit.Panel(root, "Player" + (i + 1), p == null ? Palette.Disabled : Palette.Screen, rounded: true);
+                // 네모 칸 대신 밑줄(빈 자리는 회색 밑줄)
+                var row = UiKit.Panel(root, "Player" + (i + 1), Color.clear);
+                var rowLine = UiKit.Panel(row.transform, "Underline", p == null ? Palette.DisabledText : Palette.Text);
+                rowLine.rectTransform.anchorMin = Vector2.zero; rowLine.rectTransform.anchorMax = new Vector2(1, 0);
+                rowLine.rectTransform.offsetMin = Vector2.zero; rowLine.rectTransform.offsetMax = new Vector2(0, 1.5f);
                 UiKit.Place(row.rectTransform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, -60 - i * 54), new Vector2(520, 46));
                 if (configurable) {
                     row.rectTransform.anchorMin = new Vector2(0, 1); row.rectTransform.anchorMax = new Vector2(.49f, 1);

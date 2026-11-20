@@ -258,9 +258,12 @@ namespace BlackWhale.UI.View
         /// <summary>정수만 받는 입력 칸(최대 2자리).</summary>
         public static InputField NumberInput(Transform parent, string text, int fontSize)
         {
-            // 바깥(테두리 색) 안에 흰 칸을 겹쳐 테두리처럼 보이게 한다
-            var bg = Panel(parent, "NumberInput", Palette.CardBorder, rounded: true, raycast: true);
-            var inner = Panel(bg.transform, "Inner", Palette.Card, rounded: true);
+            // 네모 칸 대신 흰 밑줄만(투명 바탕은 클릭 판정용)
+            var bg = Panel(parent, "NumberInput", Color.clear, raycast: true);
+            var line = Panel(bg.transform, "Underline", Palette.Text);
+            line.rectTransform.anchorMin = Vector2.zero; line.rectTransform.anchorMax = new Vector2(1, 0);
+            line.rectTransform.offsetMin = Vector2.zero; line.rectTransform.offsetMax = new Vector2(0, 1.5f);
+            var inner = Panel(bg.transform, "Inner", Color.clear);
             Stretch(inner.rectTransform, 1, 1, 1, 1);
 
             var value = Label(inner.transform, "", fontSize, Palette.Text);
