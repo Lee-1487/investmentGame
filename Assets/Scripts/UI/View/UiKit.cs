@@ -10,36 +10,43 @@ namespace BlackWhale.UI.View
 {
     public static class Palette
     {
-        public static readonly Color Background = new Color32(0x26, 0x2A, 0x33, 0xFF);
-        public static readonly Color Bezel = new Color32(0x0B, 0x0C, 0x0F, 0xFF);
-        public static readonly Color Screen = new Color32(0xF4, 0xF5, 0xF7, 0xFF);
-        public static readonly Color Card = Color.white;
-        public static readonly Color CardBorder = new Color32(0xD5, 0xD9, 0xE0, 0xFF);
-        public static readonly Color Text = new Color32(0x1F, 0x24, 0x2E, 0xFF);
-        public static readonly Color SubText = new Color32(0x6B, 0x72, 0x80, 0xFF);
-        public static readonly Color Accent = new Color32(0x25, 0x63, 0xEB, 0xFF);
-        public static readonly Color AccentSoft = new Color32(0xDB, 0xE7, 0xFE, 0xFF);
-        public static readonly Color Disabled = new Color32(0xE5, 0xE7, 0xEB, 0xFF);
-        public static readonly Color DisabledText = new Color32(0x9C, 0xA3, 0xAF, 0xFF);
-        public static readonly Color Up = new Color32(0xDC, 0x26, 0x26, 0xFF);    // 상승(빨강)
-        public static readonly Color Down = new Color32(0x25, 0x63, 0xEB, 0xFF);  // 하락(파랑)
-        public static readonly Color Locked = new Color32(0x9C, 0xA3, 0xAF, 0x40);
-        public static readonly Color Grid = new Color32(0xCB, 0xD0, 0xD8, 0xFF);
-        public static readonly Color Edge = new Color32(0xC0, 0x39, 0x2B, 0x38);
-        public static readonly Color EdgeHover = new Color32(0xC0, 0x39, 0x2B, 0x80);
-        public static readonly Color Dim = new Color32(0x00, 0x00, 0x00, 0x73);
-        public static readonly Color Warning = new Color32(0xB4, 0x53, 0x09, 0xFF);
-        public static readonly Color Success = new Color32(0x04, 0x78, 0x57, 0xFF);
+        // 테마: 검정·흰색(무채색)만 사용. 초록(Success)만 예외로 유지.
+        // 주가 등락도 무채색: 상승 = 흰색, 하락 = 회색.
+        public static readonly Color Background = new Color32(0x00, 0x00, 0x00, 0xFF);
+        public static readonly Color Bezel = new Color32(0x05, 0x05, 0x05, 0xFF);
+        public static readonly Color Screen = new Color32(0x00, 0x00, 0x00, 0xFF);
+        public static readonly Color Card = new Color32(0x07, 0x07, 0x07, 0xFF);       // 카드(그래프 칸) 바탕: 검정에 가깝게
+        public static readonly Color ChartFrame = new Color32(0x14, 0x14, 0x14, 0xFF); // 그래프 카드 테두리: 거의 안 보이게
+        public static readonly Color CardBorder = new Color32(0x2A, 0x2A, 0x2A, 0xFF);
+        public static readonly Color Text = new Color32(0xF5, 0xF5, 0xF5, 0xFF);
+        public static readonly Color SubText = new Color32(0x8C, 0x8C, 0x8C, 0xFF);
+        public static readonly Color Accent = new Color32(0xFF, 0xFF, 0xFF, 0xFF);     // 강조 = 흰색(버튼 글자는 자동으로 검정)
+        public static readonly Color OnAccent = new Color32(0x00, 0x00, 0x00, 0xFF);   // 흰 강조 위 글자
+        public static readonly Color AccentSoft = new Color32(0x1E, 0x1E, 0x1E, 0xFF);
+        public static readonly Color Disabled = new Color32(0x1A, 0x1A, 0x1A, 0xFF);
+        public static readonly Color DisabledText = new Color32(0x55, 0x55, 0x55, 0xFF);
+        public static readonly Color Up = new Color32(0xFF, 0xFF, 0xFF, 0xFF);    // 상승: 흰색
+        public static readonly Color Down = new Color32(0x8A, 0x8A, 0x8A, 0xFF);  // 하락: 회색
+        public static readonly Color Locked = new Color32(0x8C, 0x8C, 0x8C, 0x30);
+        public static readonly Color Grid = new Color32(0x2C, 0x2C, 0x2C, 0xFF);
+        public static readonly Color Edge = new Color32(0xFF, 0xFF, 0xFF, 0x20);
+        public static readonly Color EdgeHover = new Color32(0xFF, 0xFF, 0xFF, 0x50);
+        public static readonly Color Dim = new Color32(0x00, 0x00, 0x00, 0xB0);
+        public static readonly Color Warning = new Color32(0xC8, 0xC8, 0xC8, 0xFF);
+        public static readonly Color Success = new Color32(0x22, 0xC5, 0x5E, 0xFF); // 초록은 유지
 
         /// <summary>REQ-007 개인별 색상. 플레이어 ID 순서대로.</summary>
         public static Color Player(string playerId)
         {
             switch (playerId)
             {
-                case "P1": return new Color32(0x25, 0x63, 0xEB, 0xFF);
-                case "P2": return new Color32(0xEA, 0x58, 0x0C, 0xFF);
-                case "P3": return new Color32(0x16, 0xA3, 0x4A, 0xFF);
-                case "P4": return new Color32(0x93, 0x33, 0xEA, 0xFF);
+                // 방송 순위 그래프처럼 검정 위에서 또렷한 선 색
+                // 플레이어 구분색은 무채색 테마의 예외. 파스텔(밝고 흐린 색)·원색 대신
+                // 명도를 낮추고 채도는 유지한 깊은 색(봉의 빨강·파랑과 겹치지 않게 그 계열은 피함)
+                case "P1": return new Color32(0x0B, 0x7A, 0x75, 0xFF); // 딥 틸
+                case "P2": return new Color32(0xA8, 0x51, 0x0F, 0xFF); // 구리색(번트 오렌지)
+                case "P3": return new Color32(0x6A, 0x2C, 0x9E, 0xFF); // 딥 퍼플
+                case "P4": return new Color32(0x2E, 0x7D, 0x32, 0xFF); // 포레스트 그린
                 default: return Color.gray;
             }
         }
@@ -73,7 +80,7 @@ namespace BlackWhale.UI.View
                 try
                 {
                     _font = Font.CreateDynamicFontFromOSFont(
-                        new[] { "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans CJK KR", "NanumGothic", "Arial" }, 16);
+                        new[] { "Pretendard", "Pretendard Variable", "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans CJK KR", "NanumGothic", "Arial" }, 16);
                 }
                 catch (Exception)
                 {
@@ -91,7 +98,7 @@ namespace BlackWhale.UI.View
             {
                 if (_rounded != null) return _rounded;
                 const int size = 64;
-                const float radius = 14f;
+                const float radius = 10f; // 방송 화면처럼 모서리를 덜 둥글게
                 var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
                 {
                     wrapMode = TextureWrapMode.Clamp,
@@ -114,6 +121,70 @@ namespace BlackWhale.UI.View
                     SpriteMeshType.FullRect, new Vector4(radius, radius, radius, radius));
                 _rounded.hideFlags = HideFlags.DontSave;
                 return _rounded;
+            }
+        }
+
+        private static Sprite _soft;
+        /// <summary>가장자리로 갈수록 투명해지는(그라데이션) 9-slice 스프라이트. 네모 칸을 바탕에 자연스럽게 녹일 때.</summary>
+        public static Sprite Soft
+        {
+            get
+            {
+                if (_soft != null) return _soft;
+                const int size = 128;
+                const float feather = 60f; // 가장자리에서 이 거리(px)에 걸쳐 0 → 1
+                var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+                {
+                    wrapMode = TextureWrapMode.Clamp,
+                    filterMode = FilterMode.Bilinear,
+                    hideFlags = HideFlags.DontSave
+                };
+                var pixels = new Color32[size * size];
+                for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = Mathf.Min(x + 0.5f, size - x - 0.5f), dy = Mathf.Min(y + 0.5f, size - y - 0.5f);
+                    float a = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(dx / feather)) * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(dy / feather));
+                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)(a * 255));
+                }
+                tex.SetPixels32(pixels);
+                tex.Apply();
+                _soft = Sprite.Create(tex, new UnityEngine.Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0,
+                    SpriteMeshType.FullRect, new Vector4(feather + 2, feather + 2, feather + 2, feather + 2));
+                _soft.hideFlags = HideFlags.DontSave;
+                return _soft;
+            }
+        }
+
+        private static Sprite _pill;
+        /// <summary>양 끝이 완전한 반원인 알약(길쭉한 원형) 버튼용 9-slice 스프라이트. 반지름 32px.</summary>
+        public static Sprite Pill
+        {
+            get
+            {
+                if (_pill != null) return _pill;
+                const int size = 64;
+                const float radius = 32f;
+                var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+                {
+                    wrapMode = TextureWrapMode.Clamp,
+                    filterMode = FilterMode.Bilinear,
+                    hideFlags = HideFlags.DontSave
+                };
+                var pixels = new Color32[size * size];
+                for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float d = Vector2.Distance(new Vector2(x + 0.5f, y + 0.5f), new Vector2(radius, radius));
+                    float a = Mathf.Clamp01(radius - d + 0.5f);
+                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)(a * 255));
+                }
+                tex.SetPixels32(pixels);
+                tex.Apply();
+                _pill = Sprite.Create(tex, new UnityEngine.Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0,
+                    SpriteMeshType.FullRect, new Vector4(radius - 1, radius - 1, radius - 1, radius - 1));
+                _pill.hideFlags = HideFlags.DontSave;
+                return _pill;
             }
         }
 
@@ -208,13 +279,12 @@ namespace BlackWhale.UI.View
             var img = Panel(parent, "Button", background, rounded, raycast: true);
             var button = img.gameObject.AddComponent<Button>();
             button.targetGraphic = img;
-            var colors = button.colors;
-            colors.highlightedColor = new Color(0.92f, 0.92f, 0.92f, 1f);
-            colors.pressedColor = new Color(0.8f, 0.8f, 0.8f, 1f);
-            colors.disabledColor = new Color(0.85f, 0.85f, 0.85f, 0.6f);
-            button.colors = colors;
+            button.transition = Selectable.Transition.None; // 도형·색 변화 없이 글자 + 마우스 올림 밑줄로만 표시
             var text = Label(img.transform, label, fontSize, textColor);
             Stretch(text.rectTransform, 4, 2, 4, 2);
+            var look = img.gameObject.AddComponent<HoverUnderline>();
+            look.Init(button, text);
+            look.Apply(background, textColor);
             if (onClick != null) button.onClick.AddListener(() => onClick());
             return button;
         }
@@ -222,9 +292,12 @@ namespace BlackWhale.UI.View
         /// <summary>정수만 받는 입력 칸(최대 2자리).</summary>
         public static InputField NumberInput(Transform parent, string text, int fontSize)
         {
-            // 바깥(테두리 색) 안에 흰 칸을 겹쳐 테두리처럼 보이게 한다
-            var bg = Panel(parent, "NumberInput", Palette.CardBorder, rounded: true, raycast: true);
-            var inner = Panel(bg.transform, "Inner", Color.white, rounded: true);
+            // 네모 칸 대신 흰 밑줄만(투명 바탕은 클릭 판정용)
+            var bg = Panel(parent, "NumberInput", Color.clear, raycast: true);
+            var line = Panel(bg.transform, "Underline", Palette.Text);
+            line.rectTransform.anchorMin = Vector2.zero; line.rectTransform.anchorMax = new Vector2(1, 0);
+            line.rectTransform.offsetMin = Vector2.zero; line.rectTransform.offsetMax = new Vector2(0, 1.5f);
+            var inner = Panel(bg.transform, "Inner", Color.clear);
             Stretch(inner.rectTransform, 1, 1, 1, 1);
 
             var value = Label(inner.transform, "", fontSize, Palette.Text);
@@ -251,10 +324,19 @@ namespace BlackWhale.UI.View
         public static void SetButton(Button button, string label, bool interactable, Color background, Color textColor)
         {
             button.interactable = interactable;
-            ((Image)button.targetGraphic).color = background;
             var t = LabelOf(button);
             t.text = label;
-            t.color = textColor;
+            var look = button.GetComponent<HoverUnderline>();
+            if (look != null) look.Apply(background, textColor);
+            else { ((Image)button.targetGraphic).color = background; t.color = Readable(background, textColor); }
+        }
+
+        /// <summary>밝은 바탕에 밝은 글자(예: 흰 강조 버튼 + 흰 글자)면 글자를 검정으로 바꿔 읽히게 한다.</summary>
+        public static Color Readable(Color background, Color text)
+        {
+            float bg = background.r * 0.299f + background.g * 0.587f + background.b * 0.114f;
+            float fg = text.r * 0.299f + text.g * 0.587f + text.b * 0.114f;
+            return bg > 0.7f && fg > 0.7f && background.a > 0.5f ? Palette.OnAccent : text;
         }
 
         public static void Clear(Transform t)
@@ -296,5 +378,116 @@ namespace BlackWhale.UI.View
     {
         public Action Clicked;
         public void OnPointerClick(PointerEventData eventData) => Clicked?.Invoke();
+    }
+
+    /// <summary>
+    /// 버튼 바탕을 알약 모양으로: 양 끝 반원 반지름 = 짧은 변의 절반.
+    /// 큰 카드형 버튼(짧은 변 60 초과)은 일반 둥근 모서리를 유지한다.
+    /// </summary>
+    [DisallowMultipleComponent]
+    public sealed class PillShape : MonoBehaviour
+    {
+        private Image _image;
+        private void Awake() { _image = GetComponent<Image>(); Apply(); }
+        private void OnEnable() => Apply();
+        private void OnRectTransformDimensionsChange() => Apply();
+
+        private void Apply()
+        {
+            if (_image == null) _image = GetComponent<Image>();
+            if (_image == null) return;
+            var r = ((RectTransform)transform).rect;
+            float shortSide = Mathf.Min(r.width, r.height);
+            if (shortSide <= 0f) return;
+            _image.type = Image.Type.Sliced;
+            if (shortSide > 60f)
+            {
+                _image.sprite = UiKit.Rounded;
+                _image.pixelsPerUnitMultiplier = 2f;
+                return;
+            }
+            _image.sprite = UiKit.Pill;
+            // 스프라이트 반지름 32px(100ppu) → 화면 반지름 = 32 / 배율. 짧은 변의 절반이 되도록.
+            _image.pixelsPerUnitMultiplier = Mathf.Max(0.01f, 64f / shortSide);
+        }
+    }
+
+    /// <summary>
+    /// 버튼 모양: 도형(바탕) 없이 글자만 보이고, 마우스를 올리면 글자 아래 흰 밑줄이 나타난다.
+    /// 바탕이 밝은(주 버튼·선택됨) 경우는 글자를 굵게 해 구분한다.
+    /// 로고·그림 등 자식 요소가 있는 카드형 버튼은 원래 바탕을 유지한다.
+    /// </summary>
+    [DisallowMultipleComponent]
+    public sealed class HoverUnderline : MonoBehaviour, IPointerEnterHandler, IPointerExitHandler
+    {
+        private Button _button;
+        private Text _label;
+        private Image _image, _line;
+        private Color _background, _text;
+        private bool _hover;
+
+        public void Init(Button button, Text label)
+        {
+            _button = button; _label = label; _image = (Image)button.targetGraphic;
+            _line = UiKit.Panel(transform, "HoverUnderline", Palette.Text);
+            _line.rectTransform.anchorMin = _line.rectTransform.anchorMax = new Vector2(0.5f, 0.5f);
+            _line.rectTransform.pivot = new Vector2(0.5f, 1f);
+            _line.gameObject.SetActive(false);
+        }
+
+        /// <summary>카드형: 글자 말고 다른 자식(로고·그림 등)이 붙은 버튼.</summary>
+        private bool IsCard
+        {
+            get
+            {
+                for (int i = 0; i < transform.childCount; i++)
+                {
+                    var c = transform.GetChild(i);
+                    if (c != _label.transform && c != _line.transform) return true;
+                }
+                return false;
+            }
+        }
+
+        public void Apply(Color background, Color text)
+        {
+            _background = background; _text = text;
+            if (_image == null || _label == null) return;
+            if (IsCard) { _image.color = background; _label.color = UiKit.Readable(background, text); return; }
+            _image.color = Color.clear; // 클릭 판정은 그대로(투명 바탕)
+            float lum = background.r * 0.299f + background.g * 0.587f + background.b * 0.114f;
+            bool primary = background.a > 0.5f && lum > 0.7f; // 흰 강조 바탕 = 주 버튼/선택됨
+            bool disabled = _button != null && !_button.interactable;
+            _label.color = disabled ? Palette.DisabledText : primary ? Palette.Text : text;
+            _label.fontStyle = primary ? FontStyle.Bold : FontStyle.Normal;
+            Refresh();
+        }
+
+        private bool _lastInteractable = true;
+        private void Start() { Apply(_background, _text); _lastInteractable = _button == null || _button.interactable; } // 자식(로고 등)이 다 붙은 뒤 카드형 여부 다시 판단
+        private void Update()
+        {
+            // interactable을 SetButton 없이 바꾼 경우에도 글자색(비활성 회색)을 맞춘다
+            bool now = _button == null || _button.interactable;
+            if (now == _lastInteractable) return;
+            _lastInteractable = now; Apply(_background, _text);
+        }
+        private void OnDisable() { _hover = false; Refresh(); }
+        public void OnPointerEnter(PointerEventData e) { _hover = true; Refresh(); }
+        public void OnPointerExit(PointerEventData e) { _hover = false; Refresh(); }
+
+        private void Refresh()
+        {
+            if (_line == null || _label == null) return;
+            bool show = _hover && (_button == null || _button.interactable) && !string.IsNullOrEmpty(_label.text) && !IsCard;
+            _line.gameObject.SetActive(show);
+            if (!show) return;
+            var rect = ((RectTransform)transform).rect;
+            float w = Mathf.Min(_label.preferredWidth, rect.width - 8f);
+            // 글자 아래로 살짝 띄운다(글자 크기의 약 0.8 + 4px). 버튼 칸 밖으로는 조금(최대 6px)까지만.
+            float y = -Mathf.Min(rect.height * 0.5f + 6f, _label.fontSize * 0.8f + 4f);
+            _line.rectTransform.anchoredPosition = new Vector2(0, y);
+            _line.rectTransform.sizeDelta = new Vector2(Mathf.Max(8f, w), 1.5f);
+        }
     }
 }
