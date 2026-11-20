@@ -1,7 +1,7 @@
 // 태블릿형 게임 화면(REQ-018). 배치는 팀 스케치 기준:
-//  - 위 가장자리: 서버 상태로 만든 D 아이템 상점 화면(구매는 준비 중)
+//  - 위 가장자리: 없음(아이템이 기획에서 빠져 상점 열기를 제거)
 //  - 왼쪽 가장자리: 매수 창으로 넘김 / 오른쪽 가장자리: 정보 구매 창으로 넘김
-//  - 아래 가장자리: 서버가 지급한 보유 아이템
+//  - 아래 가장자리: 없음(아이템이 기획에서 빠져 보유 아이템 창 열기를 제거)
 //  - 상단 중앙: 전광판 주요 알림(5초 표시 후 사라짐)
 //  - 왼쪽 열: 1~4등 칸. 마우스를 올리면 그 플레이어의 이번 턴 수익률·누적 손익·추이(주변 암전)
 //  - 상단 오른쪽: 남은 시간 / 오른쪽: 완료 버튼 / 오른쪽 아래: 내 능력 상태 카드
@@ -163,8 +163,6 @@ namespace BlackWhale.UI.View
 
         private void BuildEdges()
         {
-            Edge("Edge_Top", 0, 1, 1, 1, new Vector2(0, -EdgeSize), Vector2.zero, "아이템 상점 열기", ToggleShop);
-            Edge("Edge_Bottom", 0, 0, 1, 0, Vector2.zero, new Vector2(0, EdgeSize), "보유 아이템 열기", ToggleInventory);
             Edge("Edge_Left", 0, 0, 0, 1, new Vector2(0, EdgeSize), new Vector2(EdgeSize, -EdgeSize), "매수 창으로", () => ShowPage(0));
             Edge("Edge_Right", 1, 0, 1, 1, new Vector2(-EdgeSize, EdgeSize), new Vector2(0, -EdgeSize), "정보 구매 창으로", () => ShowPage(1));
         }
@@ -250,7 +248,9 @@ namespace BlackWhale.UI.View
             _investmentPage.RemainingSeconds = () => _clock.RemainingSeconds(Store.Public, Time.realtimeSinceStartup);
             _investmentPage.RemainingExact = () => _clock.RemainingExact(Store.Public, Time.realtimeSinceStartup);
             _infoPage = new InfoPurchasePage(info, _c, ScreenRect);
-            _investmentPage.OpenStockPlan = id => { ShowPage(1); _infoPage.OpenCompany(id); };
+            // 진입·청산(매매) 화면에서 확대했으면, 축소할 때 다시 매매 화면으로 돌아간다.
+            _investmentPage.OpenStockPlan = id => { _zoomFromTrade = true; ShowPage(1); _infoPage.OpenCompany(id); };
+            _infoPage.Shrunk = () => { if (!_zoomFromTrade) return; _zoomFromTrade = false; ShowPage(0); };
 
             _pageHint = UiKit.Label(ScreenRect, "", 11, Palette.SubText, TextAnchor.LowerCenter);
             _pageHint.rectTransform.anchorMin = new Vector2(0, 0);
@@ -709,20 +709,12 @@ namespace BlackWhale.UI.View
         }
 
         /// <summary>0 = 매수 창, 1 = 정보 구매 창.</summary>
+        private bool _zoomFromTrade;
         public void ShowPage(int index)
         {
             _pageTarget = Mathf.Clamp01(index);
+            if (index == 0) _zoomFromTrade = false;
             if (_pageTarget < .5f) _infoPage?.Collapse();
-        }
-
-        private void ToggleShop()
-        {
-            HidePopup(); _features?.OpenShop();
-        }
-
-        private void ToggleInventory()
-        {
-            HidePopup(); _features?.OpenInventory();
         }
 
         private void OnDoneClicked()
