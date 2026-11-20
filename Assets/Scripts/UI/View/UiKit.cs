@@ -447,7 +447,8 @@ namespace BlackWhale.UI.View
             if (!show) return;
             var rect = ((RectTransform)transform).rect;
             float w = Mathf.Min(_label.preferredWidth, rect.width - 8f);
-            float y = -Mathf.Min(rect.height * 0.5f - 1f, _label.fontSize * 0.62f + 2f);
+            // 글자 아래로 살짝 띄운다(글자 크기의 약 0.8 + 4px). 버튼 칸 밖으로는 조금(최대 6px)까지만.
+            float y = -Mathf.Min(rect.height * 0.5f + 6f, _label.fontSize * 0.8f + 4f);
             _line.rectTransform.anchoredPosition = new Vector2(0, y);
             _line.rectTransform.sizeDelta = new Vector2(Mathf.Max(8f, w), 1.5f);
         }
