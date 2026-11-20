@@ -26,7 +26,8 @@ namespace BlackWhale.UI.View
             public bool WasSoldOut;
             public Image[] BankUnits;          // BANK: 내 30칸 중 자동 예금 칸
             public Text BankLabel;
-            public Outline Frame;              // 진입·청산 단계: 매매 가능(보유) 기업 파란 테두리
+            public Outline Frame;              // (사용 안 함) 예전 매매 가능 테두리
+            public Image TradableDot;          // 실시간 매매: 매매 가능하면 카드 왼쪽 위 흰 점
             public RectTransform MineBadge;    // '내 n주 · 매매 가능'
             public Text MineBadgeText;
             public Image Shade;                // 미보유 기업 흐린 덮개
@@ -201,6 +202,10 @@ namespace BlackWhale.UI.View
             card.Owners.resizeTextForBestFit = true; card.Owners.resizeTextMinSize = 8; card.Owners.resizeTextMaxSize = 12;
             card.Frame = panel.gameObject.AddComponent<Outline>();
             card.Frame.effectColor = Palette.Accent; card.Frame.effectDistance = new Vector2(3, -3); card.Frame.enabled = false;
+            card.TradableDot = UiKit.Panel(r, "TradableDot_" + id, Color.white);
+            card.TradableDot.sprite = UiKit.Pill; card.TradableDot.type = Image.Type.Simple; card.TradableDot.preserveAspect = true;
+            UiKit.Place(card.TradableDot.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(8, -11), new Vector2(9, 9));
+            card.TradableDot.gameObject.SetActive(false);
             var chartRoot = UiKit.Rect(r, "TradeChart_" + id); UiKit.Stretch(chartRoot, 8, 53, 8, State.phase == Protocol.Investment ? (id == "BANK" ? 66 : 110) : State.phase != Protocol.Selection ? 8 : 54);
             card.Chart = chartRoot.gameObject.AddComponent<BarChartGraphic>(); card.Chart.SetInteractive(true);
             UiKit.Click(chartRoot.gameObject, () => OpenPlan?.Invoke(id));
@@ -376,11 +381,13 @@ namespace BlackWhale.UI.View
                     bool[] available = { free > 0, free >= card.Quantity, active >= card.Quantity, active > 0, card.Quantity > 1, card.Quantity < limit };
                     for (int i = 0; i < available.Length; i++) card.Actions[i].interactable = enabled && available[i];
                 }
-                card.Frame.enabled = tradable;
-                card.MineBadge.gameObject.SetActive(tradable);
-                card.MineBadgeText.text = "보유 " + mine + "주";
+                // 매매 가능: 네모 테두리·보유 주 네모 배지 대신 카드 왼쪽 위 흰 점만(보유 수는 아래 '보유 N' 줄에 있음)
+                card.Frame.enabled = false;
+                card.MineBadge.gameObject.SetActive(false);
+                card.TradableDot.gameObject.SetActive(tradable);
                 card.Shade.gameObject.SetActive(false);
-                card.Heading.rectTransform.offsetMax = new Vector2(tradable ? -150 : -70, card.Heading.rectTransform.offsetMax.y);
+                card.Heading.rectTransform.offsetMin = new Vector2(tradable ? 22 : 10, card.Heading.rectTransform.offsetMin.y);
+                card.Heading.rectTransform.offsetMax = new Vector2(-70, card.Heading.rectTransform.offsetMax.y);
                 card.Owners.text = string.Join("  ", owners.Select(o => "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(o.playerId)) + ">" + o.playerId + " ■" + (o.shares + o.reserved) + "</color>"));
                 if (State.phase == Protocol.Investment && id != "BANK")
                     card.Owners.text = "잔여 " + Math.Max(0, total - used) + "/" + total + "주  ·  " + card.Owners.text;

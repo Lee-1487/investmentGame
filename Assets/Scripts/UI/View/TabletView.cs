@@ -312,7 +312,7 @@ namespace BlackWhale.UI.View
             UiKit.Stretch(_abilityTitle.rectTransform, 4, 4, 4, 4);
             _abilityLabel = UiKit.Label(inner, "", 13, Palette.Text, TextAnchor.LowerLeft);
             UiKit.Stretch(_abilityLabel.rectTransform, 10, 26, 6, 4);
-            // 주식 모드 증강 목록: 이름마다 밑줄. 새 증강이 맨 아래, 기존은 위로 밀림.
+            // 주식 모드 증강 목록: 새 증강이 맨 아래, 기존은 위로 밀림.
             _augmentList = UiKit.Rect(inner, "AugmentList");
             UiKit.Stretch(_augmentList, 12, 26, 6, 6);
             UiKit.Hover(job.gameObject, () => ShowAllPlayersPopup(job.rectTransform), HidePopup);
@@ -716,11 +716,6 @@ namespace BlackWhale.UI.View
                 row.offsetMin = new Vector2(0, y); row.offsetMax = new Vector2(0, y + rowHeight);
                 var label = UiKit.Label(row, "- " + StockRules.Name(augments[i]), 13, Palette.Text, TextAnchor.MiddleLeft);
                 label.horizontalOverflow = HorizontalWrapMode.Overflow;
-                var line = UiKit.Panel(row, "Underline", Palette.Text);
-                line.rectTransform.anchorMin = line.rectTransform.anchorMax = Vector2.zero; line.rectTransform.pivot = Vector2.zero;
-                float dash = label.cachedTextGenerator.GetPreferredWidth("- ", label.GetGenerationSettings(Vector2.zero)) / label.pixelsPerUnit;
-                line.rectTransform.anchoredPosition = new Vector2(dash, 1f);
-                line.rectTransform.sizeDelta = new Vector2(Mathf.Max(8f, label.preferredWidth - dash), 1.5f);
             }
         }
 
