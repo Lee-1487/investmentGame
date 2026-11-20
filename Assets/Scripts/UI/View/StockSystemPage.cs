@@ -453,7 +453,7 @@ namespace BlackWhale.UI.View
                 UiKit.Place((RectTransform)button.transform, new Vector2(.5f, 0), new Vector2(.5f, 0), new Vector2(0, 14), new Vector2(160, 36));
                 button.interactable = !State.paused && !controller.Store.HasPending(StockRules.Choose);
                 // 증강 후보가 처음 뜰 때 카드가 한 장씩 뒤집히며 공개
-                UiAnim.FlipIn(cell, "augment:" + State.turn + ":" + string.Join(",", choices) + ":" + i, 0.15f + i * 0.22f);
+                UiAnim.FlipIn(cell, "augment:" + State.turn + ":" + string.Join(",", choices) + ":" + i, 0.05f + i * 0.1f, 0.28f); // 빠르게 뒤집기(0.55초→0.28초, 카드 간격 0.22초→0.1초)
             }
         }
         private static Text Label(RectTransform parent, string text, float top, float height, int size = 14)
