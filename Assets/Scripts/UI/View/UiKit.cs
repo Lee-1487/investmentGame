@@ -40,11 +40,11 @@ namespace BlackWhale.UI.View
             switch (playerId)
             {
                 // 방송 순위 그래프처럼 검정 위에서 또렷한 선 색
-                // 플레이어 구분색은 무채색 테마의 예외(검정 위에서 또렷한 파랑·주황·청록·보라)
-                case "P1": return new Color32(0x4D, 0xA3, 0xFF, 0xFF);
-                case "P2": return new Color32(0xFF, 0xB0, 0x20, 0xFF);
-                case "P3": return new Color32(0x2D, 0xD4, 0xBF, 0xFF);
-                case "P4": return new Color32(0xC0, 0x84, 0xFC, 0xFF);
+                // 플레이어 구분색은 무채색 테마의 예외. 파스텔 대신 어두운 화면에 어울리는 짙고 선명한 색.
+                case "P1": return new Color32(0x2E, 0x7D, 0xFF, 0xFF); // 짙은 파랑
+                case "P2": return new Color32(0xFF, 0x6B, 0x00, 0xFF); // 짙은 주황
+                case "P3": return new Color32(0x00, 0xB3, 0x9A, 0xFF); // 짙은 청록
+                case "P4": return new Color32(0x8B, 0x5C, 0xF6, 0xFF); // 짙은 보라
                 default: return Color.gray;
             }
         }
