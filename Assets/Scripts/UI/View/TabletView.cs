@@ -951,6 +951,8 @@ namespace BlackWhale.UI.View
             _assets.resizeTextMinSize = 11;
             _assets.resizeTextMaxSize = 17;
 
+            // 증강 칸처럼 마우스를 올리기만 해도 정보가 뜨고, 벗어나면 닫힌다(클릭도 그대로 동작).
+            UiKit.Hover(bg.gameObject, () => owner.ShowPlayerPopup(_row, _rt), owner.HidePopup);
             UiKit.Click(bg.gameObject, () => owner.ShowPlayerPopup(_row, _rt));
         }
 
