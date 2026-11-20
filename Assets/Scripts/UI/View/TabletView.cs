@@ -291,8 +291,8 @@ namespace BlackWhale.UI.View
             // 제목은 위에 고정, 목록은 아래부터 쌓인다(새 증강이 생기면 기존 것 위에 하나씩 추가).
             _abilityTitle = UiKit.Label(inner, "", 14, Palette.Text, TextAnchor.UpperCenter, FontStyle.Bold);
             UiKit.Stretch(_abilityTitle.rectTransform, 4, 4, 4, 4);
-            _abilityLabel = UiKit.Label(inner, "", 13, Palette.Text, TextAnchor.LowerCenter);
-            UiKit.Stretch(_abilityLabel.rectTransform, 4, 26, 4, 4);
+            _abilityLabel = UiKit.Label(inner, "", 13, Palette.Text, TextAnchor.LowerLeft);
+            UiKit.Stretch(_abilityLabel.rectTransform, 10, 26, 6, 4);
             UiKit.Hover(job.gameObject, () => ShowAllPlayersPopup(job.rectTransform), HidePopup);
             UiKit.Click(job.gameObject, () => { HidePopup(); _features?.OpenAbility(); });
         }
@@ -417,8 +417,8 @@ namespace BlackWhale.UI.View
             var ability = LiveScreenModels.AbilityId(Store.View?.ability?.selectedId);
             _abilityTitle.text = s?.stockSystem == true ? "내 증강" : "내 고유능력";
             _abilityLabel.text = (AbilityCatalog.Get(ability)?.Name ?? "선택 대기") + "\n<size=11>클릭하여 상태 보기</size>";
-            // 첫 증강이 맨 아래, 새로 얻은 증강은 그 위에 쌓인다.
-            if (s?.stockSystem == true) _abilityLabel.text = string.Join("\n", (Store.View?.portfolio?.augments ?? new string[0]).Select(StockRules.Name).Reverse());
+            // 새로 얻은 증강이 맨 아래에 붙고, 기존 증강은 위로 밀려 올라간다. 왼쪽 정렬 + 앞에 '-'.
+            if (s?.stockSystem == true) _abilityLabel.text = string.Join("\n", (Store.View?.portfolio?.augments ?? new string[0]).Select(a => "- " + StockRules.Name(a)));
             UpdateTimer();
             _renderedPublic = Store.Public; _renderedView = Store.View;
         }
