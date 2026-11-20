@@ -155,18 +155,33 @@ namespace BlackWhale.UI.View
             SetVerticesDirty();
         }
 
+        /// <summary>false면 구간 띠만 그리고 'N일 시가 / N일 종가' 글자는 붙이지 않는다(정보 구매 창 예약용).</summary>
+        public bool ShowTradeLabels = true;
+
+        /// <summary>진입·청산 띠/표시, 플레이어 수익률 글자, 매수·매도 체결 표시를 모두 지운다(시장 공개·투자 결과 화면용).</summary>
+        public void ClearTradeOverlays()
+        {
+            _revealedInvestments = new RevealedInvestment[0];
+            fills = System.Array.Empty<StockFill>();
+            _bands.Clear();
+            SetVerticesDirty();
+            if (_tradeMarkerKey == "none") return;
+            _tradeMarkerKey = "none";
+            if (_tradeMarkerRoot != null) UiKit.Clear(_tradeMarkerRoot);
+        }
+
         public void SetTradeIntervals(IEnumerable<Interval> intervals, bool planned = false)
         {
             _revealedInvestments = new RevealedInvestment[0];
             var ranges = (intervals ?? new Interval[0]).Where(i => i != null).ToArray();
             SetBands(ranges.Select(i => new Vector2Int(i.entryDay, i.exitDay)));
-            string key = planned + ":" + string.Join(";", ranges.Select(i => i.entryDay + "," + i.exitDay));
+            string key = planned + ":" + ShowTradeLabels + ":" + string.Join(";", ranges.Select(i => i.entryDay + "," + i.exitDay));
             if (key == _tradeMarkerKey) return;
             _tradeMarkerKey = key;
             if (_tradeMarkerRoot == null)
             { _tradeMarkerRoot = UiKit.Rect(transform, "TradeMarkers"); UiKit.Stretch(_tradeMarkerRoot); }
             UiKit.Clear(_tradeMarkerRoot);
-            for (int i = 0; i < ranges.Length; i++)
+            for (int i = 0; i < ranges.Length && ShowTradeLabels; i++)
             {
                 TradeMarker("EntryMarker_" + i, ranges[i].entryDay + "일 시가", ranges[i].entryDay, (i % 2) * 2, Palette.Success, false);
                 TradeMarker("ExitMarker_" + i, ranges[i].exitDay + "일 종가", ranges[i].exitDay, (i % 2) * 2 + 1, Palette.Accent, true);

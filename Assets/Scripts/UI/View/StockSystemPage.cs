@@ -402,7 +402,7 @@ namespace BlackWhale.UI.View
                     int? close = InformationWindowRules.KnownDays(visible)[Portfolio.processedDay];
                     card.Heading.text = "<b>" + id + "</b>  " + (close.HasValue ? (10000 + close.Value).ToString("N0") : "—");
                 }
-                if (revealed?.investments != null) card.Chart.SetRevealedInvestments(revealed.investments);
+                if (revealed != null) card.Chart.ClearTradeOverlays(); // 시장 공개·투자 결과: 진입·청산·수익률 표시 없이 주가만
                 else card.Chart.SetTradeIntervals(controller.Store.TradePlans.ChartIntervals(controller.Store.View, State.turn, id, controller.Store.OrderLocked), !controller.Store.OrderLocked);
                 if (card.BankUnits != null) RefreshBank(card);
                 if (card.Units == null) continue;

@@ -306,9 +306,11 @@ namespace BlackWhale.UI.View
             _zoomChart.SetHiddenTail(store.Public?.phase == Protocol.Info);
             _zoomChart.SetCurrentDay(StockRules.CurrentDay(store.Public, store.View?.portfolio));
             var intervals = store.TradePlans.ChartIntervals(store.View, store.CurrentTurn, _zoomCompany, store.OrderLocked);
-            if (revealed?.investments != null) _zoomChart.SetRevealedInvestments(revealed.investments);
+            _zoomChart.ShowTradeLabels = store.Public?.phase != Protocol.Info; // 정보 구매 창 예약에는 시가·종가 글자 없이 띠만
+            if (revealed != null) { } // 시장 공개·투자 결과: 그래프에 진입·청산·수익률 표시 없이 주가만 (아래 SetFills 뒤에서 지움)
             else _zoomChart.SetTradeIntervals(intervals, !store.OrderLocked);
             _zoomChart.SetFills(store.Public?.shareMarket?.FirstOrDefault(c => c.companyId == _zoomCompany)?.fills);
+            if (revealed != null) _zoomChart.ClearTradeOverlays();
             _zoomChart.SetCandidate(_entryDay);
             Vector2Int? allowed = null;
             if (CanPlan && !_selectInformation && (_entryDay.HasValue || plan.Intervals.Length < UiRules.MaxIntervalsPerCompany))
@@ -481,7 +483,7 @@ namespace BlackWhale.UI.View
             _title.text = showingResults ? "시장 공개 · 투자 결과" : phase == Protocol.Investment && state?.stockSystem == true ? "실시간 진입·청산" : state?.publicSelectionActive == true ? "공용 정보 선택" : "정보 구매 창";
             _publicHistory.gameObject.SetActive(windows);
             UiKit.Stretch(_grid, 0, windows ? 76 : 34, 0, 0);
-            if (windows) _publicHistory.text = showingResults ? "플레이어 색 띠 = 확정 거래 구간 · 기업별 합산 수익률 표시 · 확대하면 구간별 수익률을 볼 수 있습니다."
+            if (windows) _publicHistory.text = showingResults ? "이번 턴 주가가 모두 공개되었습니다 · 수익과 순위는 전광판에서 확인하세요."
                 : (state.publicSelectionActive ? "기업 선택 · " + (state.lobbySettings?.publicRevealDays ?? 5) + "일 무료 공개 · "
                     + (state.lobbySettings?.scatteredPublicDays == true ? "무작위 날짜 · " : "연속 구간 · ") : "새 정보 1일 = 1코인 · 마우스로 선택 후 정보 사기 / 예약하기 · ")
                 + string.Join(" / ", (state.publicInformation ?? Array.Empty<PublicInformationChoice>()).Select(InformationWindowRules.PublicChoiceLabel));
@@ -718,7 +720,7 @@ namespace BlackWhale.UI.View
             var revealed = _c.Store.Revealed != null && _c.Store.RevealedTurn == _c.Store.CurrentTurn
                 ? _c.Store.Revealed.FirstOrDefault(x => x.companyId == _companyId)
                 : null;
-            if (revealed != null) _planLabel.text = CompanyInfo.RevealedSummary(revealed);
+            if (revealed != null) _planLabel.text = ""; // 시장 공개·투자 결과에서는 플레이어별 수익률 글자를 표시하지 않음
             DrawChart(company, revealed);
             RefreshButtons();
             RefreshTradeMark();
@@ -733,7 +735,8 @@ namespace BlackWhale.UI.View
             _chart.SetHiddenTail(_c.Store.Public?.phase == Protocol.Info);
             _chart.SetCurrentDay(StockRules.CurrentDay(_c.Store.Public, _c.Store.View?.portfolio));
             _chart.SetFills(_c.Store.Public?.shareMarket?.FirstOrDefault(c => c.companyId == _companyId)?.fills);
-            if (revealed?.investments != null) _chart.SetRevealedInvestments(revealed.investments);
+            _chart.ShowTradeLabels = _c.Store.Public?.phase != Protocol.Info; // 정보 구매 창 예약에는 시가·종가 글자 없이 띠만
+            if (revealed != null) _chart.ClearTradeOverlays(); // 시장 공개·투자 결과: 진입·청산·수익률 표시 없이 주가만
             else _chart.SetTradeIntervals(_c.Store.TradePlans.ChartIntervals(_c.Store.View, _c.Store.CurrentTurn, _companyId, _c.Store.OrderLocked), !_c.Store.OrderLocked);
         }
 
