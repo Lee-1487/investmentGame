@@ -397,7 +397,8 @@ namespace BlackWhale.UI.View
                 card.Chart.SetData(DailyBarModel.Build(visible, revealed));
                 card.Chart.SetTrendThroughDay(revealed != null ? 30 : State.phase == Protocol.Investment ? Portfolio?.processedDay : (int?)null);
                 card.Chart.SetCurrentDay(StockRules.CurrentDay(State, Portfolio));
-                card.Chart.SetFills(company?.fills);
+                card.Chart.SetFills(null); // 진입·청산 체결 막대는 그래프에 그리지 않음
+                card.Chart.ShowTradeLabels = false; // 예약 구간은 띠만(시가·종가 글자 없음)
                 if (investing) {
                     int? close = InformationWindowRules.KnownDays(visible)[Portfolio.processedDay];
                     card.Heading.text = "<b>" + id + "</b>  " + (close.HasValue ? (10000 + close.Value).ToString("N0") : "—");

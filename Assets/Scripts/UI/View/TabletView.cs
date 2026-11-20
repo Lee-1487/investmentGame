@@ -250,7 +250,9 @@ namespace BlackWhale.UI.View
             _investmentPage.RemainingSeconds = () => _clock.RemainingSeconds(Store.Public, Time.realtimeSinceStartup);
             _investmentPage.RemainingExact = () => _clock.RemainingExact(Store.Public, Time.realtimeSinceStartup);
             _infoPage = new InfoPurchasePage(info, _c, ScreenRect);
-            _investmentPage.OpenStockPlan = id => { ShowPage(1); _infoPage.OpenCompany(id); };
+            // 진입·청산(매매) 화면에서 확대했으면, 축소할 때 다시 매매 화면으로 돌아간다.
+            _investmentPage.OpenStockPlan = id => { _zoomFromTrade = true; ShowPage(1); _infoPage.OpenCompany(id); };
+            _infoPage.Shrunk = () => { if (!_zoomFromTrade) return; _zoomFromTrade = false; ShowPage(0); };
 
             _pageHint = UiKit.Label(ScreenRect, "", 11, Palette.SubText, TextAnchor.LowerCenter);
             _pageHint.rectTransform.anchorMin = new Vector2(0, 0);
@@ -709,9 +711,11 @@ namespace BlackWhale.UI.View
         }
 
         /// <summary>0 = 매수 창, 1 = 정보 구매 창.</summary>
+        private bool _zoomFromTrade;
         public void ShowPage(int index)
         {
             _pageTarget = Mathf.Clamp01(index);
+            if (index == 0) _zoomFromTrade = false;
             if (_pageTarget < .5f) _infoPage?.Collapse();
         }
 

@@ -305,20 +305,13 @@ namespace BlackWhale.UI.View
                 float right = DayAxis.LeftX(_informationRange.Value.y, r.xMin, r.width) + slot;
                 // 선택한 구간: 파란색(확정 전 초안)
                 var highlight = new Color32(0x25, 0x63, 0xEB, 0x30);
-                var edge = new Color32(0x25, 0x63, 0xEB, 0xFF);
-                Quad(vh, left, r.yMin, right, r.yMax, highlight);
-                Quad(vh, left, r.yMax - 3, right, r.yMax, edge);
-                Quad(vh, left, r.yMin, left + 2, r.yMax, edge);
-                Quad(vh, right - 2, r.yMin, right, r.yMax, edge);
+                Quad(vh, left, r.yMin, right, r.yMax, highlight); // 테두리는 가로줄·봉 위에 따로(아래 BoxOutline)
             }
             // Current trading day is independent of the user's selected/reserved ranges.
             if (_currentDay.HasValue) {
                 float left = DayAxis.LeftX(_currentDay.Value, r.xMin, r.width);
                 float right = left + slot;
-                Quad(vh, left, r.yMin, right, r.yMax, CurrentDayColor);
-                Quad(vh, left, r.yMin, left + 1.5f, r.yMax, CurrentDayEdgeColor);
-                Quad(vh, right - 1.5f, r.yMin, right, r.yMax, CurrentDayEdgeColor);
-                Quad(vh, left, r.yMax - 2, right, r.yMax, CurrentDayEdgeColor);
+                Quad(vh, left, r.yMin, right, r.yMax, CurrentDayColor); // 테두리는 맨 위에 따로
             }
             foreach (var b in _bands) Band(vh, r, b.x, b.y, BandColor, true);
             for (int p = 0; p < _revealedInvestments.Length; p++)
@@ -431,6 +424,7 @@ namespace BlackWhale.UI.View
 
             foreach (var b in _bands)
             {
+                if (!ShowTradeLabels) break; // 시가·종가 글자를 숨길 때는 시가·종가 눈금도 함께 숨김
                 Endpoint(vh, r, b.x, false, Palette.Success);
                 Endpoint(vh, r, b.y, true, Palette.Accent);
             }
@@ -449,12 +443,29 @@ namespace BlackWhale.UI.View
                 else for (float y = r.yMin; y < r.center.y; y += 6)
                     Quad(vh, x - halfWidth, y, x + halfWidth, Mathf.Min(y + 3, r.center.y), color);
             }
+            // 네모칸 테두리는 가로줄·봉·띠보다 나중에(맨 위에) 네 변 모두 그려 온전히 보이게 한다.
+            if (_informationRange.HasValue)
+                BoxOutline(vh, r, DayAxis.LeftX(_informationRange.Value.x, r.xMin, r.width),
+                    DayAxis.LeftX(_informationRange.Value.y, r.xMin, r.width) + slot, 2f, new Color32(0x25, 0x63, 0xEB, 0xFF));
+            if (_currentDay.HasValue)
+            {
+                float left = DayAxis.LeftX(_currentDay.Value, r.xMin, r.width);
+                BoxOutline(vh, r, left, left + slot, 2f, CurrentDayEdgeColor);
+            }
             // 진입일 후보 표식
             if (_candidate.HasValue && _candidate.Value >= 0 && _candidate.Value < DayAxis.Count)
             {
                 float cx = DayAxis.CenterX(_candidate.Value, r.xMin, r.width);
                 Quad(vh, cx - 1.5f, r.yMin, cx + 1.5f, r.yMax, CandidateColor);
             }
+        }
+
+        private static void BoxOutline(VertexHelper vh, Rect r, float left, float right, float width, Color32 color)
+        {
+            Quad(vh, left, r.yMin, right, r.yMin + width, color);
+            Quad(vh, left, r.yMax - width, right, r.yMax, color);
+            Quad(vh, left, r.yMin, left + width, r.yMax, color);
+            Quad(vh, right - width, r.yMin, right, r.yMax, color);
         }
 
         private static void Band(VertexHelper vh, Rect r, int entry, int exit, Color32 color, bool edges)

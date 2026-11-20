@@ -121,7 +121,7 @@ namespace BlackWhale.UI.View
             _zoomTitle = UiKit.Label(_zoom, "", 22, Palette.Text, TextAnchor.MiddleLeft, FontStyle.Bold);
             _zoomTitle.rectTransform.anchorMin = new Vector2(0, 1); _zoomTitle.rectTransform.anchorMax = Vector2.one;
             _zoomTitle.rectTransform.offsetMin = new Vector2(20, -48); _zoomTitle.rectTransform.offsetMax = new Vector2(-340, -12);
-            var shrink = UiKit.Button(_zoom, "축소하기", 14, Palette.Card, Palette.Text, Collapse);
+            var shrink = UiKit.Button(_zoom, "축소하기", 14, Palette.Card, Palette.Text, () => { Collapse(); Shrunk?.Invoke(); });
             shrink.name = "ShrinkChart";
             UiKit.Place((RectTransform)shrink.transform, Vector2.one, Vector2.one, new Vector2(-16, -12), new Vector2(110, 34));
             _interactionMode = UiKit.Button(_zoom, "", 12, Palette.AccentSoft, Palette.Accent, () => {
@@ -228,6 +228,8 @@ namespace BlackWhale.UI.View
             _cards.FirstOrDefault(c => c.CompanyId == _zoomCompany)?.Refresh();
             RefreshZoom();
         }
+        /// <summary>사용자가 '축소하기'를 눌렀을 때(확대를 연 화면으로 돌아가기용).</summary>
+        public Action Shrunk;
         public void OpenCompany(string company) => Enlarge(company);
         private void Enlarge(string company)
         {
@@ -306,10 +308,10 @@ namespace BlackWhale.UI.View
             _zoomChart.SetHiddenTail(store.Public?.phase == Protocol.Info);
             _zoomChart.SetCurrentDay(StockRules.CurrentDay(store.Public, store.View?.portfolio));
             var intervals = store.TradePlans.ChartIntervals(store.View, store.CurrentTurn, _zoomCompany, store.OrderLocked);
-            _zoomChart.ShowTradeLabels = store.Public?.phase != Protocol.Info; // 정보 구매 창 예약에는 시가·종가 글자 없이 띠만
+            _zoomChart.ShowTradeLabels = false; // 예약·진입청산 구간은 띠만(시가·종가 글자 없음)
             if (revealed != null) { } // 시장 공개·투자 결과: 그래프에 진입·청산·수익률 표시 없이 주가만 (아래 SetFills 뒤에서 지움)
             else _zoomChart.SetTradeIntervals(intervals, !store.OrderLocked);
-            _zoomChart.SetFills(store.Public?.shareMarket?.FirstOrDefault(c => c.companyId == _zoomCompany)?.fills);
+            _zoomChart.SetFills(null); // 진입·청산 체결 막대는 그래프에 그리지 않음
             if (revealed != null) _zoomChart.ClearTradeOverlays();
             _zoomChart.SetCandidate(_entryDay);
             Vector2Int? allowed = null;
@@ -734,8 +736,8 @@ namespace BlackWhale.UI.View
             _chart.SetTrendThroughDay(revealed != null ? 30 : _c.Store.Public?.stockSystem == true && _c.Store.Public.phase == Protocol.Investment ? _c.Store.View?.portfolio?.processedDay : (int?)null);
             _chart.SetHiddenTail(_c.Store.Public?.phase == Protocol.Info);
             _chart.SetCurrentDay(StockRules.CurrentDay(_c.Store.Public, _c.Store.View?.portfolio));
-            _chart.SetFills(_c.Store.Public?.shareMarket?.FirstOrDefault(c => c.companyId == _companyId)?.fills);
-            _chart.ShowTradeLabels = _c.Store.Public?.phase != Protocol.Info; // 정보 구매 창 예약에는 시가·종가 글자 없이 띠만
+            _chart.SetFills(null); // 진입·청산 체결 막대는 그래프에 그리지 않음
+            _chart.ShowTradeLabels = false; // 예약·진입청산 구간은 띠만(시가·종가 글자 없음)
             if (revealed != null) _chart.ClearTradeOverlays(); // 시장 공개·투자 결과: 진입·청산·수익률 표시 없이 주가만
             else _chart.SetTradeIntervals(_c.Store.TradePlans.ChartIntervals(_c.Store.View, _c.Store.CurrentTurn, _companyId, _c.Store.OrderLocked), !_c.Store.OrderLocked);
         }
