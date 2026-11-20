@@ -20,7 +20,7 @@ namespace BlackWhale.UI.View
             UiKit.Clear(_root);
             bool editable = isHost && inLobby;
 
-            ScreenKit.Title(_root, "<b>BOT 난이도</b>   <size=14><color=#6B7280>방 전체에 하나 · 대기실에서 방장만 변경</color></size>");
+            ScreenKit.Title(_root, "<b>BOT 난이도</b>   <size=14><color=#8B9099>방 전체에 하나 · 대기실에서 방장만 변경</color></size>");
 
             var row = UiKit.Rect(_root, "Options");
             UiKit.Stretch(row, 0, 48, 0, 70);
@@ -49,7 +49,7 @@ namespace BlackWhale.UI.View
                     UiKit.Place(pip.rectTransform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2((k - 1) * 26, -28), new Vector2(20, 20));
                 }
 
-                var text = UiKit.Label(inner, "<size=24><b>" + BotDifficultyInfo.Name(d) + "</b></size>" + (on ? "\n<size=12><color=#2563EB><b>선택됨</b></color></size>" : "\n ")
+                var text = UiKit.Label(inner, "<size=24><b>" + BotDifficultyInfo.Name(d) + "</b></size>" + (on ? "\n<size=12><color=#4DA3FF><b>선택됨</b></color></size>" : "\n ")
                         + "\n\n" + BotDifficultyInfo.Describe(d),
                     14, Palette.Text, TextAnchor.UpperCenter);
                 UiKit.Stretch(text.rectTransform, 18, 62, 18, 12);

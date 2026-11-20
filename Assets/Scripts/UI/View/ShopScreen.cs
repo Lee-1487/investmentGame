@@ -67,7 +67,7 @@ namespace BlackWhale.UI.View
             long price = ShopRules.Price(item, m.TurnStartAssets);
             var text = UiKit.Label(inner,
                 "<size=18><b>" + item.Name + "</b></size>\n<color=#" + ColorUtility.ToHtmlStringRGB(color) + "><b>" + item.Short + "</b></color>\n\n"
-                + "<size=12>" + item.Effect + "</size>\n\n<size=11><color=#6B7280>사용: " + ItemCatalog.WhenUsable(item.Category)
+                + "<size=12>" + item.Effect + "</size>\n\n<size=11><color=#8B9099>사용: " + ItemCatalog.WhenUsable(item.Category)
                 + " · 가격 S×" + (item.PriceRateBps / 100) + "%</color></size>",
                 13, Palette.Text, TextAnchor.UpperLeft);
             UiKit.Stretch(text.rectTransform, 12, 42, 12, 66);

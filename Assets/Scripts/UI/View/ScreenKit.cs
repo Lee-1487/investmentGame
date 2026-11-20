@@ -8,9 +8,9 @@ namespace BlackWhale.UI.View
     public static class ScreenKit
     {
         public static readonly Color Amber = new Color32(0xF5, 0x9E, 0x0B, 0xFF);
-        public static readonly Color AmberSoft = new Color32(0xFE, 0xF3, 0xC7, 0xFF);
+        public static readonly Color AmberSoft = new Color32(0x2B, 0x20, 0x08, 0xFF); // 어두운 호박색 바탕
         public static readonly Color Gold = new Color32(0xCA, 0x8A, 0x04, 0xFF);
-        public static readonly Color Ink = new Color32(0x11, 0x18, 0x27, 0xFF);
+        public static readonly Color Ink = new Color32(0x16, 0x17, 0x1A, 0xFF);
 
         /// <summary>테두리 카드. 반환값은 바깥(배치용), inner는 내용을 넣을 안쪽.</summary>
         public static RectTransform Card(Transform parent, string name, Color border, Color fill, out RectTransform inner, float borderWidth = 1f)

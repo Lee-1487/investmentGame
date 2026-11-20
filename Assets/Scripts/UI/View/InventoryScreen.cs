@@ -25,7 +25,7 @@ namespace BlackWhale.UI.View
             UiKit.Clear(_root);
             if (m == null) return;
 
-            ScreenKit.Title(_root, "<b>보유 아이템</b>   <size=14><color=#6B7280>" + m.Items.Count + "/" + ShopRules.InventoryLimit + "칸 · 지금: "
+            ScreenKit.Title(_root, "<b>보유 아이템</b>   <size=14><color=#8B9099>" + m.Items.Count + "/" + ShopRules.InventoryLimit + "칸 · 지금: "
                 + PhaseNames.Korean(m.Phase) + " 단계</color></size>");
 
             // 이번 턴 분류별 사용 여부
@@ -86,7 +86,7 @@ namespace BlackWhale.UI.View
             bar.rectTransform.offsetMax = new Vector2(6, 0);
 
             ScreenKit.Chip(inner, ItemCatalog.CategoryName(item.Category), color, Color.white, new Vector2(0, 1), new Vector2(0, 1), new Vector2(16, -10), 44, 20);
-            var text = UiKit.Label(inner, "<size=17><b>" + item.Name + "</b></size>\n<size=12><color=#6B7280>" + item.Short + " · " + ItemCatalog.WhenUsable(item.Category) + "</color></size>",
+            var text = UiKit.Label(inner, "<size=17><b>" + item.Name + "</b></size>\n<size=12><color=#8B9099>" + item.Short + " · " + ItemCatalog.WhenUsable(item.Category) + "</color></size>",
                 13, Palette.Text, TextAnchor.MiddleLeft);
             UiKit.Stretch(text.rectTransform, 16, 30, 10, 6);
         }
@@ -147,8 +147,8 @@ namespace BlackWhale.UI.View
             string why = !m.UsageEnabled ? m.UnavailableReason : block != UseBlock.None ? ItemUseRules.Explain(block, item)
                 : !ready ? "대상을 고르세요."
                 : "확정하면 아이템이 사라집니다. 효과가 없거나 방어돼도 돌려받지 않습니다.";
-            var msg = UiKit.Label(inner, (block != UseBlock.None ? "<color=#DC2626>" + why + "</color>" : why)
-                    + (string.IsNullOrEmpty(m.LastMessage) ? "" : "\n<color=#047857><b>" + m.LastMessage + "</b></color>"),
+            var msg = UiKit.Label(inner, (block != UseBlock.None ? "<color=#FF4D4F>" + why + "</color>" : why)
+                    + (string.IsNullOrEmpty(m.LastMessage) ? "" : "\n<color=#34D399><b>" + m.LastMessage + "</b></color>"),
                 13, Palette.SubText, TextAnchor.UpperLeft);
             var msgRt = ScreenKit.TopStrip(inner, "Message", y, 44, 18, 18);
             msg.rectTransform.SetParent(msgRt, false);

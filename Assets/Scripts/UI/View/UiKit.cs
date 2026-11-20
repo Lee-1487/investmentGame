@@ -10,36 +10,39 @@ namespace BlackWhale.UI.View
 {
     public static class Palette
     {
-        public static readonly Color Background = new Color32(0x26, 0x2A, 0x33, 0xFF);
-        public static readonly Color Bezel = new Color32(0x0B, 0x0C, 0x0F, 0xFF);
-        public static readonly Color Screen = new Color32(0xF4, 0xF5, 0xF7, 0xFF);
-        public static readonly Color Card = Color.white;
-        public static readonly Color CardBorder = new Color32(0xD5, 0xD9, 0xE0, 0xFF);
-        public static readonly Color Text = new Color32(0x1F, 0x24, 0x2E, 0xFF);
-        public static readonly Color SubText = new Color32(0x6B, 0x72, 0x80, 0xFF);
-        public static readonly Color Accent = new Color32(0x25, 0x63, 0xEB, 0xFF);
-        public static readonly Color AccentSoft = new Color32(0xDB, 0xE7, 0xFE, 0xFF);
-        public static readonly Color Disabled = new Color32(0xE5, 0xE7, 0xEB, 0xFF);
-        public static readonly Color DisabledText = new Color32(0x9C, 0xA3, 0xAF, 0xFF);
-        public static readonly Color Up = new Color32(0xDC, 0x26, 0x26, 0xFF);    // 상승(빨강)
-        public static readonly Color Down = new Color32(0x25, 0x63, 0xEB, 0xFF);  // 하락(파랑)
-        public static readonly Color Locked = new Color32(0x9C, 0xA3, 0xAF, 0x40);
-        public static readonly Color Grid = new Color32(0xCB, 0xD0, 0xD8, 0xFF);
-        public static readonly Color Edge = new Color32(0xC0, 0x39, 0x2B, 0x38);
-        public static readonly Color EdgeHover = new Color32(0xC0, 0x39, 0x2B, 0x80);
-        public static readonly Color Dim = new Color32(0x00, 0x00, 0x00, 0x73);
-        public static readonly Color Warning = new Color32(0xB4, 0x53, 0x09, 0xFF);
-        public static readonly Color Success = new Color32(0x04, 0x78, 0x57, 0xFF);
+        // 테마: 트레이딩 대회 방송 화면처럼 검정 바탕 + 흰 글자 + 큰 숫자 + 주황 포인트.
+        // 주가 색은 한국식(상승 빨강·하락 파랑)을 유지하되 검정 위에서 잘 보이게 밝게.
+        public static readonly Color Background = new Color32(0x00, 0x00, 0x00, 0xFF);
+        public static readonly Color Bezel = new Color32(0x05, 0x05, 0x06, 0xFF);
+        public static readonly Color Screen = new Color32(0x00, 0x00, 0x00, 0xFF);
+        public static readonly Color Card = new Color32(0x0E, 0x0F, 0x11, 0xFF);
+        public static readonly Color CardBorder = new Color32(0x26, 0x28, 0x2D, 0xFF);
+        public static readonly Color Text = new Color32(0xF5, 0xF5, 0xF5, 0xFF);
+        public static readonly Color SubText = new Color32(0x8B, 0x90, 0x99, 0xFF);
+        public static readonly Color Accent = new Color32(0xFF, 0x6A, 0x1F, 0xFF);     // 주황 포인트(방송 화면의 강조 태그 색)
+        public static readonly Color AccentSoft = new Color32(0x2A, 0x17, 0x0C, 0xFF); // 주황 버튼 바탕(어두운 주황)
+        public static readonly Color Disabled = new Color32(0x1A, 0x1B, 0x1E, 0xFF);
+        public static readonly Color DisabledText = new Color32(0x4E, 0x52, 0x5A, 0xFF);
+        public static readonly Color Up = new Color32(0xFF, 0x4D, 0x4F, 0xFF);    // 상승(빨강)
+        public static readonly Color Down = new Color32(0x3D, 0x8B, 0xFF, 0xFF);  // 하락(파랑)
+        public static readonly Color Locked = new Color32(0x8B, 0x90, 0x99, 0x30);
+        public static readonly Color Grid = new Color32(0x2A, 0x2D, 0x33, 0xFF);
+        public static readonly Color Edge = new Color32(0xFF, 0x4D, 0x4F, 0x30);
+        public static readonly Color EdgeHover = new Color32(0xFF, 0x4D, 0x4F, 0x70);
+        public static readonly Color Dim = new Color32(0x00, 0x00, 0x00, 0xB0);
+        public static readonly Color Warning = new Color32(0xF5, 0x9E, 0x0B, 0xFF);
+        public static readonly Color Success = new Color32(0x22, 0xC5, 0x5E, 0xFF);
 
         /// <summary>REQ-007 개인별 색상. 플레이어 ID 순서대로.</summary>
         public static Color Player(string playerId)
         {
             switch (playerId)
             {
-                case "P1": return new Color32(0x25, 0x63, 0xEB, 0xFF);
-                case "P2": return new Color32(0xEA, 0x58, 0x0C, 0xFF);
-                case "P3": return new Color32(0x16, 0xA3, 0x4A, 0xFF);
-                case "P4": return new Color32(0x93, 0x33, 0xEA, 0xFF);
+                // 방송 순위 그래프처럼 검정 위에서 또렷한 선 색
+                case "P1": return new Color32(0x4D, 0xA3, 0xFF, 0xFF);
+                case "P2": return new Color32(0xFF, 0xB0, 0x20, 0xFF);
+                case "P3": return new Color32(0x2D, 0xD4, 0xBF, 0xFF);
+                case "P4": return new Color32(0xC0, 0x84, 0xFC, 0xFF);
                 default: return Color.gray;
             }
         }
@@ -73,7 +76,7 @@ namespace BlackWhale.UI.View
                 try
                 {
                     _font = Font.CreateDynamicFontFromOSFont(
-                        new[] { "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans CJK KR", "NanumGothic", "Arial" }, 16);
+                        new[] { "Pretendard", "Pretendard Variable", "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", "Noto Sans CJK KR", "NanumGothic", "Arial" }, 16);
                 }
                 catch (Exception)
                 {
@@ -91,7 +94,7 @@ namespace BlackWhale.UI.View
             {
                 if (_rounded != null) return _rounded;
                 const int size = 64;
-                const float radius = 14f;
+                const float radius = 10f; // 방송 화면처럼 모서리를 덜 둥글게
                 var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
                 {
                     wrapMode = TextureWrapMode.Clamp,
@@ -224,7 +227,7 @@ namespace BlackWhale.UI.View
         {
             // 바깥(테두리 색) 안에 흰 칸을 겹쳐 테두리처럼 보이게 한다
             var bg = Panel(parent, "NumberInput", Palette.CardBorder, rounded: true, raycast: true);
-            var inner = Panel(bg.transform, "Inner", Color.white, rounded: true);
+            var inner = Panel(bg.transform, "Inner", Palette.Card, rounded: true);
             Stretch(inner.rectTransform, 1, 1, 1, 1);
 
             var value = Label(inner.transform, "", fontSize, Palette.Text);
