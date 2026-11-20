@@ -169,7 +169,7 @@ namespace BlackWhale.UI.View
 
         private void BuildPauseControls()
         {
-            _pauseOverlay = UiKit.Panel(Root, "GamePausedOverlay", new Color(0.08f, 0.1f, 0.15f, .85f), raycast: true).rectTransform;
+            _pauseOverlay = UiKit.Panel(Root, "GamePausedOverlay", new Color(0f, 0f, 0f, .85f), raycast: true).rectTransform;
             UiKit.Stretch(_pauseOverlay, 42, 40, 42, 40);
             var box = UiKit.Panel(_pauseOverlay, "PauseMessage", Palette.Card, rounded: true).rectTransform;
             UiKit.Place(box, new Vector2(.5f, .5f), new Vector2(.5f, .5f), Vector2.zero, new Vector2(480, 180));
@@ -372,7 +372,7 @@ namespace BlackWhale.UI.View
             _turnHighlight.gameObject.SetActive(mine); _turnNotice.gameObject.SetActive(active);
             if (!active) return;
             _turnNoticeBackground.color = mine ? Palette.Accent : Palette.AccentSoft;
-            _turnNoticeText.color = mine ? Color.white : Palette.Text;
+            _turnNoticeText.color = mine ? Palette.OnAccent : Palette.Text;
             _turnNoticeText.text = mine
                 ? "<size=23>지금 내 차례입니다!</size>  공용 정보 선택\n<size=13>공개할 기업을 선택하세요.</size>"
                 : "<size=20>" + state.publicSelectionPlayerId + " 님의 공용 정보 선택 차례</size>\n<size=13>다음 차례까지 공개되는 정보를 확인하세요.</size>";
@@ -451,7 +451,7 @@ namespace BlackWhale.UI.View
                 {
                     ClearBanners();
                     _lastSelector = s.currentPlayerId;
-                    if (s.currentPlayerId == _c.LocalPlayerId) ShowBanner("<color=#FF4D4F><b>내 차례입니다.</b></color> " + (s.stockSystem ? "주식 보유량을 정하세요." : "기업을 선택하세요."));
+                    if (s.currentPlayerId == _c.LocalPlayerId) ShowBanner("<color=#FFFFFF><b>내 차례입니다.</b></color> " + (s.stockSystem ? "주식 보유량을 정하세요." : "기업을 선택하세요."));
                 }
                 string publicSelector = s.publicSelectionActive ? s.turn + "|" + s.publicSelectionIndex + "|" + s.publicSelectionPlayerId : "";
                 if (publicSelector != _lastPublicSelector)
@@ -517,14 +517,14 @@ namespace BlackWhale.UI.View
         private void OnAutomatic(string resultType)
         {
             if (resultType == CommandTypes.ResultOf(CommandTypes.SelectCompany) && Store.Public?.phase == Protocol.Selection)
-                ShowBanner("<color=#F59E0B>시간이 초과되어 기업이 자동 선택되었습니다.</color>");
+                ShowBanner("<color=#D0D0D0>시간이 초과되어 기업이 자동 선택되었습니다.</color>");
             else if (resultType == CommandTypes.ResultOf(CommandTypes.SubmitInvestment) && (Store.Public?.phase == Protocol.Investment || Store.Public?.phase == Protocol.Reveal))
-                ShowBanner("<color=#F59E0B>투자 시간이 끝나 주문이 자동 확정되었습니다. 적용된 구간과 비중은 확정 주문에서 확인하세요.</color>");
+                ShowBanner("<color=#D0D0D0>투자 시간이 끝나 주문이 자동 확정되었습니다. 적용된 구간과 비중은 확정 주문에서 확인하세요.</color>");
         }
 
         private void OnError(ClientError error)
         {
-            ShowBanner("<color=#FF4D4F>" + ErrorMessages.ToKorean(error.ErrorCode) + "</color>");
+            ShowBanner("<color=#FFFFFF>" + ErrorMessages.ToKorean(error.ErrorCode) + "</color>");
         }
 
         // 순위 칸 애니메이션용: 직전에 보여 준 순서와 총자산
@@ -749,7 +749,7 @@ namespace BlackWhale.UI.View
             var r = row.Score;
             string title = "<b>" + row.PlayerId + (row.PlayerId == _c.LocalPlayerId ? " (나)" : "") + "</b>";
             string body = r == null
-                ? "\n<color=#8B9099>아직 정산 결과가 없습니다.</color>"
+                ? "\n<color=#8C8C8C>아직 정산 결과가 없습니다.</color>"
                 : "\n이번 턴 수익률  <b><color=#" + ColorUtility.ToHtmlStringRGB(Palette.ForBps(r.turnReturnBps)) + ">" + DisplayFormat.Percent(r.turnReturnBps) + "</color></b>"
                   + "\n누적 손익  <b>" + DisplayFormat.SignedMoney(r.cumulativeProfit) + "</b>   ·   누적 수익률  <b>" + DisplayFormat.Percent(r.cumulativeReturnBps) + "</b>"
                   + "\n총자산  <b>" + DisplayFormat.Money(r.totalAssets) + "</b>";
@@ -924,7 +924,7 @@ namespace BlackWhale.UI.View
             if (fromIndex >= 0 && fromIndex != _index)
             {
                 bool up = fromIndex > _index;
-                _delta = up ? " <color=#FF4D4F>▲" + (fromIndex - _index) + "</color>" : " <color=#4DA3FF>▼" + (_index - fromIndex) + "</color>";
+                _delta = up ? " <color=#FFFFFF>▲" + (fromIndex - _index) + "</color>" : " <color=#9A9A9A>▼" + (_index - fromIndex) + "</color>";
                 if (up) _rt.SetAsLastSibling(); // 올라오는 칸이 위에 보이게
                 UiAnim.Slide(_rt, PositionOf(fromIndex), PositionOf(_index), UiAnim.SlideSeconds, delay);
                 if (up) UiAnim.Pulse(_rt, delay + UiAnim.SlideSeconds * 0.8f, 1.1f);
@@ -935,7 +935,7 @@ namespace BlackWhale.UI.View
             string rank = row.Rank > 0 ? row.Rank + "등" : "-";
             string me = row.PlayerId == localPlayerId ? " (나)" : "";
             string dot = "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(row.PlayerId)) + ">●</color> ";
-            string conn = row.Connected ? "" : "\n<color=#FF4D4F>연결 끊김</color>";
+            string conn = row.Connected ? "" : "\n<color=#FFFFFF>연결 끊김</color>";
             _text.text = "<b>" + rank + "</b>" + _delta + "\n" + dot + row.PlayerId + me + conn;
 
             if (row.Score == null) { _assets.text = ""; return; }

@@ -34,7 +34,7 @@ namespace BlackWhale.UI.View
             border.effectColor = gain ? ScreenKit.Amber : tone; border.effectDistance = new Vector2(3, -3);
 
             string head = final ? "최종 정산" : turn + "턴 정산";
-            string rankText = rank > 0 ? (rank == 1 ? "<color=#FBBF24><b>1위!</b></color>" : rank + "위") : "";
+            string rankText = rank > 0 ? (rank == 1 ? "<color=#FFFFFF><b>1위!</b></color>" : rank + "위") : "";
             var title = UiKit.Label(card.transform, "<b>" + head + "</b>   <size=16>" + rankText + "</size>", 20, Color.white, TextAnchor.UpperCenter);
             UiKit.Stretch(title.rectTransform, 10, 16, 10, 0);
 
@@ -42,7 +42,7 @@ namespace BlackWhale.UI.View
             UiKit.Stretch(pct.rectTransform, 10, 50, 10, 60);
             UiAnim.Count(pct, 0, turnReturnBps, v => DisplayFormat.Percent((int)v), 1.2f, 0.25f);
 
-            var assets = UiKit.Label(card.transform, "", 18, new Color(0.9f, 0.92f, 0.95f), TextAnchor.LowerCenter);
+            var assets = UiKit.Label(card.transform, "", 18, new Color(0.9f, 0.9f, 0.9f), TextAnchor.LowerCenter);
             UiKit.Stretch(assets.rectTransform, 10, 0, 10, 18);
             UiAnim.Count(assets, prevAssets, nowAssets, v => "자산 " + DisplayFormat.Money(prevAssets) + "  →  <b>" + DisplayFormat.Money(v) + "</b>", 1.4f, 0.35f);
 
@@ -92,11 +92,11 @@ namespace BlackWhale.UI.View
             var root = UiKit.Rect(screen, "ResultAnnouncement");
             UiKit.Stretch(root);
 
-            var band = UiKit.Panel(root, "Band", new Color(0.07f, 0.09f, 0.15f, 0.92f));
+            var band = UiKit.Panel(root, "Band", new Color(0.06f, 0.06f, 0.06f, 0.94f));
             band.raycastTarget = false;
             band.rectTransform.anchorMin = new Vector2(0, .5f); band.rectTransform.anchorMax = new Vector2(1, .5f);
             band.rectTransform.sizeDelta = new Vector2(0, 150);
-            var title = UiKit.Label(band.transform, (final ? "최종" : turn + "턴") + " 결과 발표", 54, new Color32(0xFB, 0xBF, 0x24, 0xFF), TextAnchor.MiddleCenter, FontStyle.Bold);
+            var title = UiKit.Label(band.transform, (final ? "최종" : turn + "턴") + " 결과 발표", 54, new Color32(0xFF, 0xFF, 0xFF, 0xFF), TextAnchor.MiddleCenter, FontStyle.Bold);
             UiKit.Stretch(title.rectTransform, 0, 0, 0, 34);
             var sub = UiKit.Label(band.transform, "이번 턴 수익과 순위가 확정되었습니다", 18, Color.white, TextAnchor.LowerCenter);
             UiKit.Stretch(sub.rectTransform, 0, 0, 0, 16);
@@ -115,7 +115,7 @@ namespace BlackWhale.UI.View
             if (screen == null || string.IsNullOrEmpty(text)) return;
             var root = UiKit.Rect(screen, "ReversalFx");
             UiKit.Stretch(root);
-            var band = UiKit.Panel(root, "Band", mine ? new Color32(0xDC, 0x26, 0x26, 0xF0) : new Color32(0x7C, 0x3A, 0xED, 0xF0), rounded: true);
+            var band = UiKit.Panel(root, "Band", mine ? new Color32(0x24, 0x24, 0x24, 0xF0) : new Color32(0x16, 0x16, 0x16, 0xF0), rounded: true);
             band.raycastTarget = false;
             UiKit.Place(band.rectTransform, new Vector2(.5f, 1), new Vector2(.5f, 1), new Vector2(0, -90), new Vector2(560, 70));
             var label = UiKit.Label(band.transform, "<size=30><b>역전!</b></size>   " + text, 18, Color.white, TextAnchor.MiddleCenter);
@@ -189,7 +189,7 @@ namespace BlackWhale.UI.View
         private readonly float _maxAlpha, _breathSpeed;
         private float _level, _target;
 
-        public UrgencyEdges(RectTransform screen) : this(screen, new Color(0.86f, 0.12f, 0.12f), 0.16f, 1.2f) { }
+        public UrgencyEdges(RectTransform screen) : this(screen, new Color(1f, 1f, 1f), 0.16f, 1.2f) { }
 
         /// <param name="breathSpeed">초당 깜박임 횟수 비슷한 값. 0이면 깜박이지 않음</param>
         public UrgencyEdges(RectTransform screen, Color color, float maxAlpha, float breathSpeed)

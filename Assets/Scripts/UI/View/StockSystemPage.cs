@@ -123,7 +123,7 @@ namespace BlackWhale.UI.View
             if (currentBar != null)
             {
                 currentBar.rectTransform.anchorMax = new Vector2(ratio, 0);
-                currentBar.color = ratio > .5f ? new Color32(0x10, 0xB9, 0x81, 0xFF) : ratio > .25f ? new Color32(0xF5, 0x9E, 0x0B, 0xFF) : new Color32(0xDC, 0x26, 0x26, 0xFF);
+                currentBar.color = ratio > .5f ? new Color32(0x10, 0xB9, 0x81, 0xFF) : ratio > .25f ? new Color32(0xBF, 0xBF, 0xBF, 0xFF) : new Color32(0xFF, 0xFF, 0xFF, 0xFF); // 초록 → 회색 → 흰색
             }
             int sec = Mathf.CeilToInt((float)remain);
             bool hurry = remain > 0 && sec <= 3;
@@ -136,7 +136,7 @@ namespace BlackWhale.UI.View
             if (currentSlotText != null && currentSlotText.text.Contains("·"))
             {
                 string head = currentSlotText.text.Split('<')[0];
-                currentSlotText.text = head + "<size=12>" + (State.selectionIndex / 4 + 1) + "차 · " + (hurry ? "<color=#FF4D4F><b>" + sec + "초</b></color>" : sec + "초") + " · 지금</size>";
+                currentSlotText.text = head + "<size=12>" + (State.selectionIndex / 4 + 1) + "차 · " + (hurry ? "<color=#FFFFFF><b>" + sec + "초</b></color>" : sec + "초") + " · 지금</size>";
             }
             if (urgency != null)
             {
@@ -192,7 +192,7 @@ namespace BlackWhale.UI.View
             var badge = UiKit.Panel(r, "MineBadge_" + id, Palette.Accent, rounded: true);
             card.MineBadge = badge.rectTransform;
             UiKit.Place(card.MineBadge, Vector2.one, Vector2.one, new Vector2(-70, -5), new Vector2(74, 22));
-            card.MineBadgeText = UiKit.Label(badge.transform, "", 11, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
+            card.MineBadgeText = UiKit.Label(badge.transform, "", 11, Palette.OnAccent, TextAnchor.MiddleCenter, FontStyle.Bold);
             UiKit.Stretch(card.MineBadgeText.rectTransform);
             card.MineBadge.gameObject.SetActive(false);
             card.Owners = Label(r, "", 30, 18, 12); card.Owners.name = "ShareOwners_" + id;
@@ -240,7 +240,7 @@ namespace BlackWhale.UI.View
             }
             // 투자 결정에서는 실시간 현황만 보여 주고 매수 슬라이더는 만들지 않는다.
             if (State.phase == Protocol.Investment) return;
-            card.Stamp = UiKit.Label(r, "매진", 30, new Color32(0xDC, 0x26, 0x26, 0xD0), TextAnchor.MiddleCenter, FontStyle.Bold);
+            card.Stamp = UiKit.Label(r, "매진", 30, new Color32(0xFF, 0xFF, 0xFF, 0xD0), TextAnchor.MiddleCenter, FontStyle.Bold);
             card.Stamp.name = "SoldOutStamp_" + id;
             UiKit.Place(card.Stamp.rectTransform, new Vector2(.5f, .5f), new Vector2(.5f, .5f), new Vector2(0, 6), new Vector2(140, 50));
             card.Stamp.rectTransform.localRotation = Quaternion.Euler(0, 0, 12);
@@ -297,11 +297,11 @@ namespace BlackWhale.UI.View
             foreach (var pair in targets) if (pair.Key != "BANK") used += pair.Value;
             used = Math.Max(0, Math.Min(total, used));
             int cash = total - used;
-            Color gold = new Color32(0xCA, 0x8A, 0x04, 0xFF);
+            Color gold = new Color32(0xBF, 0xBF, 0xBF, 0xFF);
             Color invested = Palette.Player(controller.LocalPlayerId);
             invested.a = 0.35f;
             for (int i = 0; i < total; i++) card.BankUnits[i].color = i < used ? invested : gold;
-            card.BankLabel.text = "<color=#EAB308><b>자동 예금</b></color> · 내 BANK <b>" + cash + "</b>/" + total + "칸  <size=11><color=#8B9099>기업을 덜 살수록 늘어납니다</color></size>";
+            card.BankLabel.text = "<color=#D0D0D0><b>자동 예금</b></color> · 내 BANK <b>" + cash + "</b>/" + total + "칸  <size=11><color=#8C8C8C>기업을 덜 살수록 늘어납니다</color></size>";
         }
 
         private int OtherShares(string id) => State.shareMarket?.FirstOrDefault(c => c.companyId == id)?.owners?.Where(v => v.playerId != controller.LocalPlayerId)
@@ -359,7 +359,7 @@ namespace BlackWhale.UI.View
                 var company = State.shareMarket?.FirstOrDefault(c => c.companyId == id);
                 var owners = company?.owners ?? Array.Empty<ShareOwner>();
                 int used = owners.Sum(o => o.shares + o.reserved), total = company?.totalShares ?? (id == "BANK" ? StockRules.BankSupply : StockRules.Supply);
-                string tag = id == "BANK" ? "" : used >= total ? "  <color=#FF4D4F><b>매진</b></color>" : total - used <= 4 ? "  <color=#FF4D4F>품절 임박</color>" : "";
+                string tag = id == "BANK" ? "" : used >= total ? "  <color=#FFFFFF><b>매진</b></color>" : total - used <= 4 ? "  <color=#FFFFFF>품절 임박</color>" : "";
                 card.Heading.text = "<b>" + id + "</b> · " + used + "/" + total + "주" + tag;
                 // 진입·청산 단계: 내가 보유한(매매 가능한) 기업 강조, 미보유는 흐리게
                 bool investing = State.phase == Protocol.Investment && !controller.Store.OrderLocked;
@@ -404,7 +404,7 @@ namespace BlackWhale.UI.View
                 int other = Math.Min(20, colors.Count);
                 int ownUnits = card.Slider != null ? targets[id] : owners.Where(o => o.playerId == controller.LocalPlayerId).Sum(o => o.shares + o.reserved);
                 colors.AddRange(Enumerable.Repeat(Palette.Player(controller.LocalPlayerId), Math.Max(0, ownUnits)));
-                Color empty = new Color32(0x3A, 0x3D, 0x44, 0xFF);
+                Color empty = new Color32(0x3A, 0x3A, 0x3A, 0xFF);
                 bool first = card.LastColors == null;
                 if (first) card.LastColors = new Color[card.Units.Length];
                 for (int i = 0; i < card.Units.Length; i++)

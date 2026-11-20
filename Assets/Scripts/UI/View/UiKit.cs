@@ -10,28 +10,29 @@ namespace BlackWhale.UI.View
 {
     public static class Palette
     {
-        // 테마: 트레이딩 대회 방송 화면처럼 검정 바탕 + 흰 글자 + 큰 숫자 + 주황 포인트.
-        // 주가 색은 한국식(상승 빨강·하락 파랑)을 유지하되 검정 위에서 잘 보이게 밝게.
+        // 테마: 검정·흰색(무채색)만 사용. 초록(Success)만 예외로 유지.
+        // 주가 등락도 무채색: 상승 = 흰색, 하락 = 회색.
         public static readonly Color Background = new Color32(0x00, 0x00, 0x00, 0xFF);
-        public static readonly Color Bezel = new Color32(0x05, 0x05, 0x06, 0xFF);
+        public static readonly Color Bezel = new Color32(0x05, 0x05, 0x05, 0xFF);
         public static readonly Color Screen = new Color32(0x00, 0x00, 0x00, 0xFF);
-        public static readonly Color Card = new Color32(0x0E, 0x0F, 0x11, 0xFF);
-        public static readonly Color CardBorder = new Color32(0x26, 0x28, 0x2D, 0xFF);
+        public static readonly Color Card = new Color32(0x0F, 0x0F, 0x0F, 0xFF);
+        public static readonly Color CardBorder = new Color32(0x2A, 0x2A, 0x2A, 0xFF);
         public static readonly Color Text = new Color32(0xF5, 0xF5, 0xF5, 0xFF);
-        public static readonly Color SubText = new Color32(0x8B, 0x90, 0x99, 0xFF);
-        public static readonly Color Accent = new Color32(0xFF, 0x6A, 0x1F, 0xFF);     // 주황 포인트(방송 화면의 강조 태그 색)
-        public static readonly Color AccentSoft = new Color32(0x2A, 0x17, 0x0C, 0xFF); // 주황 버튼 바탕(어두운 주황)
-        public static readonly Color Disabled = new Color32(0x1A, 0x1B, 0x1E, 0xFF);
-        public static readonly Color DisabledText = new Color32(0x4E, 0x52, 0x5A, 0xFF);
-        public static readonly Color Up = new Color32(0xFF, 0x4D, 0x4F, 0xFF);    // 상승(빨강)
-        public static readonly Color Down = new Color32(0x3D, 0x8B, 0xFF, 0xFF);  // 하락(파랑)
-        public static readonly Color Locked = new Color32(0x8B, 0x90, 0x99, 0x30);
-        public static readonly Color Grid = new Color32(0x2A, 0x2D, 0x33, 0xFF);
-        public static readonly Color Edge = new Color32(0xFF, 0x4D, 0x4F, 0x30);
-        public static readonly Color EdgeHover = new Color32(0xFF, 0x4D, 0x4F, 0x70);
+        public static readonly Color SubText = new Color32(0x8C, 0x8C, 0x8C, 0xFF);
+        public static readonly Color Accent = new Color32(0xFF, 0xFF, 0xFF, 0xFF);     // 강조 = 흰색(버튼 글자는 자동으로 검정)
+        public static readonly Color OnAccent = new Color32(0x00, 0x00, 0x00, 0xFF);   // 흰 강조 위 글자
+        public static readonly Color AccentSoft = new Color32(0x1E, 0x1E, 0x1E, 0xFF);
+        public static readonly Color Disabled = new Color32(0x1A, 0x1A, 0x1A, 0xFF);
+        public static readonly Color DisabledText = new Color32(0x55, 0x55, 0x55, 0xFF);
+        public static readonly Color Up = new Color32(0xFF, 0xFF, 0xFF, 0xFF);    // 상승: 흰색
+        public static readonly Color Down = new Color32(0x8A, 0x8A, 0x8A, 0xFF);  // 하락: 회색
+        public static readonly Color Locked = new Color32(0x8C, 0x8C, 0x8C, 0x30);
+        public static readonly Color Grid = new Color32(0x2C, 0x2C, 0x2C, 0xFF);
+        public static readonly Color Edge = new Color32(0xFF, 0xFF, 0xFF, 0x20);
+        public static readonly Color EdgeHover = new Color32(0xFF, 0xFF, 0xFF, 0x50);
         public static readonly Color Dim = new Color32(0x00, 0x00, 0x00, 0xB0);
-        public static readonly Color Warning = new Color32(0xF5, 0x9E, 0x0B, 0xFF);
-        public static readonly Color Success = new Color32(0x22, 0xC5, 0x5E, 0xFF);
+        public static readonly Color Warning = new Color32(0xC8, 0xC8, 0xC8, 0xFF);
+        public static readonly Color Success = new Color32(0x22, 0xC5, 0x5E, 0xFF); // 초록은 유지
 
         /// <summary>REQ-007 개인별 색상. 플레이어 ID 순서대로.</summary>
         public static Color Player(string playerId)
@@ -39,10 +40,11 @@ namespace BlackWhale.UI.View
             switch (playerId)
             {
                 // 방송 순위 그래프처럼 검정 위에서 또렷한 선 색
-                case "P1": return new Color32(0x4D, 0xA3, 0xFF, 0xFF);
-                case "P2": return new Color32(0xFF, 0xB0, 0x20, 0xFF);
-                case "P3": return new Color32(0x2D, 0xD4, 0xBF, 0xFF);
-                case "P4": return new Color32(0xC0, 0x84, 0xFC, 0xFF);
+                // 무채색 단계로 구분(흰색 → 짙은 회색)
+                case "P1": return new Color32(0xFF, 0xFF, 0xFF, 0xFF);
+                case "P2": return new Color32(0xC4, 0xC4, 0xC4, 0xFF);
+                case "P3": return new Color32(0x92, 0x92, 0x92, 0xFF);
+                case "P4": return new Color32(0x66, 0x66, 0x66, 0xFF);
                 default: return Color.gray;
             }
         }
@@ -250,7 +252,7 @@ namespace BlackWhale.UI.View
             colors.pressedColor = new Color(0.8f, 0.8f, 0.8f, 1f);
             colors.disabledColor = new Color(0.85f, 0.85f, 0.85f, 0.6f);
             button.colors = colors;
-            var text = Label(img.transform, label, fontSize, textColor);
+            var text = Label(img.transform, label, fontSize, Readable(background, textColor));
             Stretch(text.rectTransform, 4, 2, 4, 2);
             if (onClick != null) button.onClick.AddListener(() => onClick());
             return button;
@@ -291,7 +293,15 @@ namespace BlackWhale.UI.View
             ((Image)button.targetGraphic).color = background;
             var t = LabelOf(button);
             t.text = label;
-            t.color = textColor;
+            t.color = Readable(background, textColor);
+        }
+
+        /// <summary>밝은 바탕에 밝은 글자(예: 흰 강조 버튼 + 흰 글자)면 글자를 검정으로 바꿔 읽히게 한다.</summary>
+        public static Color Readable(Color background, Color text)
+        {
+            float bg = background.r * 0.299f + background.g * 0.587f + background.b * 0.114f;
+            float fg = text.r * 0.299f + text.g * 0.587f + text.b * 0.114f;
+            return bg > 0.7f && fg > 0.7f && background.a > 0.5f ? Palette.OnAccent : text;
         }
 
         public static void Clear(Transform t)

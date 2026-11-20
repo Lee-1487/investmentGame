@@ -11,8 +11,8 @@ namespace BlackWhale.UI.View
 {
     public sealed class AbilityPickScreen
     {
-        private static readonly Color Violet = new Color32(0xA7, 0x8B, 0xFA, 0xFF);
-        private static readonly Color VioletSoft = new Color32(0x1E, 0x16, 0x33, 0xFF);
+        private static readonly Color Violet = new Color32(0xE0, 0xE0, 0xE0, 0xFF);
+        private static readonly Color VioletSoft = new Color32(0x16, 0x16, 0x16, 0xFF);
 
         private readonly RectTransform _root;
         private Text _clock;
@@ -28,7 +28,7 @@ namespace BlackWhale.UI.View
             UiKit.Clear(_root);
             if (m == null) return;
 
-            ScreenKit.Title(_root, "<b>고유능력 선택</b>   <size=14><color=#8B9099>후보 3개 중 1개 · 게임 내내 유지</color></size>");
+            ScreenKit.Title(_root, "<b>고유능력 선택</b>   <size=14><color=#8C8C8C>후보 3개 중 1개 · 게임 내내 유지</color></size>");
             _clock = null;
             _timeLimited = m.TimeLimited;
             if (!m.Confirmed)
@@ -66,11 +66,11 @@ namespace BlackWhale.UI.View
                 var em = UiKit.Label(emblem.transform, def.Name.Substring(0, 1), 40, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
                 UiKit.Stretch(em.rectTransform);
 
-                string state = m.Confirmed ? (selected ? "<color=#4DA3FF><b>확정</b></color>" : "")
-                    : selected ? "<color=#F59E0B><b>선택됨</b></color>"
-                    : i == 0 && m.TimeLimited ? "<size=11><color=#8B9099>시간 초과 시 자동 선택</color></size>" : "";
+                string state = m.Confirmed ? (selected ? "<color=#9A9A9A><b>확정</b></color>" : "")
+                    : selected ? "<color=#D0D0D0><b>선택됨</b></color>"
+                    : i == 0 && m.TimeLimited ? "<size=11><color=#8C8C8C>시간 초과 시 자동 선택</color></size>" : "";
                 var text = UiKit.Label(inner,
-                    "<size=24><b>" + def.Name + "</b></size>\n<size=14><color=#A78BFA>" + def.Short + "</color></size>\n\n" + def.Effect + "\n\n" + state,
+                    "<size=24><b>" + def.Name + "</b></size>\n<size=14><color=#C0C0C0>" + def.Short + "</color></size>\n\n" + def.Effect + "\n\n" + state,
                     14, dimmed ? Palette.DisabledText : Palette.Text, TextAnchor.UpperCenter);
                 UiKit.Stretch(text.rectTransform, 18, 124, 18, 12);
 
@@ -122,8 +122,8 @@ namespace BlackWhale.UI.View
             UiKit.Stretch(em.rectTransform);
 
             var text = UiKit.Label(inner,
-                "<size=12><color=#8B9099>내 고유능력 (게임 중 상태 카드)</color></size>\n<size=20><b>" + (def?.Name ?? s.AbilityId) + "</b></size>   "
-                + "<color=#A78BFA><b>" + s.State + "</b></color>\n" + s.Detail + "\n<size=12><color=#8B9099>" + (def?.Effect ?? "") + "</color></size>",
+                "<size=12><color=#8C8C8C>내 고유능력 (게임 중 상태 카드)</color></size>\n<size=20><b>" + (def?.Name ?? s.AbilityId) + "</b></size>   "
+                + "<color=#C0C0C0><b>" + s.State + "</b></color>\n" + s.Detail + "\n<size=12><color=#8C8C8C>" + (def?.Effect ?? "") + "</color></size>",
                 14, Palette.Text, TextAnchor.MiddleLeft);
             UiKit.Stretch(text.rectTransform, 100, 6, 16, 6);
         }

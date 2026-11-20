@@ -49,7 +49,7 @@ namespace BlackWhale.UI.Presentation
             if (IsMyTurn)
             {
                 int left = MyIndices.Count(i => i > CurrentIndex);
-                return "<color=#FF4D4F><b>지금 내 차례입니다</b></color> (" + (CurrentIndex + 1) + "/" + Slots.Length + "번째)"
+                return "<color=#FFFFFF><b>지금 내 차례입니다</b></color> (" + (CurrentIndex + 1) + "/" + Slots.Length + "번째)"
                        + (left > 0 ? " · 이번 뒤에 내 차례 " + left + "번 더" : " · 이번이 마지막 내 차례");
             }
 
@@ -60,7 +60,7 @@ namespace BlackWhale.UI.Presentation
             if (MyNextIndex.HasValue)
             {
                 int wait = TurnsBeforeMine ?? 0;
-                mine = "내 다음 차례: <color=#4DA3FF><b>" + (MyNextIndex.Value + 1) + "번째</b></color>"
+                mine = "내 다음 차례: <color=#9A9A9A><b>" + (MyNextIndex.Value + 1) + "번째</b></color>"
                        + (wait > 1 ? " (내 앞에 " + wait + "번 남음)" : wait == 1 ? " (<b>바로 다음</b>)" : "");
             }
             else if (MyPositionUnknown)
