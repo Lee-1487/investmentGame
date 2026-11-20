@@ -679,8 +679,7 @@ namespace BlackWhale.Flow
                                 initialOrder.Select(id => StockMode ? 0 : progression.GetCoins(roomId, id)).ToArray());
                         latestBoard = scoreboard;
                     }
-                    // 결과 확인 시간: 주식 모드는 결과 발표·정산 카드 연출을 볼 수 있게 10초(기존 모드는 5초 그대로)
-                    Enter(Protocol.Result, now, StockMode ? 10 : 5);
+                    Enter(Protocol.Result, now, 5);
                     if (scoreboard != null) Broadcast(new ServerMessage { type = "SCOREBOARD", scoreboard = scoreboard });
                     foreach (Member member in members) SendView(member.Id);
                     break;
