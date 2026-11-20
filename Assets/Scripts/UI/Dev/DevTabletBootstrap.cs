@@ -76,10 +76,11 @@ namespace BlackWhale.UI.Dev
         {
             connectionPanel = UiKit.Panel(canvasRoot, "ConnectionScreen", Palette.Background, raycast: true).rectTransform;
             UiKit.Stretch(connectionPanel);
-            // 회색 네모 대신 가장자리로 갈수록 바탕(검정)에 녹아드는 그라데이션 카드
-            var cardImage = UiKit.Panel(connectionPanel, "ConnectionCard", new Color32(0x1C, 0x1C, 0x1C, 0xFF));
-            cardImage.sprite = UiKit.Soft; cardImage.type = UnityEngine.UI.Image.Type.Sliced; cardImage.pixelsPerUnitMultiplier = 0.6f;
-            var card = cardImage.rectTransform;
+            // 회색 네모 대신 가장자리로 갈수록 바탕(검정)에 녹아드는 넓고 어두운 그라데이션(내용 칸보다 크게)
+            var glow = UiKit.Panel(connectionPanel, "ConnectionGlow", new Color32(0x10, 0x10, 0x10, 0xFF));
+            glow.sprite = UiKit.Soft; glow.type = UnityEngine.UI.Image.Type.Sliced; glow.pixelsPerUnitMultiplier = 0.35f;
+            UiKit.Place(glow.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1100, 1000));
+            var card = UiKit.Panel(connectionPanel, "ConnectionCard", Color.clear).rectTransform; // 내용 배치용(투명)
             UiKit.Place(card, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(640, 650));
             Label(card, "BLACK WHALE", 30, -26, 50, Palette.Text);
             Label(card, "함께 플레이할 방을 만들거나 방장 주소로 참가하세요.", 16, -84, 30, Palette.SubText);
