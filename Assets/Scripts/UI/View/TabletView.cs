@@ -1,5 +1,5 @@
 // 태블릿형 게임 화면(REQ-018). 배치는 팀 스케치 기준:
-//  - 위 가장자리: 서버 상태로 만든 D 아이템 상점 화면(구매는 준비 중)
+//  - 위 가장자리: 없음(아이템이 기획에서 빠져 상점 열기를 제거)
 //  - 왼쪽 가장자리: 매수 창으로 넘김 / 오른쪽 가장자리: 정보 구매 창으로 넘김
 //  - 아래 가장자리: 없음(아이템이 기획에서 빠져 보유 아이템 창 열기를 제거)
 //  - 상단 중앙: 전광판 주요 알림(5초 표시 후 사라짐)
@@ -163,7 +163,6 @@ namespace BlackWhale.UI.View
 
         private void BuildEdges()
         {
-            Edge("Edge_Top", 0, 1, 1, 1, new Vector2(0, -EdgeSize), Vector2.zero, "아이템 상점 열기", ToggleShop);
             Edge("Edge_Left", 0, 0, 0, 1, new Vector2(0, EdgeSize), new Vector2(EdgeSize, -EdgeSize), "매수 창으로", () => ShowPage(0));
             Edge("Edge_Right", 1, 0, 1, 1, new Vector2(-EdgeSize, EdgeSize), new Vector2(0, -EdgeSize), "정보 구매 창으로", () => ShowPage(1));
         }
@@ -716,16 +715,6 @@ namespace BlackWhale.UI.View
             _pageTarget = Mathf.Clamp01(index);
             if (index == 0) _zoomFromTrade = false;
             if (_pageTarget < .5f) _infoPage?.Collapse();
-        }
-
-        private void ToggleShop()
-        {
-            HidePopup(); _features?.OpenShop();
-        }
-
-        private void ToggleInventory()
-        {
-            HidePopup(); _features?.OpenInventory();
         }
 
         private void OnDoneClicked()
