@@ -122,6 +122,38 @@ namespace BlackWhale.UI.View
             }
         }
 
+        private static Sprite _soft;
+        /// <summary>가장자리로 갈수록 투명해지는(그라데이션) 9-slice 스프라이트. 네모 칸을 바탕에 자연스럽게 녹일 때.</summary>
+        public static Sprite Soft
+        {
+            get
+            {
+                if (_soft != null) return _soft;
+                const int size = 128;
+                const float feather = 60f; // 가장자리에서 이 거리(px)에 걸쳐 0 → 1
+                var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+                {
+                    wrapMode = TextureWrapMode.Clamp,
+                    filterMode = FilterMode.Bilinear,
+                    hideFlags = HideFlags.DontSave
+                };
+                var pixels = new Color32[size * size];
+                for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = Mathf.Min(x + 0.5f, size - x - 0.5f), dy = Mathf.Min(y + 0.5f, size - y - 0.5f);
+                    float a = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(dx / feather)) * Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(dy / feather));
+                    pixels[y * size + x] = new Color32(255, 255, 255, (byte)(a * 255));
+                }
+                tex.SetPixels32(pixels);
+                tex.Apply();
+                _soft = Sprite.Create(tex, new UnityEngine.Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f, 0,
+                    SpriteMeshType.FullRect, new Vector4(feather + 2, feather + 2, feather + 2, feather + 2));
+                _soft.hideFlags = HideFlags.DontSave;
+                return _soft;
+            }
+        }
+
         private static Sprite _pill;
         /// <summary>양 끝이 완전한 반원인 알약(길쭉한 원형) 버튼용 9-slice 스프라이트. 반지름 32px.</summary>
         public static Sprite Pill
