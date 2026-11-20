@@ -18,8 +18,8 @@ namespace BlackWhale.UI.View
     [RequireComponent(typeof(CanvasRenderer))]
     public sealed class BarChartGraphic : MaskableGraphic
     {
-        public static readonly Color32 UpColor = new Color32(0xFF, 0xFF, 0xFF, 0xFF); // 상승: 흰색
-        public static readonly Color32 DownColor = new Color32(0x8A, 0x8A, 0x8A, 0xFF); // 하락: 회색
+        public static readonly Color32 UpColor = new Color32(0xFF, 0x4D, 0x4F, 0xFF); // 상승 봉: 빨강(무채색 테마 예외, 검정 바탕용 밝은 빨강)
+        public static readonly Color32 DownColor = new Color32(0x3D, 0x8B, 0xFF, 0xFF); // 하락 봉: 파랑(무채색 테마 예외)
         public static readonly Color32 ZeroColor = new Color32(0xA0, 0xA0, 0xA0, 0xFF);
         public static readonly Color32 FlatColor = new Color32(0xA0, 0xA0, 0xA0, 0xFF);
         public static readonly Color32 UnknownOpenColor = new Color32(0x6E, 0x6E, 0x6E, 0xFF);
