@@ -26,7 +26,7 @@ namespace BlackWhale.UI.View
         public static readonly Color32 SubGridColor = new Color32(0xE5, 0xE7, 0xEB, 0xFF);
         public static readonly Color32 HiddenColor = new Color32(0x9C, 0xA3, 0xAF, 0x38);
         public static readonly Color32 GridColor = new Color32(0xCB, 0xD0, 0xD8, 0xFF);
-        public static readonly Color32 BandColor = new Color32(0x25, 0x63, 0xEB, 0x2E);
+        public static readonly Color32 BandColor = new Color32(0x25, 0x63, 0xEB, 0x30); // 선택 네모칸과 같은 색
         public static readonly Color32 BandEdgeColor = new Color32(0x25, 0x63, 0xEB, 0xCC);
         public static readonly Color32 CandidateColor = new Color32(0x25, 0x63, 0xEB, 0xFF); // 진입일 후보: 파란색
         public static readonly Color32 PreviewOkColor = new Color32(0x25, 0x63, 0xEB, 0x30);   // 구간 미리보기: 파란색
@@ -299,7 +299,10 @@ namespace BlackWhale.UI.View
             }
 
             // 시가 진입부터 종가 청산까지 양 끝 날짜의 칸 전체를 포함한다.
-            if (_informationRange.HasValue)
+            // 이미 예약된 구간과 똑같은 선택이면 선택 네모칸은 따로 그리지 않는다
+            // (예약 직후 바탕을 눌러 선택이 지워져도 모양이 바뀌지 않게).
+            bool selectionIsReserved = _informationRange.HasValue && _bands.Contains(_informationRange.Value);
+            if (_informationRange.HasValue && !selectionIsReserved)
             {
                 float left = DayAxis.LeftX(_informationRange.Value.x, r.xMin, r.width);
                 float right = DayAxis.LeftX(_informationRange.Value.y, r.xMin, r.width) + slot;
@@ -313,7 +316,7 @@ namespace BlackWhale.UI.View
                 float right = left + slot;
                 Quad(vh, left, r.yMin, right, r.yMax, CurrentDayColor); // 테두리는 맨 위에 따로
             }
-            foreach (var b in _bands) Band(vh, r, b.x, b.y, BandColor, true);
+            foreach (var b in _bands) Band(vh, r, b.x, b.y, BandColor, false); // 테두리는 맨 위에 네 변 모두(아래)
             for (int p = 0; p < _revealedInvestments.Length; p++)
             {
                 var position = _revealedInvestments[p];
@@ -444,7 +447,11 @@ namespace BlackWhale.UI.View
                     Quad(vh, x - halfWidth, y, x + halfWidth, Mathf.Min(y + 3, r.center.y), color);
             }
             // 네모칸 테두리는 가로줄·봉·띠보다 나중에(맨 위에) 네 변 모두 그려 온전히 보이게 한다.
-            if (_informationRange.HasValue)
+            // 예약된 구간도 선택 네모칸과 같은 모양(채움 + 네 변 테두리)으로 그린다.
+            foreach (var b in _bands)
+                BoxOutline(vh, r, DayAxis.LeftX(Mathf.Clamp(Mathf.Min(b.x, b.y), 0, DayAxis.Count - 1), r.xMin, r.width),
+                    DayAxis.LeftX(Mathf.Clamp(Mathf.Max(b.x, b.y), 0, DayAxis.Count - 1) + 1, r.xMin, r.width), 2f, new Color32(0x25, 0x63, 0xEB, 0xFF));
+            if (_informationRange.HasValue && !selectionIsReserved)
                 BoxOutline(vh, r, DayAxis.LeftX(_informationRange.Value.x, r.xMin, r.width),
                     DayAxis.LeftX(_informationRange.Value.y, r.xMin, r.width) + slot, 2f, new Color32(0x25, 0x63, 0xEB, 0xFF));
             if (_currentDay.HasValue)
