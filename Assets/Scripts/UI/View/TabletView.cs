@@ -33,7 +33,7 @@ namespace BlackWhale.UI.View
 
         // 페이지
         private RectTransform _pager;
-        private RectTransform _pageViewport, _rightColumn;
+        private RectTransform _pageViewport, _rightColumn, _timerBox;
         private float _pageT, _pageTarget;
         private InvestmentPage _investmentPage;
         private InfoPurchasePage _infoPage;
@@ -322,7 +322,9 @@ namespace BlackWhale.UI.View
         private void BuildTimer()
         {
             var timerBox = UiKit.Panel(ScreenRect, "Timer", Palette.Card, rounded: true);
-            UiKit.Place(timerBox.rectTransform, Vector2.one, Vector2.one, new Vector2(-12, -8), new Vector2(148, 60));
+            _timerBox = timerBox.rectTransform;
+            // 가운데를 오른쪽 열(완료 버튼)의 가운데에 맞춘다(오른쪽 열 폭은 모드마다 달라서 갱신 때 다시 맞춤)
+            UiKit.Place(_timerBox, Vector2.one, new Vector2(0.5f, 1f), new Vector2(-86, -8), new Vector2(148, 60));
             _timerText = UiKit.Label(timerBox.transform, "", 14, Palette.Text);
             UiKit.Stretch(_timerText.rectTransform, 6, 4, 6, 4);
         }
@@ -410,6 +412,8 @@ namespace BlackWhale.UI.View
             _rightColumn.offsetMin = new Vector2(stock ? -140 : -160, 12);
             _rightColumn.offsetMax = new Vector2(stock ? -2 : -12, -76);
             ((RectTransform)_doneButton.transform).sizeDelta = new Vector2(stock ? 130 : 140, 44);
+            // 타이머를 완료 버튼(오른쪽 열) 가운데에 맞춤
+            if (_timerBox != null) _timerBox.anchoredPosition = new Vector2((_rightColumn.offsetMin.x + _rightColumn.offsetMax.x) * 0.5f, -8);
             // Sync before rebuilding clickable cards so a new turn uses its current deadline.
             if (s != null)
             {
