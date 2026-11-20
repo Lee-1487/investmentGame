@@ -288,7 +288,7 @@ namespace BlackWhale.UI.View
             underline.rectTransform.offsetMin = new Vector2(6, 0); underline.rectTransform.offsetMax = new Vector2(-6, 2);
             // 왼쪽 세로줄을 더해 'ㄴ'자로 감싼다
             var leftLine = UiKit.Panel(job.transform, "LeftLine", Color.white);
-            leftLine.rectTransform.anchorMin = Vector2.zero; leftLine.rectTransform.anchorMax = new Vector2(0, 1);
+            leftLine.rectTransform.anchorMin = Vector2.zero; leftLine.rectTransform.anchorMax = new Vector2(0, 0.5f); // 세로줄은 아래 절반만
             leftLine.rectTransform.offsetMin = new Vector2(6, 0); leftLine.rectTransform.offsetMax = new Vector2(8, 0);
             var inner = UiKit.Rect(job.transform, "Inner");
             UiKit.Stretch(inner, 0, 0, 0, 6);
