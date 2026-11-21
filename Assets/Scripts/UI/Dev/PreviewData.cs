@@ -10,6 +10,7 @@ namespace BlackWhale.UI.Dev
     public static class PreviewData
     {
         public const string Me = "P2";
+        private const long PreviewInitialAssets = 100000000;
 
         private static readonly Dictionary<string, string> Names = new Dictionary<string, string>
         {
@@ -30,7 +31,7 @@ namespace BlackWhale.UI.Dev
         private static BoardPlayer PlayerAt(string id, int turn)
         {
             var r = Returns[id];
-            long assets = 10000;
+            long assets = PreviewInitialAssets;
             var history = new List<KeyValuePair<int, int>>();
             for (int t = 1; t <= turn; t++)
             {
@@ -43,8 +44,8 @@ namespace BlackWhale.UI.Dev
                 Name = NameOf(id),
                 TotalAssets = assets,
                 TurnReturnBps = r[turn - 1],
-                CumulativeReturnBps = (int)((assets - 10000) * 10000 / 10000),
-                CumulativeProfit = assets - 10000,
+                CumulativeReturnBps = (int)((assets - PreviewInitialAssets) * 10000 / PreviewInitialAssets),
+                CumulativeProfit = assets - PreviewInitialAssets,
                 History = history,
                 IsMe = id == Me
             };
@@ -60,7 +61,7 @@ namespace BlackWhale.UI.Dev
             {
                 now[i].Rank = i + 1;
                 now[i].PrevRank = before == null ? 0 : before.IndexOf(now[i].Id) + 1;
-                now[i].PrevTotalAssets = turn > 1 ? PlayerAt(now[i].Id, turn - 1).TotalAssets : 10000;
+                now[i].PrevTotalAssets = turn > 1 ? PlayerAt(now[i].Id, turn - 1).TotalAssets : PreviewInitialAssets;
             }
             return now;
         }
