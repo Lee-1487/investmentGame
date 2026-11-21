@@ -16,5 +16,26 @@ namespace BlackWhale.UI.Presentation
             double span = Math.Max(50, max - min), center = (min + max) * .5;
             return new ChartVerticalRange { MinBps = center - span * .62, MaxBps = center + span * .62 };
         }
+
+        // 세로축 % 눈금용 '깔끔한' 간격(bps). 0.1%, 0.2%, 0.25%, 0.5%, 1%, 2%, 2.5%, 5%, 10% ...
+        private static readonly int[] NiceSteps = { 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 20000, 25000, 50000, 100000 };
+
+        /// <summary>
+        /// 세로축에 숫자로 표시할 눈금 값(bps, 오름차순). 항상 0(0일차 기준)을 포함하고,
+        /// 범위 안에 들어가는 깔끔한 간격의 배수만 고른다. 눈금 수는 maxTicks 이하.
+        /// </summary>
+        public int[] AxisTicks(int maxTicks = 5)
+        {
+            if (maxTicks < 2) maxTicks = 2;
+            double span = Span > 0 ? Span : 1;
+            int step = NiceSteps[NiceSteps.Length - 1];
+            foreach (int candidate in NiceSteps)
+                if (span / candidate <= maxTicks - 1) { step = candidate; break; }
+            var ticks = new List<int>();
+            long first = (long)Math.Ceiling(MinBps / step), last = (long)Math.Floor(MaxBps / step);
+            for (long k = first; k <= last && ticks.Count < maxTicks; k++) ticks.Add((int)(k * step));
+            if (!ticks.Contains(0) && MinBps <= 0 && MaxBps >= 0) { ticks.Add(0); ticks.Sort(); }
+            return ticks.ToArray();
+        }
     }
 }

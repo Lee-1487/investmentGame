@@ -549,6 +549,16 @@ namespace BlackWhale.Tests
             Check(fit.MinBps < -20 && fit.MaxBps > 30 && fit.Span < 100, "small movements fill the chart with padding");
             var positive = ChartVerticalRange.FromVisibleValues(new[] { 0, 1000 });
             Check(positive.Fraction(0) < .2 && positive.Fraction(1000) > .8, "unused negative half no longer flattens a positive pattern");
+            // 세로축 % 눈금: 0% 포함, 깔끔한 간격, 범위 안, 개수 제한
+            foreach (var range in new[] { flat, fit, positive, ChartVerticalRange.FromVisibleValues(new[] { 0, -3700, 2200 }), ChartVerticalRange.FromVisibleValues(new[] { 0, 15000 }) })
+            {
+                int[] ticks = range.AxisTicks(5);
+                Check(ticks.Length >= 2 && ticks.Length <= 5, "axis tick count stays readable: " + ticks.Length);
+                Check(ticks.Contains(0), "axis ticks always include the 0% day-zero baseline");
+                Check(ticks.All(t => t >= range.MinBps && t <= range.MaxBps), "axis ticks stay inside the visible range");
+                Check(ticks.Zip(ticks.Skip(1), (a, b) => b - a).Distinct().Count() == 1, "axis ticks are evenly spaced");
+            }
+            Check(positive.AxisTicks(5).SequenceEqual(new[] { 0, 500, 1000 }), "0~10% chart shows 0%, +5%, +10%: " + string.Join(",", positive.AxisTicks(5)));
         }
         private static void Patterns()
         {

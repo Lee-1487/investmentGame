@@ -64,6 +64,7 @@ namespace BlackWhale.UI.View
     {
         private readonly GameClientController _c;
         private readonly Text _header;
+        private readonly CoinBadge _coinBadge;
         private readonly Text _title, _publicHistory;
         private readonly List<CompanyCard> _cards = new List<CompanyCard>();
         private readonly RectTransform _grid, _zoom, _planRows;
@@ -94,8 +95,12 @@ namespace BlackWhale.UI.View
             var title = _title = UiKit.Label(page, "정보 구매 창", 18, Palette.Text, TextAnchor.MiddleLeft, FontStyle.Bold);
             UiKit.Place(title.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(6, -2), new Vector2(300, 28));
 
-            _header = UiKit.Label(page, "", 18, Palette.Text, TextAnchor.MiddleRight); // 보유 코인·자산: 크게
-            UiKit.Place(_header.rectTransform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-6, 0), new Vector2(640, 32));
+            // 보유 코인: 금화 그림 + 개수(오른쪽 끝). 자산 등 나머지는 그 왼쪽 글자로.
+            _coinBadge = new CoinBadge(page, 18);
+            _coinBadge.Root.name = "HeaderCoinBadge";
+            UiKit.Place(_coinBadge.Root, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-6, 0), new Vector2(84, 32));
+            _header = UiKit.Label(page, "", 18, Palette.Text, TextAnchor.MiddleRight); // 자산: 크게
+            UiKit.Place(_header.rectTransform, new Vector2(1, 1), new Vector2(1, 1), new Vector2(-96, 0), new Vector2(560, 32));
             _header.resizeTextForBestFit = true; _header.resizeTextMinSize = 13; _header.resizeTextMaxSize = 18; // 길면 칸 안에 맞게
             _publicHistory = UiKit.Label(page, "", 11, Palette.SubText, TextAnchor.MiddleLeft);
             _publicHistory.name = "PublicInformationHistory";
@@ -252,11 +257,11 @@ namespace BlackWhale.UI.View
                 RefreshZoom();
             };
             _grid.gameObject.SetActive(false); _zoom.gameObject.SetActive(true); _zoom.SetAsLastSibling();
-            _header.gameObject.SetActive(false); // 확대 창 오른쪽 틈으로 뒤쪽 머리글이 비쳐 보이지 않게
+            _header.gameObject.SetActive(false); _coinBadge.SetVisible(false); // 확대 창 오른쪽 틈으로 뒤쪽 머리글이 비쳐 보이지 않게
             _zoomChart.name = "ZoomChart_" + company; RefreshZoom();
         }
         public void Collapse()
-        { _zoomCompany = null; _entryDay = _hoverDay = null; _grid.gameObject.SetActive(true); _zoom.gameObject.SetActive(false); _header.gameObject.SetActive(true); }
+        { _zoomCompany = null; _entryDay = _hoverDay = null; _grid.gameObject.SetActive(true); _zoom.gameObject.SetActive(false); _header.gameObject.SetActive(true); _coinBadge.SetVisible(_c.Store.View != null); }
         private void PlanDay(int day, bool right)
         {
             if (_selectInformation && _c.Store.Public?.windowInformation == true)
@@ -489,9 +494,11 @@ namespace BlackWhale.UI.View
                 : (state.publicSelectionActive ? "기업 선택 · " + (state.lobbySettings?.publicRevealDays ?? 5) + "일 무료 공개 · "
                     + (state.lobbySettings?.scatteredPublicDays == true ? "무작위 날짜 · " : "연속 구간 · ") : "새 정보 1일 = 1코인 · 마우스로 선택 후 정보 사기 / 예약하기 · ")
                 + string.Join(" / ", (state.publicInformation ?? Array.Empty<PublicInformationChoice>()).Select(InformationWindowRules.PublicChoiceLabel));
+            _coinBadge.SetVisible(v != null && _zoomCompany == null);
+            if (v != null) _coinBadge.Set(v.coins);
             _header.text = v == null
                 ? "개인 정보 수신 대기"
-                : "보유 코인 <b>" + v.coins + "개</b>   ·   자산 " + DisplayFormat.Money(v.assets)
+                : "자산 " + DisplayFormat.Money(v.assets)
                   + (phase == Protocol.Info ? state?.publicSelectionActive == true ? " · " + state.publicSelectionPlayerId + " 공개 차례" : "   ·   1코인 = 1일"
                      : state?.stockSystem == true ? "" : "   ·   구매는 정보 탐색 단계에서만");
             if (state?.stockSystem == true && !showingResults && !state.publicSelectionActive)

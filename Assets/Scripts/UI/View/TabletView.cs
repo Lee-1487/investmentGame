@@ -92,6 +92,7 @@ namespace BlackWhale.UI.View
         private string _lastPhaseKey = "";
         private int? _lastDay;
         private int _lastCoins = -1;
+        private int _lastActiveShares = -1;
         private bool _lastLocked;
         private int _lastBoardTurn = -1;
         private string _lastSelector = "";
@@ -460,6 +461,7 @@ namespace BlackWhale.UI.View
                 if (phaseKey != _lastPhaseKey)
                 {
                     _lastCoins = -1;
+                    _lastActiveShares = -1;
                     _lastSelector = "";
                     _lastPhaseKey = phaseKey;
                     if (s.phase == Protocol.Lobby) ShowBanner("대기실에 입장했습니다. 준비를 누르세요.");
@@ -493,7 +495,13 @@ namespace BlackWhale.UI.View
             if (v != null)
             {
                 // 코인으로 정보를 살 때마다 뜨던 알림은 너무 자주 나와서 띄우지 않는다(남은 코인은 정보 구매 창 위쪽에 항상 표시됨)
+                // 효과음: 같은 단계 안에서 코인이 줄면(정보 구매) 짤랑, 보유 주식이 늘면 매수음·줄면 매도음
+                if (_lastCoins >= 0 && v.coins < _lastCoins) UiSound.Play(UiSound.Kind.Coin);
                 _lastCoins = v.coins;
+                int activeShares = v.portfolio?.holdings?.Sum(h => h.activeShares) ?? 0;
+                if (_lastActiveShares >= 0 && activeShares != _lastActiveShares)
+                    UiSound.Play(activeShares > _lastActiveShares ? UiSound.Kind.Buy : UiSound.Kind.Sell);
+                _lastActiveShares = activeShares;
             }
 
             if (Store.EndReason != _lastEndReason)
