@@ -138,7 +138,36 @@ namespace BlackWhale.UI.View
             NoteReveal();
             _verticalRange = ChartVerticalRange.FromVisibleValues(_bars.Where(b => b.Bps.HasValue).Select(b => b.Bps.Value)
                 .Concat(_bars.Where(b => b.Bps.HasValue && b.OpenBps.HasValue).Select(b => b.OpenBps.Value)));
+            RefreshAxisLabels();
             SetVerticesDirty();
+        }
+
+        // 세로축 % 눈금: 가로 보조선 위치에 '+2%', '0%', '-1%'처럼 0일차 대비 수익률을 글자로 붙인다.
+        public const int AxisTickCount = 5;
+        private RectTransform _axisLabelRoot;
+        private string _axisKey;
+        private void RefreshAxisLabels()
+        {
+            var ticks = _verticalRange.AxisTicks(AxisTickCount);
+            string key = string.Join(",", ticks) + "|" + _verticalRange.MinBps + "|" + _verticalRange.MaxBps;
+            if (key == _axisKey) return;
+            _axisKey = key;
+            if (_axisLabelRoot == null)
+            {
+                _axisLabelRoot = UiKit.Rect(transform, "AxisLabels");
+                UiKit.Stretch(_axisLabelRoot);
+            }
+            UiKit.Clear(_axisLabelRoot);
+            foreach (int tick in ticks)
+            {
+                float f = (float)_verticalRange.Fraction(tick);
+                bool nearTop = f > .85f;
+                var label = UiKit.Label(_axisLabelRoot, DisplayFormat.Percent(tick), 9,
+                    tick == 0 ? (Color)ZeroColor : Palette.SubText, nearTop ? TextAnchor.UpperRight : TextAnchor.LowerRight);
+                label.name = "AxisTick_" + tick;
+                label.horizontalOverflow = HorizontalWrapMode.Overflow;
+                UiKit.Place(label.rectTransform, new Vector2(1, f), new Vector2(1, nearTop ? 1 : 0), new Vector2(-2, nearTop ? -1 : 1), new Vector2(48, 12));
+            }
         }
 
         public void SetBands(IEnumerable<Vector2Int> bands)
@@ -341,11 +370,11 @@ namespace BlackWhale.UI.View
                 Quad(vh, x0, r.yMin, x0 + slot, r.yMax, HoverColor);
             }
 
-            // 숫자 없는 보조 가로선과 공개된 0일차 기준선. 기업의 변동 한도는 그리지 않는다.
-            foreach (float f in new[] { .25f, .5f, .75f })
+            // % 눈금 보조 가로선(오른쪽 끝에 숫자 표시)과 공개된 0일차 기준선. 기업의 변동 한도는 그리지 않는다.
+            foreach (int tick in _verticalRange.AxisTicks(AxisTickCount))
             {
-                float gy = r.yMin + f * r.height;
-                gy = Mathf.Clamp(gy, r.yMin + 0.5f, r.yMax - 0.5f);
+                if (tick == 0) continue;
+                float gy = Mathf.Clamp(ValueY(r, tick), r.yMin + 0.5f, r.yMax - 0.5f);
                 Quad(vh, r.xMin, gy - 0.5f, r.xMax, gy + 0.5f, SubGridColor);
             }
             Quad(vh, r.xMin, zeroY - 0.5f, r.xMax, zeroY + 0.5f, GridColor);

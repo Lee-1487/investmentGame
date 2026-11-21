@@ -188,6 +188,49 @@ namespace BlackWhale.UI.View
             }
         }
 
+        private static Sprite _coin;
+        /// <summary>코드로 그린 금화 아이콘(64px). 바깥 테두리 + 안쪽 홈 + 왼쪽 위 반사광.</summary>
+        public static Sprite Coin
+        {
+            get
+            {
+                if (_coin != null) return _coin;
+                const int size = 64;
+                const float radius = 31f;
+                var rim = new Color(0.72f, 0.50f, 0.10f);   // 테두리(진한 금색)
+                var face = new Color(0.98f, 0.78f, 0.20f);  // 앞면(밝은 금색)
+                var groove = new Color(0.82f, 0.60f, 0.12f); // 안쪽 홈
+                var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+                {
+                    wrapMode = TextureWrapMode.Clamp,
+                    filterMode = FilterMode.Bilinear,
+                    hideFlags = HideFlags.DontSave
+                };
+                var pixels = new Color32[size * size];
+                var center = new Vector2(size * 0.5f, size * 0.5f);
+                var light = new Vector2(size * 0.36f, size * 0.66f);
+                for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    var p = new Vector2(x + 0.5f, y + 0.5f);
+                    float d = Vector2.Distance(p, center);
+                    float alpha = Mathf.Clamp01(radius - d + 0.5f);
+                    Color c = d > radius - 5f ? rim : face;
+                    if (Mathf.Abs(d - (radius - 11f)) < 1.5f) c = groove;
+                    // 반사광: 왼쪽 위가 살짝 밝다
+                    float shine = Mathf.Clamp01(1f - Vector2.Distance(p, light) / (radius * 0.9f)) * 0.35f;
+                    c = Color.Lerp(c, Color.white, shine);
+                    c.a = alpha;
+                    pixels[y * size + x] = c;
+                }
+                tex.SetPixels32(pixels);
+                tex.Apply();
+                _coin = Sprite.Create(tex, new UnityEngine.Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 100f);
+                _coin.hideFlags = HideFlags.DontSave;
+                return _coin;
+            }
+        }
+
         // ------------------------------------------------------------------
         // 배치
         // ------------------------------------------------------------------
@@ -285,6 +328,7 @@ namespace BlackWhale.UI.View
             var look = img.gameObject.AddComponent<HoverUnderline>();
             look.Init(button, text);
             look.Apply(background, textColor);
+            button.onClick.AddListener(() => UiSound.Play(UiSound.Kind.Click)); // 버튼 효과음(플레이 중에만)
             if (onClick != null) button.onClick.AddListener(() => onClick());
             return button;
         }
@@ -489,5 +533,31 @@ namespace BlackWhale.UI.View
             _line.rectTransform.anchoredPosition = new Vector2(0, y);
             _line.rectTransform.sizeDelta = new Vector2(Mathf.Max(8f, w), 1.5f);
         }
+    }
+    /// <summary>코인을 글자뿐 아니라 금화 그림으로도 보여 주는 작은 묶음(아이콘 + "N개").</summary>
+    public sealed class CoinBadge
+    {
+        public readonly RectTransform Root;
+        public readonly Image Icon;
+        public readonly Text Count;
+
+        public CoinBadge(Transform parent, int fontSize)
+        {
+            Root = UiKit.Rect(parent, "CoinBadge");
+            Icon = UiKit.Panel(Root, "CoinIcon", Color.white);
+            Icon.sprite = UiKit.Coin;
+            Icon.preserveAspect = true;
+            // 아이콘: 왼쪽, 높이만큼 정사각형
+            Icon.rectTransform.anchorMin = new Vector2(0, 0.1f); Icon.rectTransform.anchorMax = new Vector2(0, 0.9f);
+            Icon.rectTransform.pivot = new Vector2(0, 0.5f);
+            Icon.rectTransform.offsetMin = Vector2.zero; Icon.rectTransform.offsetMax = new Vector2(fontSize + 8, 0);
+            Count = UiKit.Label(Root, "", fontSize, Palette.Text, TextAnchor.MiddleLeft);
+            Count.name = "CoinCount";
+            Count.horizontalOverflow = HorizontalWrapMode.Overflow;
+            UiKit.Stretch(Count.rectTransform, fontSize + 14, 0, 0, 0);
+        }
+
+        public void Set(int coins) => Count.text = "<b>" + coins + "</b>개";
+        public void SetVisible(bool visible) => Root.gameObject.SetActive(visible);
     }
 }
