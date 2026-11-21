@@ -18,25 +18,25 @@ namespace BlackWhale.UI.View
     [RequireComponent(typeof(CanvasRenderer))]
     public sealed class BarChartGraphic : MaskableGraphic
     {
-        public static readonly Color32 UpColor = new Color32(0xDC, 0x26, 0x26, 0xFF);
-        public static readonly Color32 DownColor = new Color32(0x25, 0x63, 0xEB, 0xFF);
-        public static readonly Color32 ZeroColor = new Color32(0x37, 0x41, 0x51, 0xFF);
-        public static readonly Color32 FlatColor = new Color32(0x37, 0x41, 0x51, 0xFF);
-        public static readonly Color32 UnknownOpenColor = new Color32(0x6B, 0x72, 0x80, 0xFF);
-        public static readonly Color32 SubGridColor = new Color32(0xE5, 0xE7, 0xEB, 0xFF);
-        public static readonly Color32 HiddenColor = new Color32(0x9C, 0xA3, 0xAF, 0x38);
-        public static readonly Color32 GridColor = new Color32(0xCB, 0xD0, 0xD8, 0xFF);
-        public static readonly Color32 BandColor = new Color32(0x25, 0x63, 0xEB, 0x2E);
-        public static readonly Color32 BandEdgeColor = new Color32(0x25, 0x63, 0xEB, 0xCC);
-        public static readonly Color32 CandidateColor = new Color32(0x25, 0x63, 0xEB, 0xFF); // 진입일 후보: 파란색
-        public static readonly Color32 PreviewOkColor = new Color32(0x25, 0x63, 0xEB, 0x30);   // 구간 미리보기: 파란색
-        public static readonly Color32 PreviewBadColor = new Color32(0x6B, 0x72, 0x80, 0x22);  // 불가 구간: 회색(빨간색 대신)
-        public static readonly Color32 AllowedColor = new Color32(0x05, 0x96, 0x69, 0x1F);
-        public static readonly Color32 AllowedEdgeColor = new Color32(0x05, 0x96, 0x69, 0x8C);
-        public static readonly Color32 HoverColor = new Color32(0x11, 0x18, 0x27, 0x22);
-        public static readonly Color32 CurrentDayColor = new Color32(0xF5, 0x9E, 0x0B, 0x38);
-        public static readonly Color32 CurrentDayEdgeColor = new Color32(0xD9, 0x77, 0x06, 0xD0);
-        public static readonly Color32 TrendColor = new Color32(77, 209, 240, 255);
+        public static readonly Color32 UpColor = new Color32(0xFF, 0x4D, 0x4F, 0xFF); // 상승 봉: 빨강(무채색 테마 예외, 검정 바탕용 밝은 빨강)
+        public static readonly Color32 DownColor = new Color32(0x3D, 0x8B, 0xFF, 0xFF); // 하락 봉: 파랑(무채색 테마 예외)
+        public static readonly Color32 ZeroColor = new Color32(0xA0, 0xA0, 0xA0, 0xFF);
+        public static readonly Color32 FlatColor = new Color32(0xA0, 0xA0, 0xA0, 0xFF);
+        public static readonly Color32 UnknownOpenColor = new Color32(0x6E, 0x6E, 0x6E, 0xFF);
+        public static readonly Color32 SubGridColor = new Color32(0x1C, 0x1C, 0x1C, 0xFF);
+        public static readonly Color32 HiddenColor = new Color32(0x8C, 0x8C, 0x8C, 0x1C);
+        public static readonly Color32 GridColor = new Color32(0x3A, 0x3A, 0x3A, 0xFF);
+        public static readonly Color32 BandColor = new Color32(0xFF, 0xFF, 0xFF, 0x30); // 선택 네모칸과 같은 색
+        public static readonly Color32 BandEdgeColor = new Color32(0xFF, 0xFF, 0xFF, 0xCC);
+        public static readonly Color32 CandidateColor = new Color32(0xFF, 0xFF, 0xFF, 0xFF); // 진입일 후보: 파란색
+        public static readonly Color32 PreviewOkColor = new Color32(0xFF, 0xFF, 0xFF, 0x30);   // 구간 미리보기: 파란색
+        public static readonly Color32 PreviewBadColor = new Color32(0x8C, 0x8C, 0x8C, 0x22);  // 불가 구간: 회색(빨간색 대신)
+        public static readonly Color32 AllowedColor = new Color32(0x22, 0xC5, 0x5E, 0x1A);
+        public static readonly Color32 AllowedEdgeColor = new Color32(0x22, 0xC5, 0x5E, 0x8C);
+        public static readonly Color32 HoverColor = new Color32(0xFF, 0xFF, 0xFF, 0x14);
+        public static readonly Color32 CurrentDayColor = new Color32(0xFF, 0xFF, 0xFF, 0x18);
+        public static readonly Color32 CurrentDayEdgeColor = new Color32(0xFF, 0xFF, 0xFF, 0xE0);
+        public static readonly Color32 TrendColor = new Color32(0xCF, 0xCF, 0xCF, 0xFF);
         private int? _trendThroughDay;
         public void SetTrendThroughDay(int? day)
         {
@@ -83,7 +83,7 @@ namespace BlackWhale.UI.View
         // 시장 공개 연출: 공개된 시세가 0일 → 30일 순서로 금빛 선을 따라 휩쓸며 나타난다.
         // 처음 보는 공개 데이터일 때 한 번만, 모든 차트가 같은 시각 기준으로 움직인다(화면을 다시 그려도 재시작 안 함).
         public const float RevealSeconds = 2.6f;
-        public static readonly Color32 SweepColor = new Color32(0xF5, 0xB0, 0x0B, 0xFF);
+        public static readonly Color32 SweepColor = new Color32(0xFF, 0xFF, 0xFF, 0xFF);
         private static readonly HashSet<int> s_seenReveals = new HashSet<int>();
         private static float s_revealStart = -100f;
         private bool _hasRevealed;
@@ -155,18 +155,33 @@ namespace BlackWhale.UI.View
             SetVerticesDirty();
         }
 
+        /// <summary>false면 구간 띠만 그리고 'N일 시가 / N일 종가' 글자는 붙이지 않는다(정보 구매 창 예약용).</summary>
+        public bool ShowTradeLabels = true;
+
+        /// <summary>진입·청산 띠/표시, 플레이어 수익률 글자, 매수·매도 체결 표시를 모두 지운다(시장 공개·투자 결과 화면용).</summary>
+        public void ClearTradeOverlays()
+        {
+            _revealedInvestments = new RevealedInvestment[0];
+            fills = System.Array.Empty<StockFill>();
+            _bands.Clear();
+            SetVerticesDirty();
+            if (_tradeMarkerKey == "none") return;
+            _tradeMarkerKey = "none";
+            if (_tradeMarkerRoot != null) UiKit.Clear(_tradeMarkerRoot);
+        }
+
         public void SetTradeIntervals(IEnumerable<Interval> intervals, bool planned = false)
         {
             _revealedInvestments = new RevealedInvestment[0];
             var ranges = (intervals ?? new Interval[0]).Where(i => i != null).ToArray();
             SetBands(ranges.Select(i => new Vector2Int(i.entryDay, i.exitDay)));
-            string key = planned + ":" + string.Join(";", ranges.Select(i => i.entryDay + "," + i.exitDay));
+            string key = planned + ":" + ShowTradeLabels + ":" + string.Join(";", ranges.Select(i => i.entryDay + "," + i.exitDay));
             if (key == _tradeMarkerKey) return;
             _tradeMarkerKey = key;
             if (_tradeMarkerRoot == null)
             { _tradeMarkerRoot = UiKit.Rect(transform, "TradeMarkers"); UiKit.Stretch(_tradeMarkerRoot); }
             UiKit.Clear(_tradeMarkerRoot);
-            for (int i = 0; i < ranges.Length; i++)
+            for (int i = 0; i < ranges.Length && ShowTradeLabels; i++)
             {
                 TradeMarker("EntryMarker_" + i, ranges[i].entryDay + "일 시가", ranges[i].entryDay, (i % 2) * 2, Palette.Success, false);
                 TradeMarker("ExitMarker_" + i, ranges[i].exitDay + "일 종가", ranges[i].exitDay, (i % 2) * 2 + 1, Palette.Accent, true);
@@ -257,7 +272,7 @@ namespace BlackWhale.UI.View
             if (_hiddenTail)
             {
                 float left = DayAxis.LeftX(26, r.xMin, r.width);
-                Quad(vh, left, r.yMin, r.xMax, r.yMax, new Color32(0xCB, 0xD0, 0xD8, 0xDD));
+                Quad(vh, left, r.yMin, r.xMax, r.yMax, new Color32(0x14, 0x14, 0x14, 0xF0));
             }
             // 미열람 날짜: 칸 전체 음영(공개 연출 중 아직 선이 지나가지 않은 공개 날짜도 가려 둔다)
             for (int i = 0; i < _bars.Length; i++)
@@ -284,28 +299,24 @@ namespace BlackWhale.UI.View
             }
 
             // 시가 진입부터 종가 청산까지 양 끝 날짜의 칸 전체를 포함한다.
-            if (_informationRange.HasValue)
+            // 이미 예약된 구간과 똑같은 선택이면 선택 네모칸은 따로 그리지 않는다
+            // (예약 직후 바탕을 눌러 선택이 지워져도 모양이 바뀌지 않게).
+            bool selectionIsReserved = _informationRange.HasValue && _bands.Contains(_informationRange.Value);
+            if (_informationRange.HasValue && !selectionIsReserved)
             {
                 float left = DayAxis.LeftX(_informationRange.Value.x, r.xMin, r.width);
                 float right = DayAxis.LeftX(_informationRange.Value.y, r.xMin, r.width) + slot;
                 // 선택한 구간: 파란색(확정 전 초안)
-                var highlight = new Color32(0x25, 0x63, 0xEB, 0x30);
-                var edge = new Color32(0x25, 0x63, 0xEB, 0xFF);
-                Quad(vh, left, r.yMin, right, r.yMax, highlight);
-                Quad(vh, left, r.yMax - 3, right, r.yMax, edge);
-                Quad(vh, left, r.yMin, left + 2, r.yMax, edge);
-                Quad(vh, right - 2, r.yMin, right, r.yMax, edge);
+                var highlight = new Color32(0xFF, 0xFF, 0xFF, 0x30);
+                Quad(vh, left, r.yMin, right, r.yMax, highlight); // 테두리는 가로줄·봉 위에 따로(아래 BoxOutline)
             }
             // Current trading day is independent of the user's selected/reserved ranges.
             if (_currentDay.HasValue) {
                 float left = DayAxis.LeftX(_currentDay.Value, r.xMin, r.width);
                 float right = left + slot;
-                Quad(vh, left, r.yMin, right, r.yMax, CurrentDayColor);
-                Quad(vh, left, r.yMin, left + 1.5f, r.yMax, CurrentDayEdgeColor);
-                Quad(vh, right - 1.5f, r.yMin, right, r.yMax, CurrentDayEdgeColor);
-                Quad(vh, left, r.yMax - 2, right, r.yMax, CurrentDayEdgeColor);
+                Quad(vh, left, r.yMin, right, r.yMax, CurrentDayColor); // 테두리는 맨 위에 따로
             }
-            foreach (var b in _bands) Band(vh, r, b.x, b.y, BandColor, true);
+            foreach (var b in _bands) Band(vh, r, b.x, b.y, BandColor, false); // 테두리는 맨 위에 네 변 모두(아래)
             for (int p = 0; p < _revealedInvestments.Length; p++)
             {
                 var position = _revealedInvestments[p];
@@ -416,6 +427,7 @@ namespace BlackWhale.UI.View
 
             foreach (var b in _bands)
             {
+                if (!ShowTradeLabels) break; // 시가·종가 글자를 숨길 때는 시가·종가 눈금도 함께 숨김
                 Endpoint(vh, r, b.x, false, Palette.Success);
                 Endpoint(vh, r, b.y, true, Palette.Accent);
             }
@@ -434,12 +446,33 @@ namespace BlackWhale.UI.View
                 else for (float y = r.yMin; y < r.center.y; y += 6)
                     Quad(vh, x - halfWidth, y, x + halfWidth, Mathf.Min(y + 3, r.center.y), color);
             }
+            // 네모칸 테두리는 가로줄·봉·띠보다 나중에(맨 위에) 네 변 모두 그려 온전히 보이게 한다.
+            // 예약된 구간도 선택 네모칸과 같은 모양(채움 + 네 변 테두리)으로 그린다.
+            foreach (var b in _bands)
+                BoxOutline(vh, r, DayAxis.LeftX(Mathf.Clamp(Mathf.Min(b.x, b.y), 0, DayAxis.Count - 1), r.xMin, r.width),
+                    DayAxis.LeftX(Mathf.Clamp(Mathf.Max(b.x, b.y), 0, DayAxis.Count - 1) + 1, r.xMin, r.width), 2f, new Color32(0xFF, 0xFF, 0xFF, 0xFF));
+            if (_informationRange.HasValue && !selectionIsReserved)
+                BoxOutline(vh, r, DayAxis.LeftX(_informationRange.Value.x, r.xMin, r.width),
+                    DayAxis.LeftX(_informationRange.Value.y, r.xMin, r.width) + slot, 2f, new Color32(0xFF, 0xFF, 0xFF, 0xFF));
+            if (_currentDay.HasValue)
+            {
+                float left = DayAxis.LeftX(_currentDay.Value, r.xMin, r.width);
+                BoxOutline(vh, r, left, left + slot, 2f, CurrentDayEdgeColor);
+            }
             // 진입일 후보 표식
             if (_candidate.HasValue && _candidate.Value >= 0 && _candidate.Value < DayAxis.Count)
             {
                 float cx = DayAxis.CenterX(_candidate.Value, r.xMin, r.width);
                 Quad(vh, cx - 1.5f, r.yMin, cx + 1.5f, r.yMax, CandidateColor);
             }
+        }
+
+        private static void BoxOutline(VertexHelper vh, Rect r, float left, float right, float width, Color32 color)
+        {
+            Quad(vh, left, r.yMin, right, r.yMin + width, color);
+            Quad(vh, left, r.yMax - width, right, r.yMax, color);
+            Quad(vh, left, r.yMin, left + width, r.yMax, color);
+            Quad(vh, right - width, r.yMin, right, r.yMax, color);
         }
 
         private static void Band(VertexHelper vh, Rect r, int entry, int exit, Color32 color, bool edges)

@@ -502,12 +502,12 @@ namespace BlackWhale.UI.Tests
                     investments = id == "AI" ? positions : new RevealedInvestment[0] }).ToArray() });
                 yield return new WaitForSecondsRealtime(.4f); Canvas.ForceUpdateCanvases();
                 var badge = canvas.GetComponentsInChildren<Text>().Single(t => t.name == "PlanBadge_AI").text;
-                StringAssert.Contains("P1", badge); StringAssert.Contains("P2", badge);
+                Assert.AreEqual("", badge, "market reveal cards show prices only, no per-player returns");
                 CapturePlanningScreen(canvas.GetComponent<Canvas>(), "trading-reveal-all-companies");
                 ClickPlanning(canvas, "Expand_AI"); Canvas.ForceUpdateCanvases();
                 var chart = canvas.GetComponentsInChildren<BarChartGraphic>().Single(c => c.name == "ZoomChart_AI");
-                Assert.AreEqual(2, Field<RevealedInvestment[]>(chart, "_revealedInvestments").Length);
-                Assert.AreEqual(Palette.Player("P2"), chart.GetComponentsInChildren<Text>().Single(t => t.name == "RevealedPlayer_P2").color);
+                Assert.AreEqual(0, Field<RevealedInvestment[]>(chart, "_revealedInvestments").Length, "market reveal chart has no entry/exit overlays");
+                Assert.IsFalse(chart.GetComponentsInChildren<Text>().Any(t => t.name.StartsWith("RevealedPlayer_")), "market reveal chart has no return labels");
                 var rows = canvas.GetComponentsInChildren<RectTransform>().Single(r => r.name == "PlannedIntervals");
                 var labels = rows.GetComponentsInChildren<Text>();
                 Assert.AreEqual(7, labels.Length, "both player totals and all five trades are accessible");
@@ -970,8 +970,7 @@ namespace BlackWhale.UI.Tests
                     companyId = id, dailyChangesBps = Enumerable.Range(0, 31).Select(d => d * 10).ToArray() }).ToArray() });
                 ClickPlanning(canvas, "Expand_AI");
                 chart = canvas.GetComponentsInChildren<ChartPointerLayer>().Single(c => c.name == "ZoomChart_AI");
-                StringAssert.Contains("6", chart.GetComponentsInChildren<Text>().Single(t => t.name == "EntryMarker_0").text);
-                StringAssert.Contains("11", chart.GetComponentsInChildren<Text>().Single(t => t.name == "ExitMarker_0").text);
+                Assert.IsFalse(chart.GetComponentsInChildren<Text>().Any(t => t.name.StartsWith("EntryMarker_") || t.name.StartsWith("ExitMarker_")), "market reveal chart has no entry/exit markers");
                 Assert.IsTrue(Field<DayBar[]>(chart.GetComponent<BarChartGraphic>(), "_bars")[20].Bps.HasValue, "full prices appear only after reveal");
                 Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Single(b => b.name == "PlanRank_1").interactable);
                 Assert.AreEqual(10, controller.Store.TradePlans.Get("AI").Intervals.Single().entryDay, "confirmed markers supersede the original plan without overwriting it");
