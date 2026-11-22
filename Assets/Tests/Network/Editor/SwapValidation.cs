@@ -21,6 +21,8 @@ namespace BlackWhale.Tests
             Action<string, Action> run = (name, test) => { test(); names.Add("SWAP/" + name); };
             run("rotation-helpers", Helpers);
             Check(SwapRules.Turns.SequenceEqual(new[] { 5 }), "single swap turn at turn five");
+            SwapRules.UsePreview(true); bool preview = SwapRules.IsSwapTurn(1) && !SwapRules.IsSwapTurn(5);
+            SwapRules.UsePreview(false); Check(preview && SwapRules.IsSwapTurn(5) && !SwapRules.IsSwapTurn(1), "recording preview moves the swap to turn one and turns back off");
             run("swap-turn-controls-next-account-and-pays-sabotage-bonus", SwapTurn);
             return names.ToArray();
         }
@@ -55,7 +57,7 @@ namespace BlackWhale.Tests
 
             while (!(room.Snapshot().turn == swapTurn && room.Snapshot().phase == Protocol.Info))
             {
-                Check(!room.Snapshot().swapTurn, "no swap before the swap turn");
+                Check(room.Snapshot().turn == swapTurn || !room.Snapshot().swapTurn, "no swap before the swap turn");
                 deadline();
             }
             var state = room.Snapshot();

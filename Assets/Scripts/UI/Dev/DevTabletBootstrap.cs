@@ -73,6 +73,10 @@ namespace BlackWhale.UI.Dev
 
         private void Start()
         {
+            // [실험] 녹화용: 메뉴 'BlackWhale/교환 턴 바로 보기'가 켜져 있으면 1턴이 교환 턴. 꺼져 있으면 원래대로(5턴).
+            // (도메인 리로드가 꺼져 있어서 static 값이 남으므로 매번 Play할 때 다시 정한다.)
+            SwapRules.UsePreview(PlayerPrefs.GetInt(SwapRules.PreviewPrefKey, 0) == 1);
+            if (SwapRules.Turns[0] == SwapRules.PreviewTurn) Debug.Log("[BlackWhale] 교환 턴 바로 보기: 1턴이 교환 턴입니다. 끄려면 BlackWhale 메뉴에서 다시 누르세요.");
             if (FindAnyObjectByType<EventSystem>() == null)
             {
                 var events = new GameObject("EventSystem", typeof(EventSystem), typeof(InputSystemUIInputModule));

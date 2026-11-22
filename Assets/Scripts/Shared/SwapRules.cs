@@ -19,8 +19,15 @@ namespace BlackWhale.Shared
     /// </summary>
     public static class SwapRules
     {
-        /// <summary>교환 턴 번호. 비우면 교환 모드가 꺼진다. 예: { 3 } 또는 { 3, 5 }</summary>
-        public static readonly int[] Turns = { 5 };
+        /// <summary>교환 턴 번호(기본값). 비우면 교환 모드가 꺼진다. 예: { 5 } 또는 { 3, 5 }</summary>
+        public static readonly int[] DefaultTurns = { 5 };
+        /// <summary>실제로 쓰는 교환 턴. 평소에는 DefaultTurns와 같다.
+        /// 녹화용 메뉴 'BlackWhale/교환 턴 바로 보기'를 켜면 개발용 씬이 { 1 }로 바꾼다.</summary>
+        public static int[] Turns = (int[])DefaultTurns.Clone();
+        public const int PreviewTurn = 1;
+        /// <summary>녹화용 메뉴가 켜고 끄는 PlayerPrefs 키(1 = 첫 턴부터 교환).</summary>
+        public const string PreviewPrefKey = "BlackWhale.SwapPreview";
+        public static void UsePreview(bool on) => Turns = on ? new[] { PreviewTurn } : (int[])DefaultTurns.Clone();
         /// <summary>조종한 계좌가 잃은 금액 중 조종한 사람이 보너스로 받는 비율(%).</summary>
         public const int BonusPercent = 50;
 
