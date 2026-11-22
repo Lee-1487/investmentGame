@@ -1,5 +1,5 @@
 // 효과음 파형을 코드로 합성한다(UnityEngine 없이 순수 계산 → 헤드리스로 WAV 미리듣기 가능).
-// 카드 게임 UI처럼 '여러 겹'으로 쌓은 소리: 낮은 '툭'(몸통) + 짧은 잡음(질감) + 맑은 종소리(반짝임) + 짧은 울림(공간감).
+// 카드 게임 UI처럼 '여러 겹'으로 쌓은 소리: 몸통 음 + 짧은 잡음(질감) + 맑은 종소리(반짝임) + 짧은 울림(공간감).
 // 특정 게임의 소리를 베끼지 않고, 기본 파형(사인·잡음)만 조합해 만든 독자적인 소리다.
 using System;
 
@@ -23,15 +23,14 @@ namespace BlackWhale.UI.View
             }
         }
 
-        // 버튼: 나무 탁자에 카드를 '톡' 내려놓는 느낌. 낮은 몸통 + 짧은 나무 질감 + 아주 작은 윗소리.
+        // 버튼: 맑고 부드러운 '뽁'. 음이 살짝 올라가는 짧은 물방울 소리 + 아주 작은 반짝임(딱딱한 '틱' 대신).
         private static float[] Click(double p)
         {
-            var b = new float[Len(0.16)];
-            Thump(b, 0, 210 * p, 120 * p, 0.07, 0.55);          // 몸통: 음이 살짝 내려가는 낮은 '툭'
-            Noise(b, 0, 0.012, 0.35, 0.25, 1);                  // 나무 질감(둥근 잡음)
-            Tone(b, 0.002, 1650 * p, 0.03, 0.10, 90, 2.0);      // 살짝 맑은 윗소리
-            Room(b, 0.18);
-            return Finish(b, 0.75);
+            var b = new float[Len(0.18)];
+            Pop(b, 0, 520 * p, 980 * p, 0.06, 0.6);             // 몸통: 위로 튀는 둥근 음
+            Bell(b, 0.004, 1975 * p, 0.10, 0.10);                // 살짝 맑은 윗소리(B6)
+            Room(b, 0.22);
+            return Finish(b, 0.7);
         }
 
         // 매수: 지갑에서 동전 '찰랑' → 위로 올라가는 반짝 아르페지오(얻었다는 느낌).
@@ -77,17 +76,17 @@ namespace BlackWhale.UI.View
             return Finish(b, 0.75);
         }
 
-        // 새 단계 시작: 짧고 웅장한 '빠밤' (금관 느낌 화음 두 번).
+        // 새 단계 시작: 부드럽게 차오르는 소리 위로 '띠리링~' 올라가는 종소리(알림 느낌, 웅장한 화음 대신).
         private static float[] Turn()
         {
-            var b = new float[Len(1.0)];
-            Brass(b, 0.00, new[] { 261.63, 392.0, 523.25 }, 0.14, 0.22);          // C4 G4 C5
-            Brass(b, 0.16, new[] { 349.23, 523.25, 698.46, 880.0 }, 0.45, 0.24);  // F4 C5 F5 A5
-            Thump(b, 0.0, 120, 60, 0.18, 0.45);
-            Thump(b, 0.16, 110, 55, 0.25, 0.5);
-            Sparkle(b, 0.2, 0.4, 0.06, 11);
-            Room(b, 0.4);
-            return Finish(b, 0.8);
+            var b = new float[Len(1.1)];
+            Swell(b, 0, 0.35, new[] { 523.25, 783.99 }, 0.18);  // C5+G5 잔잔한 바탕음이 서서히 커짐
+            double[] up = { 783.99, 1046.5, 1318.5, 1568.0 };   // G5 C6 E6 G6
+            for (int i = 0; i < up.Length; i++)
+                Bell(b, 0.06 + i * 0.07, up[i], 0.6, 0.22 - i * 0.02);
+            Sparkle(b, 0.32, 0.35, 0.07, 11);
+            Room(b, 0.45);
+            return Finish(b, 0.72);
         }
 
         // ---------------------------------------------------------------- 재료
@@ -192,18 +191,32 @@ namespace BlackWhale.UI.View
             }
         }
 
-        /// <summary>금관 느낌 화음: 배음이 많은 소리가 살짝 부풀었다가 사라진다.</summary>
-        private static void Brass(float[] b, double start, double[] freqs, double dur, double amp)
+        /// <summary>'뽁' 물방울 소리: 음이 from→to로 빠르게 올라가며 짧게 사라진다(배음 없는 둥근 사인).</summary>
+        private static void Pop(float[] b, double start, double from, double to, double dur, double amp)
         {
-            int s0 = At(start), n = Len(dur + 0.25);
+            int s0 = At(start), n = Len(dur);
+            double phase = 0;
             for (int i = 0; i < n && s0 + i < b.Length; i++)
             {
+                double t = (double)i / SampleRate, k = t / dur;
+                double f = to + (from - to) * Math.Exp(-k * 8);
+                phase += 2 * Math.PI * f / SampleRate;
+                double env = Math.Min(1, i / (SampleRate * 0.003)) * Math.Exp(-k * 5);
+                b[s0 + i] += (float)(Math.Sin(phase) * env * amp);
+            }
+        }
+
+        /// <summary>잔잔한 바탕음: 천천히 커졌다가 서서히 사라지는 부드러운 화음(살짝 떨림).</summary>
+        private static void Swell(float[] b, double start, double rise, double[] freqs, double amp)
+        {
+            int s0 = At(start);
+            for (int i = 0; s0 + i < b.Length; i++)
+            {
                 double t = (double)i / SampleRate;
-                double env = Math.Min(1, t / 0.025) * (t < dur ? 1 - 0.3 * t / dur : 0.7 * Math.Exp(-(t - dur) * 12));
+                double env = t < rise ? Math.Sin(Math.PI * 0.5 * t / rise) : Math.Exp(-(t - rise) * 4);
                 double v = 0;
                 foreach (double f in freqs)
-                    for (int h = 1; h <= 5; h++)
-                        v += Math.Sin(2 * Math.PI * f * h * t + h) / (h * 1.3);
+                    v += Math.Sin(2 * Math.PI * f * t + 0.4 * Math.Sin(2 * Math.PI * 5 * t)) + 0.2 * Math.Sin(4 * Math.PI * f * t);
                 b[s0 + i] += (float)(v / freqs.Length * env * amp);
             }
         }
