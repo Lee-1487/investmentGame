@@ -42,8 +42,9 @@ namespace BlackWhale.UI.View
             var nav = UiKit.Rect(root, "GameScreens");
             nav.anchorMin = new Vector2(0, 1); nav.anchorMax = Vector2.one;
             nav.offsetMin = new Vector2(148, -33); nav.offsetMax = new Vector2(-48, -2);
-            string[] labels = { "전광판", "입찰 결과", "내 능력", "상점", "보유 아이템", "BOT 난이도" };
-            Page[] pages = { Page.Board, Page.Auction, Page.Ability, Page.Shop, Page.Inventory, Page.Difficulty };
+            // 아이템이 기획에서 빠져 '상점'·'보유 아이템' 탭은 두지 않는다.
+            string[] labels = { "전광판", "입찰 결과", "내 능력", "BOT 난이도" };
+            Page[] pages = { Page.Board, Page.Auction, Page.Ability, Page.Difficulty };
             if (controller.Store.Public?.stockSystem == true)
             { labels = new[] { "전광판", "주식 현황", "내 증강", "BOT 난이도" }; pages = new[] { Page.Board, Page.Auction, Page.Ability, Page.Difficulty }; }
             for (int i = 0; i < labels.Length; i++)
@@ -64,8 +65,6 @@ namespace BlackWhale.UI.View
             close.name = "CloseGameScreen";
             UiKit.Place((RectTransform)close.transform, new Vector2(1, 0), new Vector2(1, 0), new Vector2(-16, 14), new Vector2(130, 38));
         }
-        public void OpenShop() => Open(Page.Shop);
-        public void OpenInventory() => Open(Page.Inventory);
         public void OpenAbility() => Open(Page.Ability);
         private void Open(Page target)
         {

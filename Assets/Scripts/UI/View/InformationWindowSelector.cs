@@ -47,6 +47,14 @@ namespace BlackWhale.UI.View
             rt = (RectTransform)reserve.transform; rt.anchorMin = new Vector2(.5f, 0); rt.anchorMax = new Vector2(1, 0);
             rt.offsetMin = new Vector2(3, 0); rt.offsetMax = new Vector2(0, 24);
         }
+        /// <summary>값이 실제로 바뀔 때만 버튼을 건드린다(같은 값을 다시 넣어 상태 전환 효과가 다시 도는 것 방지).</summary>
+        private static void SetButtonStable(Button button, string label, bool interactable, Color background, Color textColor)
+        {
+            var text = button.GetComponentInChildren<Text>();
+            var image = (Image)button.targetGraphic;
+            if (button.interactable == interactable && image.color == background && text != null && text.text == label && text.color == textColor) return;
+            UiKit.SetButton(button, label, interactable, background, textColor);
+        }
         public void SetStart(int start) { Selection.SetRange(start, Math.Min(30, start + 4)); Changed?.Invoke(start); Refresh(); }
         public void NotifyChanged() { Changed?.Invoke(StartDay); Refresh(); }
         public void Refresh()
@@ -68,11 +76,12 @@ namespace BlackWhale.UI.View
                 var known = InformationWindowRules.KnownDays(company);
                 int first = Math.Max(1, options.informationStartDay);
                 int remaining = Enumerable.Range(first, Math.Max(0, options.informationEndDay - first + 1)).Count(day => !known[day].HasValue);
-                bool pendingRandom = controller.Store.HasPending(CommandTypes.BuyInformationWindow);
                 bool activeRandom = !state.paused && string.IsNullOrEmpty(controller.Store.EndReason);
-                bool canRandom = id != "BANK" && state.phase == Protocol.Info && activeRandom && !pendingRandom && remaining > 0 && (controller.Store.View?.coins ?? 0) > 0;
+                // 요청 중(pending)이라고 버튼을 회색 '요청 중…'으로 바꿨다가 응답이 오면 되돌리면, 서버 응답이 빨라
+                // 누를 때마다 파랑→회색→파랑으로 깜빡인다. 겉모습은 그대로 두고, 중복 요청은 BuyRandomInformation이 막는다.
+                bool canRandom = id != "BANK" && state.phase == Protocol.Info && activeRandom && remaining > 0 && (controller.Store.View?.coins ?? 0) > 0;
                 status.text = id == "BANK" ? "BANK 0~30일 전체 공개" : $"{first}~{options.informationEndDay}일 중 미공개 {remaining}일 · 날짜는 무작위";
-                UiKit.SetButton(confirm, pendingRandom ? "요청 중…" : id == "BANK" ? "전체 공개" : "랜덤 1일 · 1코인", canRandom,
+                SetButtonStable(confirm, id == "BANK" ? "전체 공개" : "랜덤 1일 · 1코인", canRandom,
                     canRandom ? Palette.Accent : Palette.Disabled, canRandom ? Color.white : Palette.DisabledText);
                 bool existingRandom = Selection.SelectedIndex >= 0;
                 bool canReserveRandom = activeRandom && Selection.HasSelection && (existingRandom ? CanCancel?.Invoke() == true : CanReserve?.Invoke() == true);

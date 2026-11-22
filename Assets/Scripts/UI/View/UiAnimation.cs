@@ -73,10 +73,10 @@ namespace BlackWhale.UI.View
                 else s_flipStart[key] = now;
                 if (elapsed >= delay + seconds) return;
             }
-            var back = UiKit.Panel(card, "CardBack", new Color32(0x1E, 0x29, 0x3B, 0xFF), rounded: true);
+            var back = UiKit.Panel(card, "CardBack", new Color32(0x1A, 0x1A, 0x1A, 0xFF), rounded: true);
             UiKit.Stretch(back.rectTransform);
             back.raycastTarget = true; // 뒤집히는 동안 클릭 막기
-            var mark = UiKit.Label(back.transform, "?", 64, new Color32(0xFB, 0xBF, 0x24, 0xFF), TextAnchor.MiddleCenter, FontStyle.Bold);
+            var mark = UiKit.Label(back.transform, "?", 64, new Color32(0xFF, 0xFF, 0xFF, 0xFF), TextAnchor.MiddleCenter, FontStyle.Bold);
             UiKit.Stretch(mark.rectTransform);
             back.transform.SetAsLastSibling();
             Get<FlipAnim>(card.gameObject).Begin(card, back.gameObject, seconds, delay - elapsed);
