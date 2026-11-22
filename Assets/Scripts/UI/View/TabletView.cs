@@ -375,7 +375,7 @@ namespace BlackWhale.UI.View
             if (!show) { _swapText.text = ""; return; }
             string me = _c.LocalPlayerId, target = SwapRules.ActingAccount(s, me), hunter = SwapRules.ControllerOf(s, me);
             string text = "<color=" + SwapColor + "><b>교환 턴</b></color>  지금 <b>" + target + "</b>의 계좌를 조종 중 · 목표: <b>최대한 떨어뜨리기</b>"
-                + "\n<size=12><color=#BBBBBB>" + target + "가 잃은 돈의 " + s.swapBonusPercent + "%는 내 보너스 · 내 계좌는 " + hunter + "가 조종 중</color></size>";
+                + "\n<size=12><color=#BBBBBB>가장 많이 떨어뜨린 1명이 그 계좌가 잃은 돈의 " + s.swapBonusPercent + "%를 보너스로 · 내 계좌는 " + hunter + "가 조종 중</color></size>";
             if (_swapText.text != text) { _swapText.text = text; FitUnderline(_swapLine, _swapText); }
         }
 
@@ -576,8 +576,15 @@ namespace BlackWhale.UI.View
                 if (reversal != null) ReversalFx.Play(fx, reversal, reversalMine, afterAnnouncement + 0.8f);
                 foreach (var row in board.rows) if (row != null) { _fxAssets[row.playerId] = row.totalAssets; _fxRanks[row.playerId] = row.rank; }
                 if (mine != null && !string.IsNullOrEmpty(mine.swapAccountId))
-                    ShowBanner("<color=" + SwapColor + "><b>교환 턴 결과</b></color>  " + mine.swapAccountId + " 계좌 " + DisplayFormat.SignedMoney(mine.swapAccountProfit)
-                        + " → 내 견제 보너스 <b>+" + DisplayFormat.Money(mine.swapBonus) + "</b>");
+                {
+                    var winners = board.rows.Where(r => r != null && r.swapBonus > 0).ToArray();
+                    string who = winners.Length == 0 ? "아무도 계좌를 떨어뜨리지 못해 보너스 없음"
+                        : string.Join(", ", winners.Select(w => (w.playerId == _c.LocalPlayerId ? w.playerId + "(나)" : w.playerId) + " +" + DisplayFormat.Money(w.swapBonus)
+                            + " (" + w.swapAccountId + " 계좌 " + DisplayFormat.Percent(w.swapAccountReturnBps) + ")"));
+                    ShowBanner("<color=" + SwapColor + "><b>견제왕</b></color>  " + who);
+                    ShowBanner("<color=" + SwapColor + "><b>교환 턴 결과</b></color>  내가 조종한 " + mine.swapAccountId + " 계좌 " + DisplayFormat.Percent(mine.swapAccountReturnBps)
+                        + " (" + DisplayFormat.SignedMoney(mine.swapAccountProfit) + ")" + (mine.swapBonus > 0 ? " → <b>보너스 +" + DisplayFormat.Money(mine.swapBonus) + "</b>" : ""));
+                }
                 ShowBanner(board.gameComplete ? (s.totalTurns > 0 ? s.totalTurns : 10) + "턴 최종 승자 · " + board.winnerPlayerId :
                     board.turn + "턴 정산 완료 · 1위 " + top.playerId + " (" + DisplayFormat.Percent(top.turnReturnBps) + ")");
             }

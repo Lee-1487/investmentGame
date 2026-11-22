@@ -20,6 +20,7 @@ namespace BlackWhale.Tests
             var names = new List<string>();
             Action<string, Action> run = (name, test) => { test(); names.Add("SWAP/" + name); };
             run("rotation-helpers", Helpers);
+            Check(SwapRules.Turns.SequenceEqual(new[] { 5 }), "single swap turn at turn five");
             run("swap-turn-controls-next-account-and-pays-sabotage-bonus", SwapTurn);
             return names.ToArray();
         }
@@ -86,11 +87,14 @@ namespace BlackWhale.Tests
                 Check(row.swapAccountId == account, "scoreboard names the controlled account");
                 long accountOwn = detail[account].profit - board.rows.Single(r => r.playerId == account).swapBonus;
                 Check(row.swapAccountProfit == accountOwn, "account profit excludes its owner's bonus");
-                Check(row.swapBonus == SwapRules.Bonus(accountOwn), "controller earns the configured share of the loss");
+                int worstRate = board.rows.Where(r => r.swapAccountProfit < 0).Select(r => r.swapAccountReturnBps).DefaultIfEmpty(0).Min();
+                bool winner = row.swapAccountProfit < 0 && row.swapAccountReturnBps == worstRate;
+                Check(row.swapBonus == (winner ? SwapRules.Bonus(accountOwn) : 0), "only the biggest sabotage earns the configured share of the loss");
+                Check(row.swapAccountReturnBps == detail[account].turnReturnBps || board.rows.Single(r => r.playerId == account).swapBonus > 0, "account return is reported");
                 Check(detail[row.playerId].endingAssets == row.totalAssets, "bonus is part of total assets");
             }
             var p1 = board.rows.Single(r => r.playerId == "P1");
-            Check(p1.swapAccountProfit < 0 && p1.swapBonus > 0, "tanking the worst companies pays P1 a bonus");
+            Check(p1.swapAccountProfit < 0 && p1.swapBonus > 0 && board.rows.Count(r => r.swapBonus > 0) == 1, "only P1, the biggest sabotage, gets the bonus");
 
             deadline(); // 다음 턴
             Check(room.Snapshot().turn == swapTurn + 1 && !room.Snapshot().swapTurn && room.Snapshot().swapAccountIds.Length == 0, "swap ends after its turn");

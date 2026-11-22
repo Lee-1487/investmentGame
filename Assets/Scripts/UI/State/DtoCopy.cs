@@ -105,7 +105,7 @@ namespace BlackWhale.UI.State
                 totalAssets = s.totalAssets,
                 cumulativeProfit = s.cumulativeProfit,
                 returnHistory = s.returnHistory?.Select(Copy).ToArray(),
-                swapAccountId = s.swapAccountId, swapAccountProfit = s.swapAccountProfit, swapBonus = s.swapBonus
+                swapAccountId = s.swapAccountId, swapAccountProfit = s.swapAccountProfit, swapBonus = s.swapBonus, swapAccountReturnBps = s.swapAccountReturnBps
             };
 
         public static Scoreboard Copy(Scoreboard s)

@@ -379,7 +379,7 @@ namespace BlackWhale.Rules
                     cumulativeProfit = assets[r.Key] - rules.initialAssets,
                     cumulativeReturnBps = Settlement.ReturnBps(rules.initialAssets, assets[r.Key]),
                     returnHistory = history[r.Key].Select(h => new ReturnPoint { turn = h.turn, returnBps = h.returnBps }).ToArray(),
-                    swapAccountId = SwapAccountOf(r.Key), swapAccountProfit = SwapProfitOf(r.Key), swapBonus = SwapBonusOf(r.Key)
+                    swapAccountId = SwapAccountOf(r.Key), swapAccountProfit = SwapProfitOf(r.Key), swapBonus = SwapBonusOf(r.Key), swapAccountReturnBps = SwapReturnOf(r.Key)
                 }).ToArray()
             };
         }
@@ -394,7 +394,7 @@ namespace BlackWhale.Rules
                     totalAssets = r.totalAssets, turnReturnBps = r.turnReturnBps, cumulativeProfit = r.cumulativeProfit,
                     cumulativeReturnBps = r.cumulativeReturnBps,
                     returnHistory = r.returnHistory.Select(h => new ReturnPoint { turn = h.turn, returnBps = h.returnBps }).ToArray(),
-                    swapAccountId = r.swapAccountId, swapAccountProfit = r.swapAccountProfit, swapBonus = r.swapBonus
+                    swapAccountId = r.swapAccountId, swapAccountProfit = r.swapAccountProfit, swapBonus = r.swapBonus, swapAccountReturnBps = r.swapAccountReturnBps
                 }).ToArray() };
         }
 

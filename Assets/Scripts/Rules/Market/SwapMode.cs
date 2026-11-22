@@ -12,7 +12,7 @@ namespace BlackWhale.Rules
     public sealed partial class MarketService : ISwapMarket
     {
         private readonly Dictionary<string, string> swapControl = new Dictionary<string, string>();
-        private sealed class SwapOutcome { public string Account; public long AccountProfit, Bonus; }
+        private sealed class SwapOutcome { public string Account; public long AccountProfit, Bonus; public int AccountReturnBps; }
         private readonly Dictionary<int, Dictionary<string, SwapOutcome>> swapOutcomes = new Dictionary<int, Dictionary<string, SwapOutcome>>();
 
         public bool SwapActive => swapControl.Count > 0;
@@ -39,7 +39,14 @@ namespace BlackWhale.Rules
             // 보너스를 더하기 전의 계좌 손익으로 모두 계산한 다음 적용한다.
             var outcomes = swapControl.Where(pair => byId.ContainsKey(pair.Key) && byId.ContainsKey(pair.Value))
                 .ToDictionary(pair => pair.Key, pair => new SwapOutcome { Account = pair.Value, AccountProfit = byId[pair.Value].profit,
-                    Bonus = SwapRules.Bonus(byId[pair.Value].profit) });
+                    AccountReturnBps = byId[pair.Value].turnReturnBps });
+            // 보너스는 조종한 계좌를 가장 많이(수익률 기준) 떨어뜨린 1명만 받는다. 동률이면 동률인 사람 모두 받는다.
+            var losers = outcomes.Where(o => o.Value.AccountProfit < 0).ToArray();
+            if (losers.Length > 0)
+            {
+                int worst = losers.Min(o => o.Value.AccountReturnBps);
+                foreach (var o in losers.Where(o => o.Value.AccountReturnBps == worst)) o.Value.Bonus = SwapRules.Bonus(o.Value.AccountProfit);
+            }
             foreach (var pair in outcomes)
             {
                 var r = byId[pair.Key];
@@ -55,5 +62,6 @@ namespace BlackWhale.Rules
         private string SwapAccountOf(string player) => SwapOutcomeOf(player)?.Account;
         private long SwapProfitOf(string player) => SwapOutcomeOf(player)?.AccountProfit ?? 0;
         private long SwapBonusOf(string player) => SwapOutcomeOf(player)?.Bonus ?? 0;
+        private int SwapReturnOf(string player) => SwapOutcomeOf(player)?.AccountReturnBps ?? 0;
     }
 }
