@@ -189,6 +189,45 @@ namespace BlackWhale.UI.View
             }
         }
         private void Message(string text)
-        { var label = UiKit.Label(content, text, 18, Palette.SubText); UiKit.Stretch(label.rectTransform, 24, 24, 24, 24); }
+        {
+            // 주식 모드의 '내 증강' 페이지는 이름·설명뿐 아니라 실제 증강 이미지도 함께 보여줍니다.
+            // 데이터가 아직 오지 않은 대기 메시지에는 이미지를 만들지 않습니다.
+            var view = controller?.Store?.View;
+            if (controller?.Store?.Public?.stockSystem == true && page == Page.Ability
+                && view?.portfolio?.augments != null && view.portfolio.augments.Length > 0 && text.Contains("<b>"))
+            {
+                ShowStockAugments(view.portfolio);
+                return;
+            }
+
+            var label = UiKit.Label(content, text, 18, Palette.SubText); UiKit.Stretch(label.rectTransform, 24, 24, 24, 24);
+        }
+
+        private void ShowStockAugments(PortfolioState portfolio)
+        {
+            var title = UiKit.Label(content, "<b>내 증강</b>   <size=12>현재 보유한 증강</size>", 18, Palette.Text, TextAnchor.UpperLeft);
+            UiKit.Place(title.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(24, -48), new Vector2(420, 30));
+
+            string[] augments = portfolio.augments ?? new string[0];
+            for (int i = 0; i < augments.Length; i++)
+            {
+                string id = augments[i];
+                var row = UiKit.Panel(content, "OwnedAugment_" + id, Palette.Card, rounded: true);
+                var rowTransform = row.rectTransform;
+                rowTransform.anchorMin = new Vector2(0, 1);
+                rowTransform.anchorMax = new Vector2(1, 1);
+                rowTransform.pivot = new Vector2(.5f, 1);
+                float top = 92 + i * 118;
+                rowTransform.offsetMin = new Vector2(24, -top - 100);
+                rowTransform.offsetMax = new Vector2(-24, -top);
+
+                var artwork = AugmentArtwork.Create(row.transform, id, 82);
+                UiKit.Place(artwork, new Vector2(0, .5f), new Vector2(0, .5f), new Vector2(12, 0), new Vector2(82, 82));
+                var detail = UiKit.Label(row.transform,
+                    "<size=18><b>" + StockRules.Name(id) + "</b></size>\n" + StockRules.Description(id),
+                    14, Palette.Text, TextAnchor.MiddleLeft);
+                UiKit.Stretch(detail.rectTransform, 112, 12, 14, 12);
+            }
+        }
     }
 }

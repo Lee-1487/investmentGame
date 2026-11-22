@@ -791,10 +791,15 @@ namespace BlackWhale.UI.View
         {
             if (row == null) return;
             bool stock = Store.Public?.stockSystem == true;
-            var popup = OpenPopup(stock ? new Vector2(460, 420) : new Vector2(320, 230));
+            var popup = OpenPopup(stock ? new Vector2(460, 540) : new Vector2(320, 230));
             PositionNextTo(popup, slot, rightSide: true);
 
             var r = row.Score;
+            if (stock)
+            {
+                ShowStockPlayerPopup(popup, row, r);
+                return;
+            }
             string title = "<b>" + row.PlayerId + (row.PlayerId == _c.LocalPlayerId ? " (나)" : "") + "</b>";
             string body = r == null
                 ? "\n<color=#8C8C8C>아직 정산 결과가 없습니다.</color>"
@@ -808,10 +813,68 @@ namespace BlackWhale.UI.View
                     string.Join("\n\n", augments.Select(id => "<b>" + StockRules.Name(id) + "</b> · " + StockRules.Description(id))));
             }
             var text = UiKit.Label(popup, title + body, 14, Palette.Text, TextAnchor.UpperLeft);
-            UiKit.Stretch(text.rectTransform, 14, 10, 14, r?.returnHistory?.Length > 0 ? 112 : 10);
+            UiKit.Stretch(text.rectTransform, 14, 10, 14, stock ? 112 : (r?.returnHistory?.Length > 0 ? 112 : 10));
+
+            if (stock)
+            {
+                var augmentIds = Store.Public.players?.FirstOrDefault(p => p.playerId == row.PlayerId)?.augments ?? System.Array.Empty<string>();
+                float gap = 84f;
+                float start = -(augmentIds.Length - 1) * gap * 0.5f;
+                for (int i = 0; i < augmentIds.Length; i++)
+                {
+                    var artwork = AugmentArtwork.Create(popup, augmentIds[i], 72);
+                    UiKit.Place(artwork, new Vector2(.5f, 0), new Vector2(.5f, 0), new Vector2(start + i * gap, 20), new Vector2(72, 72));
+                }
+            }
 
             if (r?.returnHistory != null && r.returnHistory.Length > 0)
-                AddTrendChart(popup, new[] { r }, new Vector2(14, 12), 92);
+                AddTrendChart(popup, new[] { r }, new Vector2(14, stock ? 108 : 12), 92);
+        }
+
+        private void ShowStockPlayerPopup(RectTransform popup, RankRow row, ScoreRow score)
+        {
+            string title = "<b>" + row.PlayerId + (row.PlayerId == _c.LocalPlayerId ? " (나)" : "") + "</b>";
+            string summary = score == null
+                ? "\n<color=#6B7280>아직 정산 결과가 없습니다.</color>"
+                : "\n이번 턴 수익률 <b><color=#" + ColorUtility.ToHtmlStringRGB(Palette.ForBps(score.turnReturnBps)) + ">" + DisplayFormat.Percent(score.turnReturnBps) + "</color></b>"
+                  + "\n누적 손익 <b>" + DisplayFormat.SignedMoney(score.cumulativeProfit) + "</b> · 누적 수익률 <b>" + DisplayFormat.Percent(score.cumulativeReturnBps) + "</b>"
+                  + "\n총자산 <b>" + DisplayFormat.Money(score.totalAssets) + "</b>";
+            var summaryText = UiKit.Label(popup, title + summary, 14, Palette.Text, TextAnchor.UpperLeft);
+            // 총자산 아래에 바로 증강 영역이 이어지도록 요약 영역의 하단 여백을 줄입니다.
+            UiKit.Stretch(summaryText.rectTransform, 14, 10, 14, 130);
+
+            var augmentIds = Store.Public.players?.FirstOrDefault(p => p.playerId == row.PlayerId)?.augments ?? System.Array.Empty<string>();
+            var heading = UiKit.Label(popup, "<b>보유 증강 (" + augmentIds.Length + "/2)</b>", 14, Palette.Text, TextAnchor.UpperLeft);
+            UiKit.Place(heading.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(14, -134), new Vector2(300, 24));
+
+            for (int i = 0; i < augmentIds.Length; i++)
+            {
+                string id = augmentIds[i];
+                var item = UiKit.Panel(popup, "PlayerAugment_" + id, Palette.Card, rounded: true);
+                var itemTransform = item.rectTransform;
+                itemTransform.anchorMin = new Vector2(0, 1);
+                itemTransform.anchorMax = new Vector2(1, 1);
+                itemTransform.pivot = new Vector2(.5f, 1);
+                float top = 162 + i * 112;
+                itemTransform.offsetMin = new Vector2(14, -top - 96);
+                itemTransform.offsetMax = new Vector2(-14, -top);
+
+                var artwork = AugmentArtwork.Create(item.transform, id, 82);
+                UiKit.Place(artwork, new Vector2(0, .5f), new Vector2(0, .5f), new Vector2(8, 0), new Vector2(82, 82));
+                var detail = UiKit.Label(item.transform,
+                    "<b>" + StockRules.Name(id) + "</b>\n" + StockRules.Description(id),
+                    13, Palette.Text, TextAnchor.MiddleLeft);
+                UiKit.Stretch(detail.rectTransform, 104, 8, 8, 8);
+            }
+
+            if (augmentIds.Length == 0)
+            {
+                var none = UiKit.Label(popup, "선택한 증강이 없습니다.", 13, Palette.SubText, TextAnchor.UpperLeft);
+                UiKit.Place(none.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(14, -162), new Vector2(300, 24));
+            }
+
+            if (score?.returnHistory != null && score.returnHistory.Length > 0)
+                AddTrendChart(popup, new[] { score }, new Vector2(14, 14), 92);
         }
 
         private void ShowAllPlayersPopup(RectTransform anchor)
@@ -957,9 +1020,9 @@ namespace BlackWhale.UI.View
             _assets.resizeTextMinSize = 11;
             _assets.resizeTextMaxSize = 17;
 
-            // 증강 칸처럼 마우스를 올리기만 해도 정보가 뜨고, 벗어나면 닫힌다(클릭도 그대로 동작).
+            // 플레이어 칸을 클릭해서 팝업을 고정하지 않고, 마우스가 칸 위에 있을 때만 표시합니다.
+            // 칸에서 마우스가 벗어나면 즉시 숨겨서 이전처럼 팝업이 화면에 남지 않게 합니다.
             UiKit.Hover(bg.gameObject, () => owner.ShowPlayerPopup(_row, _rt), owner.HidePopup);
-            UiKit.Click(bg.gameObject, () => owner.ShowPlayerPopup(_row, _rt));
         }
 
         /// <param name="fromIndex">이번에 순서가 바뀌었으면 이 플레이어가 있던 칸 번호, 아니면 -1</param>
