@@ -45,7 +45,7 @@ namespace BlackWhale.Rules
             if (losers.Length > 0)
             {
                 int worst = losers.Min(o => o.Value.AccountReturnBps);
-                foreach (var o in losers.Where(o => o.Value.AccountReturnBps == worst)) o.Value.Bonus = SwapRules.Bonus(o.Value.AccountProfit);
+                foreach (var o in losers.Where(o => o.Value.AccountReturnBps == worst)) o.Value.Bonus = SwapRules.Bonus(byId[o.Key].startingAssets, o.Value.AccountReturnBps);
             }
             foreach (var pair in outcomes)
             {

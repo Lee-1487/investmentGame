@@ -58,7 +58,7 @@ namespace BlackWhale.Tests
         private static void Helpers()
         {
             Check(SwapRules.AccountFor(Players, "P1") == "P2" && SwapRules.AccountFor(Players, "P4") == "P1", "A plays B, last wraps to first");
-            Check(SwapRules.Bonus(-1000) == 1000 * SwapRules.BonusPercent / 100 && SwapRules.Bonus(500) == 0 && SwapRules.Bonus(0) == 0, "bonus only from losses");
+            Check(SwapRules.Bonus(100_000_000, -2000) == 100_000_000L * 2000 * SwapRules.BonusPercent / 100 / 10000 && SwapRules.Bonus(100_000_000, 500) == 0 && SwapRules.Bonus(100_000_000, 0) == 0, "bonus is half the drop rate as return");
             var state = new PublicState { swapTurn = true, swapControllerIds = Players, swapAccountIds = Players.Select(p => SwapRules.AccountFor(Players, p)).ToArray() };
             Check(SwapRules.ActingAccount(state, "P3") == "P4" && SwapRules.ControllerOf(state, "P1") == "P4", "client-side lookup");
             Check(SwapRules.ActingAccount(new PublicState(), "P3") == "P3", "normal turn plays own account");
@@ -119,7 +119,7 @@ namespace BlackWhale.Tests
                 Check(row.swapAccountProfit == accountOwn, "account profit excludes its owner's bonus");
                 int worstRate = board.rows.Where(r => r.swapAccountProfit < 0).Select(r => r.swapAccountReturnBps).DefaultIfEmpty(0).Min();
                 bool winner = row.swapAccountProfit < 0 && row.swapAccountReturnBps == worstRate;
-                Check(row.swapBonus == (winner ? SwapRules.Bonus(accountOwn) : 0), "only the biggest sabotage earns the configured share of the loss");
+                Check(row.swapBonus == (winner ? SwapRules.Bonus(detail[row.playerId].startingAssets, row.swapAccountReturnBps) : 0), "only the biggest sabotage earns half the drop rate");
                 Check(row.swapAccountReturnBps == detail[account].turnReturnBps || board.rows.Single(r => r.playerId == account).swapBonus > 0, "account return is reported");
                 Check(detail[row.playerId].endingAssets == row.totalAssets, "bonus is part of total assets");
             }

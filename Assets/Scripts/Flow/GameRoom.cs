@@ -680,7 +680,7 @@ namespace BlackWhale.Flow
                                 initialOrder.Select(id => StockMode ? 0 : progression.GetCoins(roomId, id)).ToArray());
                         latestBoard = scoreboard;
                     }
-                    Enter(Protocol.Result, now, 5);
+                    Enter(Protocol.Result, now, SwapActive ? SwapRules.ResultSeconds : 5); // 교환 턴은 견제왕 발표를 볼 시간
                     if (scoreboard != null) Broadcast(new ServerMessage { type = "SCOREBOARD", scoreboard = scoreboard });
                     foreach (Member member in members) SendView(member.Id);
                     break;

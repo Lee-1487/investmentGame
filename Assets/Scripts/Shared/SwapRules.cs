@@ -11,7 +11,7 @@ namespace BlackWhale.Shared
     /// 점수 규칙
     /// - 계좌의 손익은 원래 주인에게 그대로 들어간다. (B 계좌가 떨어지면 B의 자산이 준다)
     /// - 조종한 계좌를 가장 많이 떨어뜨린 1명(이번 턴 수익률 기준)만 '견제 보너스'로
-    ///   그 계좌가 잃은 금액의 BonusPercent% 를 자기 자산에 더한다. 동률이면 동률인 사람 모두 받는다.
+    ///   그 계좌 하락률의 BonusPercent% 를 자기 수익률로 받는다(내 턴 시작 자산 × 하락률 × 50%). 동률이면 동률인 사람 모두 받는다.
     ///   계좌가 오른 사람은 1등이 될 수 없다. 나머지는 보너스 0.
     /// 그래서 남의 계좌를 많이 떨어뜨릴수록 (1) 그 사람을 끌어내리고 (2) 1등이면 내 자산도 오른다.
     ///
@@ -29,7 +29,7 @@ namespace BlackWhale.Shared
         /// <summary>녹화용 메뉴가 켜고 끄는 PlayerPrefs 키(1 = 첫 턴부터 교환).</summary>
         public const string PreviewPrefKey = "BlackWhale.SwapPreview";
         public static void UsePreview(bool on) { Turns = (int[])DefaultTurns.Clone(); StartTurn = on && DefaultTurns.Length > 0 ? DefaultTurns.Min() : 1; }
-        /// <summary>조종한 계좌가 잃은 금액 중 조종한 사람이 보너스로 받는 비율(%).</summary>
+        /// <summary>견제왕이 받는 보너스 수익률 = 조종한 계좌 하락률의 이 비율(%).</summary>
         public const int BonusPercent = 50;
 
         public static bool IsSwapTurn(int turn) => Turns.Contains(turn);
@@ -58,7 +58,11 @@ namespace BlackWhale.Shared
             return i < 0 || i >= state.swapControllerIds.Length ? null : state.swapControllerIds[i];
         }
 
-        public static long Bonus(long accountProfit) => accountProfit >= 0 ? 0 : -accountProfit * BonusPercent / 100;
+        /// <summary>견제왕 보너스 금액: 내 턴 시작 자산 × (조종한 계좌 하락률 × BonusPercent%).</summary>
+        public static long Bonus(long ownStartingAssets, int accountReturnBps)
+            => accountReturnBps >= 0 || ownStartingAssets <= 0 ? 0 : ownStartingAssets * (-(long)accountReturnBps) * BonusPercent / 100 / 10000;
+        /// <summary>교환 턴 정산(견제왕 발표) 단계 길이(초).</summary>
+        public const double ResultSeconds = 16;
     }
 }
 
