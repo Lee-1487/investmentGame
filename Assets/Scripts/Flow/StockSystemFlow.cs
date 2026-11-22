@@ -73,6 +73,14 @@ namespace BlackWhale.Flow
         // 증강 선택은 각자 자기 것을 고른다. 교환은 정보 탐색부터 적용.
         private bool SwapActive => StockMode && phase != StockRules.AugmentPhase && market is ISwapMarket swap && swap.SwapActive;
         private string Account(string player) => SwapActive ? ((ISwapMarket)market).SwapAccount(player) : player;
+        /// <summary>[실험] 녹화용: 앞 턴들을 자동으로 진행해 target 턴의 첫 단계에서 멈춘다.
+        /// 증강은 첫 후보가 자동 선택되고, 아무도 매매하지 않으므로 앞 턴 자금은 모두 BANK에 있다.</summary>
+        private void SkipToTurn(int target)
+        {
+            target = Math.Min(target, settings.Turns);
+            for (int guard = 0; turn < target && phase != Protocol.Ended && guard < 100; guard++) NextPhase(Now);
+            PublishState(); SendAllViews();
+        }
         private void SendAllViews() { foreach (var m in members) SendView(m.Id); }
         private void RevealStockPortfolio(double now)
         {

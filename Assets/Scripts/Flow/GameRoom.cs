@@ -344,7 +344,7 @@ namespace BlackWhale.Flow
                     Enter(Protocol.AbilitySelection, 0, settings.AbilitySelectionSeconds ?? 0);
                     foreach (var m in members) SendView(m.Id);
                 }
-                else BeginTurn(0);
+                else { BeginTurn(0); if (StockMode && SwapRules.StartTurn > 1) SkipToTurn(SwapRules.StartTurn); }
                 return Success(command);
             }
             if (command.type == "SELECT_ABILITY")

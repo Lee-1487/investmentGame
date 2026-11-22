@@ -21,11 +21,11 @@ namespace BlackWhale.Tests
             Action<string, Action> run = (name, test) => { test(); names.Add("SWAP/" + name); };
             run("rotation-helpers", Helpers);
             Check(SwapRules.Turns.SequenceEqual(new[] { 5 }), "single swap turn at turn five");
-            SwapRules.UsePreview(true); bool preview = SwapRules.IsSwapTurn(1) && !SwapRules.IsSwapTurn(5);
-            SwapRules.UsePreview(false); Check(preview && SwapRules.IsSwapTurn(5) && !SwapRules.IsSwapTurn(1), "recording preview moves the swap to turn one and turns back off");
+            SwapRules.UsePreview(true); bool preview = SwapRules.StartTurn == 5 && SwapRules.IsSwapTurn(5);
+            SwapRules.UsePreview(false); Check(preview && SwapRules.StartTurn == 1 && SwapRules.IsSwapTurn(5), "recording preview starts at turn five and turns back off");
             run("swap-turn-controls-next-account-and-pays-sabotage-bonus", SwapTurn);
             SwapRules.UsePreview(true);
-            try { run("preview-turn-one-keeps-own-augment-choice-then-swaps", PreviewAugment); }
+            try { run("recording-preview-starts-at-turn-five-swap", PreviewAugment); }
             finally { SwapRules.UsePreview(false); }
             return names.ToArray();
         }
@@ -41,13 +41,18 @@ namespace BlackWhale.Tests
                 new Command { type = type, turn = room.Snapshot().turn, requestId = "v" + (++seq), developerRevision = room.Snapshot().developerRevision, payload = payload });
             for (int i = 1; i <= 4; i++) room.Join("c" + i, "Player " + i);
             for (int i = 1; i <= 4; i++) send(i, "SET_READY", new CommandPayload { ready = true });
-            send(1, "START_GAME", null);
-            Check(room.Snapshot().turn == 1 && room.Snapshot().phase == StockRules.AugmentPhase && !room.Snapshot().swapTurn, "augment choice is not swapped");
+            Check(send(1, "START_GAME", null).success, "start");
+            var s = room.Snapshot();
+            Check(s.turn == 5 && s.phase == Protocol.Info && s.swapTurn && SwapRules.ActingAccount(s, "P1") == "P2", "recording preview starts directly at the turn-five swap");
+            Check(Players.All(id => market.GetPortfolio(id).augments.Length == 2), "skipped augment rounds auto-picked");
+            Check(market.GetScoreboard(4) != null && market.GetScoreboard(5) == null, "turns one to four settled, five open");
             var view = room.DrainMessages().Last(d => d.PlayerId == "P1" && d.Message.type == "PLAYER_VIEW").Message.playerView;
-            Check(view.portfolio.candidates.SequenceEqual(market.GetPortfolio("P1").candidates), "P1 sees own augment candidates");
-            for (int i = 1; i <= 4; i++)
-                Check(send(i, StockRules.Choose, new CommandPayload { augmentId = market.GetPortfolio("P" + i).candidates[0], companyId = "AI" }).success, "own augment chosen");
-            Check(room.Snapshot().phase == Protocol.Info && room.Snapshot().swapTurn && SwapRules.ActingAccount(room.Snapshot(), "P1") == "P2", "swap starts at information phase");
+            Check(view.turn == 5, "client gets the turn-five view");
+            while (room.Snapshot().phase != Protocol.Investment) { clock.Seconds = room.Snapshot().phaseEndsAtServerSeconds; room.Tick(); }
+            Check(send(1, StockRules.Position, new CommandPayload { shareOrders = new[] { new ShareOrder { companyId = "AI", targetShares = 3 } } }).success
+                && market.GetPortfolio("P2").usedSlots == 3, "swap trading works after skipping");
+            while (room.Snapshot().phase != Protocol.Ended) { clock.Seconds = room.Snapshot().phaseEndsAtServerSeconds; room.Tick(); }
+            Check(market.GetScoreboard(6)?.gameComplete == true, "game still finishes at turn six");
         }
 
         private static void Helpers()
