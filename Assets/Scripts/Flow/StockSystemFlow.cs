@@ -70,7 +70,8 @@ namespace BlackWhale.Flow
         private IStockMarketSystem Stock => market as IStockMarketSystem;
         private bool StockMode => Stock?.StockEnabled == true;
         private static bool IsStockCommand(string type) => type == StockRules.Position || type == StockRules.Trade || type == StockRules.Pass || type == StockRules.Choose || type == StockRules.Priority;
-        private bool SwapActive => StockMode && market is ISwapMarket swap && swap.SwapActive;
+        // 증강 선택은 각자 자기 것을 고른다. 교환은 정보 탐색부터 적용.
+        private bool SwapActive => StockMode && phase != StockRules.AugmentPhase && market is ISwapMarket swap && swap.SwapActive;
         private string Account(string player) => SwapActive ? ((ISwapMarket)market).SwapAccount(player) : player;
         private void SendAllViews() { foreach (var m in members) SendView(m.Id); }
         private void RevealStockPortfolio(double now)

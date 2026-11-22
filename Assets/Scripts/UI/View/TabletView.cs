@@ -499,7 +499,7 @@ namespace BlackWhale.UI.View
                     _lastPhaseKey = phaseKey;
                     if (s.phase == Protocol.Lobby) ShowBanner("대기실에 입장했습니다. 준비를 누르세요.");
                     else if (s.phase == Protocol.Ended && !string.IsNullOrEmpty(Store.EndReason)) ShowBanner(ErrorMessages.ToKorean(Store.EndReason));
-                    else if (s.phase != Protocol.Ended && !day.HasValue) ShowBanner("<b>" + s.turn + "턴 · " + PhaseNames.ForState(s) + "</b> 단계가 시작되었습니다.");
+                    else if (s.phase != Protocol.Ended && !day.HasValue && !(s.swapTurn && s.phase == Protocol.Info)) ShowBanner("<b>" + s.turn + "턴 · " + PhaseNames.ForState(s) + "</b> 단계가 시작되었습니다.");
                     if (s.phase != Protocol.Lobby && s.phase != Protocol.Ended) UiSound.Play(UiSound.Kind.Turn); // 새 단계 시작음
                     if (s.swapTurn && (s.phase == Protocol.Info || s.phase == Protocol.Investment))
                     {

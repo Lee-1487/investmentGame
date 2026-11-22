@@ -24,7 +24,30 @@ namespace BlackWhale.Tests
             SwapRules.UsePreview(true); bool preview = SwapRules.IsSwapTurn(1) && !SwapRules.IsSwapTurn(5);
             SwapRules.UsePreview(false); Check(preview && SwapRules.IsSwapTurn(5) && !SwapRules.IsSwapTurn(1), "recording preview moves the swap to turn one and turns back off");
             run("swap-turn-controls-next-account-and-pays-sabotage-bonus", SwapTurn);
+            SwapRules.UsePreview(true);
+            try { run("preview-turn-one-keeps-own-augment-choice-then-swaps", PreviewAugment); }
+            finally { SwapRules.UsePreview(false); }
             return names.ToArray();
+        }
+
+        private static void PreviewAugment()
+        {
+            var clock = new TestClock();
+            var market = MarketService.CreateStockSystem(7741);
+            var room = new GameRoom("SWAP1", market, new SharedInformationService(market), clock, fixedOrderForFixture: true,
+                settings: new GameSettings(5, 6, 2, enableProgressionFeatures: false));
+            int seq = 0;
+            Func<int, string, CommandPayload, CommandResult> send = (p, type, payload) => room.ProcessCommand("c" + p,
+                new Command { type = type, turn = room.Snapshot().turn, requestId = "v" + (++seq), developerRevision = room.Snapshot().developerRevision, payload = payload });
+            for (int i = 1; i <= 4; i++) room.Join("c" + i, "Player " + i);
+            for (int i = 1; i <= 4; i++) send(i, "SET_READY", new CommandPayload { ready = true });
+            send(1, "START_GAME", null);
+            Check(room.Snapshot().turn == 1 && room.Snapshot().phase == StockRules.AugmentPhase && !room.Snapshot().swapTurn, "augment choice is not swapped");
+            var view = room.DrainMessages().Last(d => d.PlayerId == "P1" && d.Message.type == "PLAYER_VIEW").Message.playerView;
+            Check(view.portfolio.candidates.SequenceEqual(market.GetPortfolio("P1").candidates), "P1 sees own augment candidates");
+            for (int i = 1; i <= 4; i++)
+                Check(send(i, StockRules.Choose, new CommandPayload { augmentId = market.GetPortfolio("P" + i).candidates[0], companyId = "AI" }).success, "own augment chosen");
+            Check(room.Snapshot().phase == Protocol.Info && room.Snapshot().swapTurn && SwapRules.ActingAccount(room.Snapshot(), "P1") == "P2", "swap starts at information phase");
         }
 
         private static void Helpers()
