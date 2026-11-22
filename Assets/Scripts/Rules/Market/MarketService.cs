@@ -297,6 +297,7 @@ namespace BlackWhale.Rules
             // Compute everything first, then apply, so a failure never leaves half-updated assets.
             PlayerSettlement[] results = players.Select(id =>
                 StockEnabled ? SettleStockPlayer(id) : Settlement.SettlePlayer(id, turnStartAssets[id], costs[id], orders[id], market, rules)).ToArray();
+            if (StockEnabled) ApplySwapBonus(results);
 
             foreach (PlayerSettlement r in results)
             {
@@ -377,7 +378,8 @@ namespace BlackWhale.Rules
                     turnReturnBps = lastTurnReturn[r.Key],
                     cumulativeProfit = assets[r.Key] - rules.initialAssets,
                     cumulativeReturnBps = Settlement.ReturnBps(rules.initialAssets, assets[r.Key]),
-                    returnHistory = history[r.Key].Select(h => new ReturnPoint { turn = h.turn, returnBps = h.returnBps }).ToArray()
+                    returnHistory = history[r.Key].Select(h => new ReturnPoint { turn = h.turn, returnBps = h.returnBps }).ToArray(),
+                    swapAccountId = SwapAccountOf(r.Key), swapAccountProfit = SwapProfitOf(r.Key), swapBonus = SwapBonusOf(r.Key)
                 }).ToArray()
             };
         }
@@ -391,7 +393,8 @@ namespace BlackWhale.Rules
                 rows = board.rows.Select(r => new ScoreRow { rank = r.rank, playerId = r.playerId,
                     totalAssets = r.totalAssets, turnReturnBps = r.turnReturnBps, cumulativeProfit = r.cumulativeProfit,
                     cumulativeReturnBps = r.cumulativeReturnBps,
-                    returnHistory = r.returnHistory.Select(h => new ReturnPoint { turn = h.turn, returnBps = h.returnBps }).ToArray()
+                    returnHistory = r.returnHistory.Select(h => new ReturnPoint { turn = h.turn, returnBps = h.returnBps }).ToArray(),
+                    swapAccountId = r.swapAccountId, swapAccountProfit = r.swapAccountProfit, swapBonus = r.swapBonus
                 }).ToArray() };
         }
 

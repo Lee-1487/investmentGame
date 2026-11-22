@@ -469,6 +469,7 @@ namespace BlackWhale.Flow
             selectionIndex = 0; ordersLocked = false;
             phase = Protocol.Info;
             market.BeginTurn(Context(), ids);
+            if (StockMode && SwapRules.IsSwapTurn(turn) && market is ISwapMarket swapMarket) swapMarket.ConfigureSwap(initialOrder);
             information.GrantTurnCoins(Context(), ids);
             if (StockMode) WindowInfo.PrepareRandomInformation(Context());
             progression?.BeginTurn(Context());
@@ -708,6 +709,9 @@ namespace BlackWhale.Flow
                 botDifficulty = botDifficulty, events = progression?.GetPublicEvents(roomId) ?? new PublicEvent[0],
                 stockSystem = StockMode, totalTurns = settings.Turns, draftOrder = (string[])order.Clone(),
                 lobbySettings = lobbySettings.Copy(),
+                swapTurn = SwapActive, swapControllerIds = SwapActive ? (string[])initialOrder.Clone() : new string[0],
+                swapAccountIds = SwapActive ? initialOrder.Select(Account).ToArray() : new string[0],
+                swapTurns = StockMode ? (int[])SwapRules.Turns.Clone() : new int[0], swapBonusPercent = SwapRules.BonusPercent,
                 shareMarket = StockMode && turn > 0 ? Stock.GetShareMarket() : new CompanyShareState[0],
                 windowInformation = WindowMode, publicSelectionActive = PublicPicking, publicSelectionIndex = publicPickIndex,
                 publicSelectionPlayerId = PublicPicking ? order[publicPickIndex] : "",
@@ -721,11 +725,11 @@ namespace BlackWhale.Flow
         private void SendView(string player)
         {
             var view = turn == 0 ? new PlayerView { recipientPlayerId = player, turn = 0, phase = phase } :
-                information.BuildPlayerView(Context(player), market.GetOwnInvestmentState(player));
+                information.BuildPlayerView(Context(player), market.GetOwnInvestmentState(Account(player)));
             progression?.PopulateView(Context(player), view);
             if (market is IMarketReservations reservations) view.reservedInvestments = reservations.GetReservations(player);
             if (StockMode) {
-                view.portfolio = Stock.GetPortfolio(player);
+                view.portfolio = Stock.GetPortfolio(Account(player)); // 교환 턴: 조종 중인 계좌
                 if (Stock.ProcessedDay > 0 && market is IWindowMarketDataSource source)
                     foreach (var company in view.companies)
                         company.visibleWindows = (company.visibleWindows ?? new VisibleInformationWindow[0]).Concat(new[] { new VisibleInformationWindow {

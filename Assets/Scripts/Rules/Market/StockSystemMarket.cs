@@ -92,6 +92,7 @@ namespace BlackWhale.Rules
         {
             ProcessedDay = 0;
             liveTrading = false;
+            ClearSwap(); // 교환 턴이면 GameRoom이 턴 시작 직후 다시 설정한다.
             foreach (var history in fills.Values) history.Clear();
             foreach (string id in players)
             {

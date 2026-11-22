@@ -52,9 +52,11 @@ namespace BlackWhale.UI.View
         public StockSystemPage(RectTransform parent, GameClientController controller) { root = parent; this.controller = controller; }
         private PublicState State => controller.Store.Public;
         private PortfolioState Portfolio => controller.Store.View?.portfolio;
+        /// <summary>내가 매매하는 계좌. [실험] 교환 턴에는 조종 중인 다음 자리 사람의 계좌.</summary>
+        private string Me => SwapRules.ActingAccount(State, controller.LocalPlayerId);
         private string BuildKey => State.turn + ":" + State.phase + ":" + State.selectionIndex + ":" + State.currentPlayerId + ":" + State.developerRevision;
         private bool Editable => controller.CanDraftShares();
-        private int Holding(string id) => State.shareMarket?.FirstOrDefault(c => c.companyId == id)?.owners?.Where(v => v.playerId == controller.LocalPlayerId)
+        private int Holding(string id) => State.shareMarket?.FirstOrDefault(c => c.companyId == id)?.owners?.Where(v => v.playerId == Me)
             .Sum(v => v.shares + v.reserved)
             ?? Portfolio?.holdings?.FirstOrDefault(v => v.companyId == id)?.shares ?? 0;
         public bool TryRefresh()
@@ -303,13 +305,13 @@ namespace BlackWhale.UI.View
             used = Math.Max(0, Math.Min(total, used));
             int cash = total - used;
             Color gold = new Color32(0xBF, 0xBF, 0xBF, 0xFF);
-            Color invested = Palette.Player(controller.LocalPlayerId);
+            Color invested = Palette.Player(Me);
             invested.a = 0.35f;
             for (int i = 0; i < total; i++) card.BankUnits[i].color = i < used ? invested : gold;
-            card.BankLabel.text = "<color=#D0D0D0><b>자동 예금</b></color> · 내 BANK <b>" + cash + "</b>/" + total + "칸  <size=11><color=#8C8C8C>기업을 덜 살수록 늘어납니다</color></size>";
+            card.BankLabel.text = "<color=#D0D0D0><b>자동 예금</b></color> · " + (State.swapTurn ? Me + " 계좌" : "내") + " BANK <b>" + cash + "</b>/" + total + "칸  <size=11><color=#8C8C8C>기업을 덜 살수록 늘어납니다</color></size>";
         }
 
-        private int OtherShares(string id) => State.shareMarket?.FirstOrDefault(c => c.companyId == id)?.owners?.Where(v => v.playerId != controller.LocalPlayerId)
+        private int OtherShares(string id) => State.shareMarket?.FirstOrDefault(c => c.companyId == id)?.owners?.Where(v => v.playerId != Me)
             .Sum(v => v.shares + v.reserved) ?? 0;
         private void BuildLiveControls(RectTransform parent, Card card, string id)
         {
@@ -355,6 +357,7 @@ namespace BlackWhale.UI.View
             if (summary != null) summary.text = State.phase == Protocol.Selection
                 ? (Editable ? "내 차례 · 남은 매수 " + Portfolio.draftSharesRemaining + "/15주" : pending ? "매수 처리 중" : State.currentPlayerId + " 차례") + " · 보유 " + Portfolio.usedSlots + "/30주 · BANK " + Portfolio.CashSlots + "주"
                 : State.phase == Protocol.Info ? "정보 탐색 · 차트를 누르면 크게 볼 수 있습니다."
+                : State.phase == Protocol.Investment && State.swapTurn ? "<color=#FF6B6B><b>교환 턴</b></color> · <b>" + Me + " 계좌</b>를 조종 중 · 내릴 기업을 사서 최대한 떨어뜨리세요 · 현재 " + StockRules.CurrentDay(State, Portfolio) + "/30일차"
                 : State.phase == Protocol.Investment ? "실시간 매매 · 현재 " + StockRules.CurrentDay(State, Portfolio) + "/30일차 · "
                     + (State.lobbySettings?.daySeconds ?? StockRules.DaySeconds) + "초/일 · 실선 매수 · 점선 매도 · 색상은 참가자별"
                 : "확정된 기업별 주식 현황 · 차트를 눌러 확인하세요.";
@@ -406,11 +409,11 @@ namespace BlackWhale.UI.View
                 else card.Chart.SetTradeIntervals(controller.Store.TradePlans.ChartIntervals(controller.Store.View, State.turn, id, controller.Store.OrderLocked), !controller.Store.OrderLocked);
                 if (card.BankUnits != null) RefreshBank(card);
                 if (card.Units == null) continue;
-                var colors = owners.Where(o => o.playerId != controller.LocalPlayerId).OrderBy(o => o.playerId)
+                var colors = owners.Where(o => o.playerId != Me).OrderBy(o => o.playerId)
                     .SelectMany(o => Enumerable.Repeat(Palette.Player(o.playerId), Math.Max(0, o.shares + o.reserved))).ToList();
                 int other = Math.Min(20, colors.Count);
-                int ownUnits = card.Slider != null ? targets[id] : owners.Where(o => o.playerId == controller.LocalPlayerId).Sum(o => o.shares + o.reserved);
-                colors.AddRange(Enumerable.Repeat(Palette.Player(controller.LocalPlayerId), Math.Max(0, ownUnits)));
+                int ownUnits = card.Slider != null ? targets[id] : owners.Where(o => o.playerId == Me).Sum(o => o.shares + o.reserved);
+                colors.AddRange(Enumerable.Repeat(Palette.Player(Me), Math.Max(0, ownUnits)));
                 Color empty = new Color32(0x3A, 0x3A, 0x3A, 0xFF);
                 bool first = card.LastColors == null;
                 if (first) card.LastColors = new Color[card.Units.Length];
@@ -424,8 +427,8 @@ namespace BlackWhale.UI.View
                 card.Stamp.gameObject.SetActive(soldOut);
                 if (soldOut && !card.WasSoldOut && !first) UiAnim.Pulse(card.Stamp.rectTransform, 0.1f, 1.35f);
                 card.WasSoldOut = soldOut;
-                card.Count.text = targets[id] > 0 ? "내 " + targets[id] + "주" : "";
-                card.Count.color = Palette.Player(controller.LocalPlayerId);
+                card.Count.text = targets[id] > 0 ? (State.swapTurn ? Me + " " : "내 ") + targets[id] + "주" : "";
+                card.Count.color = Palette.Player(Me);
                 card.SliderRoot.anchorMin = new Vector2(other / 20f, 0); card.SliderRoot.anchorMax = Vector2.one;
                 card.SliderRoot.offsetMin = Vector2.zero; card.SliderRoot.offsetMax = Vector2.zero;
                 card.Slider.maxValue = Math.Max(1, 20 - other); card.Slider.SetValueWithoutNotify(targets[id]);

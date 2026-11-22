@@ -115,6 +115,11 @@ namespace BlackWhale.Shared
         public string[] draftOrder;
         public CompanyShareState[] shareMarket;
         public LobbySettings lobbySettings;
+        // [실험] 자산 교환 턴: swapControllerIds[i]가 swapAccountIds[i] 계좌를 조종한다.
+        public bool swapTurn;
+        public string[] swapControllerIds, swapAccountIds;
+        public int[] swapTurns;
+        public int swapBonusPercent;
     }
     [Serializable] public sealed class VisibleBundle
     {
@@ -164,6 +169,9 @@ namespace BlackWhale.Shared
         public string playerId;
         public long totalAssets, cumulativeProfit;
         public ReturnPoint[] returnHistory;
+        // [실험] 교환 턴 정산: 내가 조종한 계좌와 그 계좌의 손익, 내가 받은 견제 보너스
+        public string swapAccountId;
+        public long swapAccountProfit, swapBonus;
     }
     [Serializable] public sealed class Scoreboard
     {
