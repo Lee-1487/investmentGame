@@ -122,7 +122,7 @@ namespace BlackWhale.UI.View
 
         private void BuildLobby(PublicState s)
         {
-            _status.text = "대기실 · 4명이 모두 준비하면 방장이 시작합니다";
+            _status.text = ""; // 대기실 안내 문구는 표시하지 않음
             var card = UiKit.Panel(_body, "Lobby", Color.clear); // 큰 네모 바탕 없이
             UiKit.Stretch(card.rectTransform, 28, 12, 28, 12);
             var root = card.rectTransform;

@@ -490,7 +490,7 @@ namespace BlackWhale.UI.View
             _title.text = showingResults ? "시장 공개 · 투자 결과" : phase == Protocol.Investment && state?.stockSystem == true ? "실시간 진입·청산" : state?.publicSelectionActive == true ? "공용 정보 선택" : "정보 구매 창";
             _publicHistory.gameObject.SetActive(windows);
             UiKit.Stretch(_grid, 0, windows ? 76 : 34, 0, 0);
-            if (windows) _publicHistory.text = showingResults ? "이번 턴 주가가 모두 공개되었습니다 · 수익과 순위는 전광판에서 확인하세요."
+            if (windows) _publicHistory.text = showingResults ? "" /* 결과 안내 문구는 표시하지 않음 */
                 : (state.publicSelectionActive ? "기업 선택 · " + (state.lobbySettings?.publicRevealDays ?? 5) + "일 무료 공개 · "
                     + (state.lobbySettings?.scatteredPublicDays == true ? "무작위 날짜 · " : "연속 구간 · ") : "새 정보 1일 = 1코인 · 마우스로 선택 후 정보 사기 / 예약하기 · ")
                 + string.Join(" / ", (state.publicInformation ?? Array.Empty<PublicInformationChoice>()).Select(InformationWindowRules.PublicChoiceLabel));
