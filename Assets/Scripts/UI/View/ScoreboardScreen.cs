@@ -159,7 +159,7 @@ namespace BlackWhale.UI.View
             }
             foreach (var r in movedUp) r.SetAsLastSibling(); // 올라오는 줄이 위에 보이게
 
-            var note = UiKit.Label(inner, "순위는 총자산 기준 · 다른 사람의 코인·투자 기업·구매 정보는 표시하지 않습니다.", 11, Palette.SubText, TextAnchor.LowerLeft);
+            var note = UiKit.Label(inner, "", 11, Palette.SubText, TextAnchor.LowerLeft); // '순위는 총자산 기준 …' 문구는 표시하지 않음
             UiKit.Stretch(note.rectTransform, 14, 0, 14, 10);
         }
 

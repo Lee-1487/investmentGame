@@ -505,7 +505,7 @@ namespace BlackWhale.UI.View
                 _publicHistory.text = (phase == Protocol.Investment ? state.developerMode && !state.developerTimerRunning
                     ? "방장 확인 버튼으로 하루씩 진행합니다. 현재 " + StockRules.CurrentDay(state, v?.portfolio) + "일차\n"
                     : (state.lobbySettings?.daySeconds ?? StockRules.DaySeconds) + "초마다 하루가 공개됩니다. 현재 " + StockRules.CurrentDay(state, v?.portfolio) + "일차\n"
-                    : "BANK 전체 공개 · 각 기업 랜덤 " + (state.lobbySettings?.publicRevealDays ?? 5) + "일 공동 공개 · 1코인 = 범위 내 미공개 랜덤 1일 · 드래그는 거래 구간 예약\n")
+                    : "")  // 정보 구매 창 아래 안내 문구는 표시하지 않음
                     + string.Join(" / ", (v?.portfolio?.insights ?? Array.Empty<StockInsight>()).Select(i => i.companyId + " 이벤트 성공 가능성 " + DisplayFormat.Percent(i.probabilityBps, false)));
             foreach (var card in _cards) card.Refresh();
             if (_zoomCompany != null)
