@@ -459,7 +459,7 @@ namespace BlackWhale.UI.View
         public static event System.Action<string> HalveReturnRequested;
         private RectTransform _halveButton;
         private Text _halveText;
-        private Image _halveLine;
+        private Image _halveBg;
         private bool _halveArmed;
         private int _halveTurn = -1;
         private string _halveTarget;
@@ -467,14 +467,12 @@ namespace BlackWhale.UI.View
         private void BuildHalveButton(RectTransform col)
         {
             // 순위 칸과 같은 크기(84x86), 순위 열 맨 아래(방 나가기 바로 위)
-            var bg = UiKit.Panel(col, "HalveReturnButton", Color.clear, raycast: true);
+            var bg = UiKit.Panel(col, "HalveReturnButton", HoverUnderline.Fill, rounded: true, raycast: true); // 다른 버튼처럼 회색 둥근 네모
+            _halveBg = bg;
             _halveButton = bg.rectTransform;
             UiKit.Place(_halveButton, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 0), new Vector2(84, 86));
             _halveButton.pivot = new Vector2(0.5f, 0);
             _halveButton.anchoredPosition = Vector2.zero;
-            _halveLine = UiKit.Panel(_halveButton, "Underline", Color.white);
-            _halveLine.rectTransform.anchorMin = Vector2.zero; _halveLine.rectTransform.anchorMax = new Vector2(1, 0);
-            _halveLine.rectTransform.offsetMin = new Vector2(4, 0); _halveLine.rectTransform.offsetMax = new Vector2(-4, 2);
             _halveText = UiKit.Label(_halveButton, "", 13, Palette.Text, TextAnchor.MiddleCenter);
             UiKit.Stretch(_halveText.rectTransform, 2, 4, 2, 6);
             UiKit.Click(bg.gameObject, ToggleHalve);
@@ -528,8 +526,7 @@ namespace BlackWhale.UI.View
             _halveText.text = _halveArmed ? "<b>대상 선택</b>\n<size=11>상대 순위 칸을 누르세요</size>"
                 : "<b>SKILL</b>\n<size=11>코인 " + HalveCost + "개</size>";
             _halveText.color = _halveArmed || usable ? Palette.Text : Palette.DisabledText;
-            _halveLine.color = _halveArmed ? Palette.Text : usable ? Palette.SubText : Palette.DisabledText;
-            _halveLine.rectTransform.offsetMax = new Vector2(-4, _halveArmed ? 3 : 2); // 눌린 상태는 밑줄을 굵게
+            _halveBg.color = _halveArmed ? HoverUnderline.FillPrimary : usable ? HoverUnderline.Fill : HoverUnderline.FillDisabled; // 눌린 상태는 밝은 회색
             foreach (var slot in _slots) slot.SetTargeted(_halveTarget != null && slot.PlayerId == _halveTarget);
         }
 

@@ -322,7 +322,7 @@ namespace BlackWhale.UI.View
             var img = Panel(parent, "Button", background, rounded, raycast: true);
             var button = img.gameObject.AddComponent<Button>();
             button.targetGraphic = img;
-            button.transition = Selectable.Transition.None; // 도형·색 변화 없이 글자 + 마우스 올림 밑줄로만 표시
+            button.transition = Selectable.Transition.None; // 색 변화는 HoverUnderline이 직접 처리(회색 둥근 네모)
             var text = Label(img.transform, label, fontSize, textColor);
             Stretch(text.rectTransform, 4, 2, 4, 2);
             var look = img.gameObject.AddComponent<HoverUnderline>();
@@ -457,8 +457,8 @@ namespace BlackWhale.UI.View
     }
 
     /// <summary>
-    /// 버튼 모양: 도형(바탕) 없이 글자만 보이고, 마우스를 올리면 글자 아래 흰 밑줄이 나타난다.
-    /// 바탕이 밝은(주 버튼·선택됨) 경우는 글자를 굵게 해 구분한다.
+    /// 버튼 모양: 둥근 모서리 네모에 회색 채우기. 마우스를 올리면 조금 밝아진다.
+    /// 주 버튼·선택됨은 더 밝은 회색 + 굵은 글자, 비활성은 어두운 회색 + 회색 글자.
     /// 로고·그림 등 자식 요소가 있는 카드형 버튼은 원래 바탕을 유지한다.
     /// </summary>
     [DisallowMultipleComponent]
@@ -498,14 +498,25 @@ namespace BlackWhale.UI.View
             _background = background; _text = text;
             if (_image == null || _label == null) return;
             if (IsCard) { _image.color = background; _label.color = UiKit.Readable(background, text); return; }
-            _image.color = Color.clear; // 클릭 판정은 그대로(투명 바탕)
+            // 투명 바탕·글자 없는 버튼은 위에 겹친 클릭 판정 영역이므로 투명하게 둔다
+            _hitArea = background.a < 0.01f || string.IsNullOrEmpty(_label.text);
+            if (_hitArea) { _image.color = Color.clear; return; }
+            // 둥근 모서리 네모 + 회색 채우기
+            _image.sprite = UiKit.Rounded; _image.type = Image.Type.Sliced; _image.pixelsPerUnitMultiplier = 2f;
             float lum = background.r * 0.299f + background.g * 0.587f + background.b * 0.114f;
-            bool primary = background.a > 0.5f && lum > 0.7f; // 흰 강조 바탕 = 주 버튼/선택됨
+            _primary = background.a > 0.5f && lum > 0.7f; // 흰 강조 바탕 = 주 버튼/선택됨 → 밝은 회색 + 굵게
             bool disabled = _button != null && !_button.interactable;
-            _label.color = disabled ? Palette.DisabledText : primary ? Palette.Text : text;
-            _label.fontStyle = primary ? FontStyle.Bold : FontStyle.Normal;
+            _label.color = disabled ? Palette.DisabledText : _primary ? Palette.Text : text;
+            _label.fontStyle = _primary ? FontStyle.Bold : FontStyle.Normal;
             Refresh();
         }
+
+        public static readonly Color Fill = new Color32(0x3A, 0x3A, 0x3A, 0xFF);        // 기본 회색
+        public static readonly Color FillHover = new Color32(0x4C, 0x4C, 0x4C, 0xFF);   // 마우스 올림
+        public static readonly Color FillPrimary = new Color32(0x5E, 0x5E, 0x5E, 0xFF); // 주 버튼·선택됨
+        public static readonly Color FillPrimaryHover = new Color32(0x6E, 0x6E, 0x6E, 0xFF);
+        public static readonly Color FillDisabled = new Color32(0x22, 0x22, 0x22, 0xFF);
+        private bool _primary, _hitArea;
 
         private bool _lastInteractable = true;
         private void Start() { Apply(_background, _text); _lastInteractable = _button == null || _button.interactable; } // 자식(로고 등)이 다 붙은 뒤 카드형 여부 다시 판단
@@ -522,16 +533,10 @@ namespace BlackWhale.UI.View
 
         private void Refresh()
         {
-            if (_line == null || _label == null) return;
-            bool show = _hover && (_button == null || _button.interactable) && !string.IsNullOrEmpty(_label.text) && !IsCard;
-            _line.gameObject.SetActive(show);
-            if (!show) return;
-            var rect = ((RectTransform)transform).rect;
-            float w = Mathf.Min(_label.preferredWidth, rect.width - 8f);
-            // 글자 아래로 살짝 띄운다(글자 크기의 약 0.8 + 4px). 버튼 칸 밖으로는 조금(최대 6px)까지만.
-            float y = -Mathf.Min(rect.height * 0.5f + 6f, _label.fontSize * 0.8f + 4f);
-            _line.rectTransform.anchoredPosition = new Vector2(0, y);
-            _line.rectTransform.sizeDelta = new Vector2(Mathf.Max(8f, w), 1.5f);
+            if (_image == null || _label == null || IsCard || _hitArea) return;
+            if (_line != null) _line.gameObject.SetActive(false); // 밑줄은 쓰지 않음
+            bool disabled = _button != null && !_button.interactable;
+            _image.color = disabled ? FillDisabled : _primary ? (_hover ? FillPrimaryHover : FillPrimary) : _hover ? FillHover : Fill;
         }
     }
     /// <summary>코인을 글자뿐 아니라 금화 그림으로도 보여 주는 작은 묶음(아이콘 + "N개").</summary>
