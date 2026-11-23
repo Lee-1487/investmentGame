@@ -210,7 +210,7 @@ namespace BlackWhale.UI.Dev
             connectionPanel = UiKit.Panel(canvasRoot, "ConnectionScreen", Palette.Background, raycast: true).rectTransform;
             UiKit.Stretch(connectionPanel);
             // 회색 네모 대신 가장자리로 갈수록 바탕(검정)에 녹아드는 넓고 어두운 그라데이션(내용 칸보다 크게)
-            var glow = UiKit.Panel(connectionPanel, "ConnectionGlow", new Color32(0x17, 0x17, 0x17, 0xFF)); // 바탕보다 살짝 밝게
+            var glow = UiKit.Panel(connectionPanel, "ConnectionGlow", new Color32(0x24, 0x24, 0x24, 0xFF)); // 바탕보다 살짝 밝게
             glow.sprite = UiKit.Soft; glow.type = UnityEngine.UI.Image.Type.Sliced; glow.pixelsPerUnitMultiplier = 0.35f;
             UiKit.Place(glow.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1100, 1000));
             var card = UiKit.Panel(connectionPanel, "ConnectionCard", Color.clear).rectTransform; // 내용 배치용(투명)

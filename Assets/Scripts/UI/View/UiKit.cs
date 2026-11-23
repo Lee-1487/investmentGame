@@ -12,18 +12,18 @@ namespace BlackWhale.UI.View
     {
         // 테마: 검정·흰색(무채색)만 사용. 초록(Success)만 예외로 유지.
         // 주가 등락도 무채색: 상승 = 흰색, 하락 = 회색.
-        public static readonly Color Background = new Color32(0x00, 0x00, 0x00, 0xFF);
-        public static readonly Color Bezel = new Color32(0x05, 0x05, 0x05, 0xFF);
-        public static readonly Color Screen = new Color32(0x00, 0x00, 0x00, 0xFF);
-        public static readonly Color Card = new Color32(0x07, 0x07, 0x07, 0xFF);       // 카드(그래프 칸) 바탕: 검정에 가깝게
-        public static readonly Color ChartFrame = new Color32(0x14, 0x14, 0x14, 0xFF); // 그래프 카드 테두리: 거의 안 보이게
+        public static readonly Color Background = new Color32(0x12, 0x12, 0x12, 0xFF); // 완전 검정보다 살짝 밝게
+        public static readonly Color Bezel = new Color32(0x16, 0x16, 0x16, 0xFF);
+        public static readonly Color Screen = new Color32(0x12, 0x12, 0x12, 0xFF);
+        public static readonly Color Card = new Color32(0x18, 0x18, 0x18, 0xFF);       // 카드(그래프 칸) 바탕: 바탕보다 아주 살짝 밝게
+        public static readonly Color ChartFrame = new Color32(0x1F, 0x1F, 0x1F, 0xFF); // 그래프 카드 테두리: 거의 안 보이게
         public static readonly Color CardBorder = new Color32(0x2A, 0x2A, 0x2A, 0xFF);
         public static readonly Color Text = new Color32(0xF5, 0xF5, 0xF5, 0xFF);
         public static readonly Color SubText = new Color32(0x8C, 0x8C, 0x8C, 0xFF);
         public static readonly Color Accent = new Color32(0xFF, 0xFF, 0xFF, 0xFF);     // 강조 = 흰색(버튼 글자는 자동으로 검정)
         public static readonly Color OnAccent = new Color32(0x00, 0x00, 0x00, 0xFF);   // 흰 강조 위 글자
-        public static readonly Color AccentSoft = new Color32(0x1E, 0x1E, 0x1E, 0xFF);
-        public static readonly Color Disabled = new Color32(0x1A, 0x1A, 0x1A, 0xFF);
+        public static readonly Color AccentSoft = new Color32(0x26, 0x26, 0x26, 0xFF);
+        public static readonly Color Disabled = new Color32(0x22, 0x22, 0x22, 0xFF);
         public static readonly Color DisabledText = new Color32(0x55, 0x55, 0x55, 0xFF);
         public static readonly Color Up = new Color32(0xFF, 0xFF, 0xFF, 0xFF);    // 상승: 흰색
         public static readonly Color Down = new Color32(0x8A, 0x8A, 0x8A, 0xFF);  // 하락: 회색
@@ -521,7 +521,7 @@ namespace BlackWhale.UI.View
         public static readonly Color FillHover = new Color32(0x4C, 0x4C, 0x4C, 0xFF);   // 마우스 올림
         public static readonly Color FillPrimary = new Color32(0x5E, 0x5E, 0x5E, 0xFF); // 주 버튼·선택됨
         public static readonly Color FillPrimaryHover = new Color32(0x6E, 0x6E, 0x6E, 0xFF);
-        public static readonly Color FillDisabled = new Color32(0x22, 0x22, 0x22, 0xFF);
+        public static readonly Color FillDisabled = new Color32(0x26, 0x26, 0x26, 0xFF);
         private bool _primary, _hitArea;
 
         private bool _lastInteractable = true;
