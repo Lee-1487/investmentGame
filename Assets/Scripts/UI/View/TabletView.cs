@@ -526,7 +526,7 @@ namespace BlackWhale.UI.View
             if (_halveArmed && !HalvePhaseAllowed(s)) _halveArmed = false;
             bool usable = CanUseHalve(out _);
             _halveText.text = _halveArmed ? "<b>대상 선택</b>\n<size=11>상대 순위 칸을 누르세요</size>"
-                : "<b>반토막</b>\n<size=11>코인 " + HalveCost + "개</size>";
+                : "<b>SKILL</b>\n<size=11>코인 " + HalveCost + "개</size>";
             _halveText.color = _halveArmed || usable ? Palette.Text : Palette.DisabledText;
             _halveLine.color = _halveArmed ? Palette.Text : usable ? Palette.SubText : Palette.DisabledText;
             _halveLine.rectTransform.offsetMax = new Vector2(-4, _halveArmed ? 3 : 2); // 눌린 상태는 밑줄을 굵게
