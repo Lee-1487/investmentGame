@@ -679,7 +679,7 @@ namespace BlackWhale.UI.View
 
             if (!PhaseClock.HasDeadline(s) && !s.developerMode)
             {
-                _timerText.text = "<size=11>" + PhaseNames.Korean(s.phase) + " · 시간 제한 없음</size>\n<size=28><b>-</b></size>";
+                _timerText.text = ""; // '시간 제한 없음' 문구는 표시하지 않음
                 _timerText.color = Palette.Text;
                 UiKit.SetButton(_doneButton, "완료", false, Palette.Disabled, Palette.DisabledText);
                 return;

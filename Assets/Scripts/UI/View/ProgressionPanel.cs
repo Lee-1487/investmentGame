@@ -125,7 +125,7 @@ namespace BlackWhale.UI.View
                 controller.CanFinishPhase(), Palette.Accent, Color.white);
             feedback.text = endReason == "GAME_COMPLETE" ? (state.totalTurns > 0 ? state.totalTurns : 10) + "턴 게임이 종료되었습니다. 서버가 확정한 최종 결과입니다."
                 : !connected ? ErrorMessages.ToKorean(endReason) : store.LastError != null ? ErrorMessages.ToKorean(store.LastError.ErrorCode)
-                : mandatory ? "선택과 확정은 서버가 처리합니다. 다른 참가자의 개인 정보는 표시하지 않습니다." : "실제 게임 상태 · 화면을 닫아도 게임은 계속 진행됩니다.";
+                : ""; // '실제 게임 상태 · …' 같은 안내 문구는 표시하지 않음
             UiKit.Clear(content); abilityScreen = null; auctionScreen = null;
             if (((page == Page.Ability && state.phase == Protocol.AbilitySelection) || (page == Page.Auction && state.phase == Protocol.Auction))
                 && (view == null || view.turn != state.turn)) { Message("내 게임 정보를 받아오는 중입니다."); return; }

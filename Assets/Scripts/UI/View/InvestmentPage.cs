@@ -122,7 +122,7 @@ namespace BlackWhale.UI.View
 
         private void BuildLobby(PublicState s)
         {
-            _status.text = "대기실 · 4명이 모두 준비하면 방장이 시작합니다";
+            _status.text = ""; // 대기실 안내 문구는 표시하지 않음
             var card = UiKit.Panel(_body, "Lobby", Color.clear); // 큰 네모 바탕 없이
             UiKit.Stretch(card.rectTransform, 28, 12, 28, 12);
             var root = card.rectTransform;
@@ -230,7 +230,7 @@ namespace BlackWhale.UI.View
             LobbyNumber(panel, "DaySeconds", "일차당 시간 (1~60초)", _lobbySettingsDraft.daySeconds, 144, editable, v => _lobbySettingsDraft.daySeconds = v);
             LobbyNumber(panel, "InformationStartDay", "정보 추첨 시작일 (0~25)", _lobbySettingsDraft.informationStartDay, 182, editable, v => _lobbySettingsDraft.informationStartDay = v);
             LobbyNumber(panel, "InformationEndDay", "정보 추첨 종료일 (0~25)", _lobbySettingsDraft.informationEndDay, 220, editable, v => _lobbySettingsDraft.informationEndDay = v);
-            var hint = UiKit.Label(panel, "BANK·0일차는 항상 공개 · 랜덤 날짜는 전원 동일 · 변경 시 준비 해제", 10, Palette.SubText, TextAnchor.UpperLeft);
+            var hint = UiKit.Label(panel, "", 10, Palette.SubText, TextAnchor.UpperLeft); // 설정 안내 문구는 표시하지 않음
             hint.rectTransform.anchorMin = new Vector2(0, 1); hint.rectTransform.anchorMax = Vector2.one;
             hint.rectTransform.offsetMin = new Vector2(0, -280); hint.rectTransform.offsetMax = new Vector2(0, -258);
             if (_c.IsHost) {

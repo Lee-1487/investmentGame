@@ -490,7 +490,7 @@ namespace BlackWhale.UI.View
             _title.text = showingResults ? "시장 공개 · 투자 결과" : phase == Protocol.Investment && state?.stockSystem == true ? "실시간 진입·청산" : state?.publicSelectionActive == true ? "공용 정보 선택" : "정보 구매 창";
             _publicHistory.gameObject.SetActive(windows);
             UiKit.Stretch(_grid, 0, windows ? 76 : 34, 0, 0);
-            if (windows) _publicHistory.text = showingResults ? "이번 턴 주가가 모두 공개되었습니다 · 수익과 순위는 전광판에서 확인하세요."
+            if (windows) _publicHistory.text = showingResults ? "" /* 결과 안내 문구는 표시하지 않음 */
                 : (state.publicSelectionActive ? "기업 선택 · " + (state.lobbySettings?.publicRevealDays ?? 5) + "일 무료 공개 · "
                     + (state.lobbySettings?.scatteredPublicDays == true ? "무작위 날짜 · " : "연속 구간 · ") : "새 정보 1일 = 1코인 · 마우스로 선택 후 정보 사기 / 예약하기 · ")
                 + string.Join(" / ", (state.publicInformation ?? Array.Empty<PublicInformationChoice>()).Select(InformationWindowRules.PublicChoiceLabel));
@@ -505,7 +505,7 @@ namespace BlackWhale.UI.View
                 _publicHistory.text = (phase == Protocol.Investment ? state.developerMode && !state.developerTimerRunning
                     ? "방장 확인 버튼으로 하루씩 진행합니다. 현재 " + StockRules.CurrentDay(state, v?.portfolio) + "일차\n"
                     : (state.lobbySettings?.daySeconds ?? StockRules.DaySeconds) + "초마다 하루가 공개됩니다. 현재 " + StockRules.CurrentDay(state, v?.portfolio) + "일차\n"
-                    : "BANK 전체 공개 · 각 기업 랜덤 " + (state.lobbySettings?.publicRevealDays ?? 5) + "일 공동 공개 · 1코인 = 범위 내 미공개 랜덤 1일 · 드래그는 거래 구간 예약\n")
+                    : "")  // 정보 구매 창 아래 안내 문구는 표시하지 않음
                     + string.Join(" / ", (v?.portfolio?.insights ?? Array.Empty<StockInsight>()).Select(i => i.companyId + " 이벤트 성공 가능성 " + DisplayFormat.Percent(i.probabilityBps, false)));
             foreach (var card in _cards) card.Refresh();
             if (_zoomCompany != null)

@@ -216,7 +216,6 @@ namespace BlackWhale.UI.Dev
             var card = UiKit.Panel(connectionPanel, "ConnectionCard", Color.clear).rectTransform; // 내용 배치용(투명)
             UiKit.Place(card, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(640, 650));
             Label(card, "BLACK WHALE", 30, -26, 50, Palette.Text);
-            Label(card, "함께 플레이할 방을 만들거나 방장 주소로 참가하세요.", 16, -84, 30, Palette.SubText);
             normalTab = UiKit.Button(card, "일반 플레이", 15, Palette.Accent, Color.white, () => SelectMode(false));
             normalTab.name = "NormalPlayTab";
             developerTab = UiKit.Button(card, "개발자", 15, Palette.AccentSoft, Palette.Accent, () => SelectMode(true));
@@ -247,7 +246,7 @@ namespace BlackWhale.UI.Dev
             developerMode = developer;
             UiKit.SetButton(normalTab, "일반 플레이", true, developer ? Palette.AccentSoft : Palette.Accent, developer ? Palette.Accent : Color.white);
             UiKit.SetButton(developerTab, "개발자", true, developer ? Palette.Accent : Palette.AccentSoft, developer ? Color.white : Palette.Accent);
-            modeHint.text = developer ? "방 생성: 시간 제한 없이 완료 버튼으로 진행 · BOT 자동 진행" : "방 생성: 타이머로 진행 · 참가 시 방장의 모드 적용";
+            modeHint.text = ""; // 모드 안내 문구는 표시하지 않음
         }
 
         private static Text Label(RectTransform parent, string text, int size, float y, float height, Color color)
@@ -357,7 +356,7 @@ namespace BlackWhale.UI.Dev
             finally { client.MessageReceived -= onMessage; }
         }
 
-        private string LobbyStatus(bool host) => endpoint;
+        private string LobbyStatus(bool host) => ""; // 대기실에 접속 주소·포트 문구는 표시하지 않음
 
         private async void FillBots()
         {
@@ -386,7 +385,7 @@ namespace BlackWhale.UI.Dev
             catch (Exception ex)
             {
                 if (!destroyed && operation == current)
-                    lobby.Status = LobbyStatus(true) + "\n" + ConnectionError(ex);
+                    lobby.Status = ConnectionError(ex);
             }
             finally
             {
