@@ -465,7 +465,7 @@ namespace BlackWhale.UI.View
                     _lastSelector = "";
                     _lastPhaseKey = phaseKey;
                     if (s.phase == Protocol.Lobby) ShowBanner("대기실에 입장했습니다. 준비를 누르세요.");
-                    else if (s.phase == Protocol.Ended && !string.IsNullOrEmpty(Store.EndReason)) ShowBanner(ErrorMessages.ToKorean(Store.EndReason));
+                    else if (s.phase == Protocol.Ended && !string.IsNullOrEmpty(Store.EndReason)) ShowBanner(Palette.BadText(ErrorMessages.ToKorean(Store.EndReason)));
                     else if (s.phase != Protocol.Ended && !day.HasValue) ShowBanner("<b>" + s.turn + "턴 · " + PhaseNames.ForState(s) + "</b> 단계가 시작되었습니다.");
                     if (s.phase == Protocol.Info || s.phase == Protocol.Reveal) ShowPage(1);
                     if (s.phase == Protocol.Lobby || s.phase == Protocol.Selection || s.phase == StockRules.AugmentPhase || s.phase == Protocol.Investment || s.phase == Protocol.Result) ShowPage(0);
@@ -474,7 +474,7 @@ namespace BlackWhale.UI.View
                 {
                     ClearBanners();
                     _lastSelector = s.currentPlayerId;
-                    if (s.currentPlayerId == _c.LocalPlayerId) ShowBanner("<color=#FFFFFF><b>내 차례입니다.</b></color> " + (s.stockSystem ? "주식 보유량을 정하세요." : "기업을 선택하세요."));
+                    if (s.currentPlayerId == _c.LocalPlayerId) ShowBanner(Palette.GoodText("<b>내 차례입니다.</b>") + " " + (s.stockSystem ? "주식 보유량을 정하세요." : "기업을 선택하세요."));
                 }
                 string publicSelector = s.publicSelectionActive ? s.turn + "|" + s.publicSelectionIndex + "|" + s.publicSelectionPlayerId : "";
                 if (publicSelector != _lastPublicSelector)
@@ -507,10 +507,10 @@ namespace BlackWhale.UI.View
             if (Store.EndReason != _lastEndReason)
             {
                 _lastEndReason = Store.EndReason;
-                if (!string.IsNullOrEmpty(_lastEndReason)) { ClearBanners(); ShowBanner(ErrorMessages.ToKorean(_lastEndReason)); }
+                if (!string.IsNullOrEmpty(_lastEndReason)) { ClearBanners(); ShowBanner(Palette.BadText(ErrorMessages.ToKorean(_lastEndReason))); }
             }
 
-            if (Store.OrderLocked && !_lastLocked && (s?.phase == Protocol.Investment || s?.phase == Protocol.Reveal)) ShowBanner("주문이 확정되었습니다.");
+            if (Store.OrderLocked && !_lastLocked && (s?.phase == Protocol.Investment || s?.phase == Protocol.Reveal)) ShowBanner(Palette.GoodText("주문이 확정되었습니다."));
             _lastLocked = Store.OrderLocked;
 
             var board = Store.Scoreboard;
@@ -552,7 +552,7 @@ namespace BlackWhale.UI.View
 
         private void OnError(ClientError error)
         {
-            ShowBanner("<color=#FFFFFF>" + ErrorMessages.ToKorean(error.ErrorCode) + "</color>");
+            ShowBanner(Palette.BadText(ErrorMessages.ToKorean(error.ErrorCode)));
         }
 
         // 순위 칸 애니메이션용: 직전에 보여 준 순서와 총자산
@@ -700,7 +700,7 @@ namespace BlackWhale.UI.View
                 : PhaseNames.Korean(s.phase);
             _timerText.text = "<size=11>" + (remain == 0 ? "서버 진행 대기" : what) + "</size>\n<size=28><b>" + DisplayFormat.Clock(remain) + "</b></size>";
             if (s.developerMode && !PhaseClock.HasDeadline(s)) _timerText.text = "<size=11>개발자 모드 · " + what + "</size>\n<size=22><b>수동 진행</b></size>";
-            _timerText.color = remain <= 5 && remain > 0 ? Palette.Up : Palette.Text;
+            _timerText.color = remain <= 10 && remain > 0 ? Palette.Bad : Palette.Text; // 마감 10초 전부터 빨간 글자
 
             bool can = _c.CanCompleteStep();
             bool done = _c.IsDoneForCurrentPhase;
@@ -780,7 +780,7 @@ namespace BlackWhale.UI.View
         {
             var status = _c.CompleteStep();
             if (status == CommandStatus.Sent && Store.Public?.developerMode != true)
-                ShowBanner(Store.Public?.phase == Protocol.Investment ? "주문을 확정했습니다." : "완료했습니다. 다른 참가자를 기다립니다.");
+                ShowBanner(Store.Public?.phase == Protocol.Investment ? Palette.GoodText("주문을 확정했습니다.") : Palette.GoodText("완료했습니다.") + " 다른 참가자를 기다립니다.");
         }
 
         // ------------------------------------------------------------------
@@ -1048,7 +1048,7 @@ namespace BlackWhale.UI.View
             string rank = row.Rank > 0 ? row.Rank + "등" : "-";
             string me = row.PlayerId == localPlayerId ? " (나)" : "";
             string dot = "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(row.PlayerId)) + ">●</color> ";
-            string conn = row.Connected ? "" : "\n<color=#FFFFFF>연결 끊김</color>";
+            string conn = row.Connected ? "" : "\n" + Palette.BadText("연결 끊김");
             _text.text = "<b>" + rank + "</b>" + _delta + "\n" + dot + row.PlayerId + me + conn;
 
             if (row.Score == null) { _assets.text = ""; return; }
