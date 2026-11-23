@@ -233,6 +233,7 @@ namespace BlackWhale.UI.View
                 var slot = new RankSlot(col, i, this);
                 _slots.Add(slot);
             }
+            BuildHalveButton(col);
 
             var sep = UiKit.Panel(ScreenRect, "Separator", Palette.CardBorder);
             sep.rectTransform.anchorMin = new Vector2(0, 0);
@@ -445,8 +446,91 @@ namespace BlackWhale.UI.View
             // 새로 얻은 증강이 맨 아래에 붙고, 기존 증강은 위로 밀려 올라간다. 왼쪽 정렬 + 앞에 '-'.
             if (s?.stockSystem == true) { _abilityLabel.text = ""; RefreshAugmentList(Store.View?.portfolio?.augments ?? new string[0]); }
             else if (_augmentList != null && _augmentList.childCount > 0) { UiKit.Clear(_augmentList); _augmentKey = null; }
+            UpdateHalveUi();
             UpdateTimer();
             _renderedPublic = Store.Public; _renderedView = Store.View;
+        }
+
+        // ------------------------------------------------------------------
+        // 반토막 능력(코인 5개): 상대의 이번 턴 최종 수익률(손실이면 손실률)을 절반으로.
+        // UI만 구현. 실제 효과(코인 차감·정산 반영)는 서버(A 담당) 구현 후 HalveReturnRequested에 연결한다.
+        public const int HalveCost = 5;
+        /// <summary>대상이 정해지면 호출(대상 playerId). 서버 명령 연결용.</summary>
+        public static event System.Action<string> HalveReturnRequested;
+        private RectTransform _halveButton;
+        private Text _halveText;
+        private Image _halveLine;
+        private bool _halveArmed;
+        private int _halveTurn = -1;
+        private string _halveTarget;
+
+        private void BuildHalveButton(RectTransform col)
+        {
+            // 순위 칸과 같은 크기(84x86), 순위 열 맨 아래(방 나가기 바로 위)
+            var bg = UiKit.Panel(col, "HalveReturnButton", Color.clear, raycast: true);
+            _halveButton = bg.rectTransform;
+            UiKit.Place(_halveButton, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 0), new Vector2(84, 86));
+            _halveButton.pivot = new Vector2(0.5f, 0);
+            _halveButton.anchoredPosition = Vector2.zero;
+            _halveLine = UiKit.Panel(_halveButton, "Underline", Color.white);
+            _halveLine.rectTransform.anchorMin = Vector2.zero; _halveLine.rectTransform.anchorMax = new Vector2(1, 0);
+            _halveLine.rectTransform.offsetMin = new Vector2(4, 0); _halveLine.rectTransform.offsetMax = new Vector2(-4, 2);
+            _halveText = UiKit.Label(_halveButton, "", 13, Palette.Text, TextAnchor.MiddleCenter);
+            UiKit.Stretch(_halveText.rectTransform, 2, 4, 2, 6);
+            UiKit.Click(bg.gameObject, ToggleHalve);
+        }
+
+        private bool HalvePhaseAllowed(PublicState s) =>
+            s != null && s.stockSystem && !s.paused && string.IsNullOrEmpty(Store.EndReason)
+            && (s.phase == Protocol.Info || s.phase == Protocol.Selection || s.phase == Protocol.Investment);
+
+        private bool CanUseHalve(out string reason)
+        {
+            var s = Store.Public;
+            reason = null;
+            if (!HalvePhaseAllowed(s)) { reason = "정보 탐색~매매 단계에서만 쓸 수 있습니다."; return false; }
+            if (_halveTurn == s.turn && _halveTarget != null) { reason = "이번 턴에는 이미 사용했습니다."; return false; }
+            if ((Store.View?.coins ?? 0) < HalveCost) { reason = "코인이 " + HalveCost + "개 필요합니다."; return false; }
+            return true;
+        }
+
+        private void ToggleHalve()
+        {
+            if (_halveArmed) { _halveArmed = false; UpdateHalveUi(); return; }
+            if (!CanUseHalve(out var reason)) { ShowBanner(reason); return; }
+            _halveArmed = true; // 눌린 상태 유지 → 왼쪽 순위 칸에서 대상 선택
+            UpdateHalveUi();
+        }
+
+        /// <summary>순위 칸을 눌렀을 때: 반토막 대상 선택 중이면 그 플레이어에게 사용.</summary>
+        internal bool OnRankSlotClicked(RankRow row)
+        {
+            if (!_halveArmed || row == null) return false;
+            if (row.PlayerId == _c.LocalPlayerId) { ShowBanner("자신에게는 사용할 수 없습니다."); return true; }
+            if (!CanUseHalve(out var reason)) { _halveArmed = false; ShowBanner(reason); UpdateHalveUi(); return true; }
+            _halveArmed = false;
+            _halveTurn = Store.Public.turn; _halveTarget = row.PlayerId;
+            HalveReturnRequested?.Invoke(row.PlayerId);
+            ShowBanner(row.PlayerId + "의 이번 턴 수익률을 반토막 냅니다. (코인 " + HalveCost + "개)");
+            UpdateHalveUi();
+            return true;
+        }
+
+        private void UpdateHalveUi()
+        {
+            if (_halveButton == null) return;
+            var s = Store.Public;
+            bool visible = s?.stockSystem == true && s.phase != Protocol.Lobby && s.phase != Protocol.Ended;
+            _halveButton.gameObject.SetActive(visible);
+            if (s != null && _halveTurn != s.turn) { _halveTurn = -1; _halveTarget = null; } // 턴이 바뀌면 표시 초기화
+            if (_halveArmed && !HalvePhaseAllowed(s)) _halveArmed = false;
+            bool usable = CanUseHalve(out _);
+            _halveText.text = _halveArmed ? "<b>대상 선택</b>\n<size=11>상대 순위 칸을 누르세요</size>"
+                : "<b>반토막</b>\n<size=11>코인 " + HalveCost + "개</size>";
+            _halveText.color = _halveArmed || usable ? Palette.Text : Palette.DisabledText;
+            _halveLine.color = _halveArmed ? Palette.Text : usable ? Palette.SubText : Palette.DisabledText;
+            _halveLine.rectTransform.offsetMax = new Vector2(-4, _halveArmed ? 3 : 2); // 눌린 상태는 밑줄을 굵게
+            foreach (var slot in _slots) slot.SetTargeted(_halveTarget != null && slot.PlayerId == _halveTarget);
         }
 
         private void DetectNotifications()
@@ -633,6 +717,14 @@ namespace BlackWhale.UI.View
             var data = new PointerEventData(EventSystem.current) { position = mouse.position.ReadValue() };
             _clickHits.Clear();
             EventSystem.current.RaycastAll(data, _clickHits);
+            if (_halveArmed)
+            {
+                // 반토막 대상 선택 중: 순위 칸이나 반토막 버튼이 아닌 곳(바탕)을 누르면 눌린 상태 해제
+                bool onSlotOrButton = false;
+                for (var t = _clickHits.Count > 0 && _clickHits[0].gameObject != null ? _clickHits[0].gameObject.transform : null; t != null; t = t.parent)
+                    if (t.name.StartsWith("RankSlot") || t.name == "HalveReturnButton") { onSlotOrButton = true; break; }
+                if (!onSlotOrButton) { _halveArmed = false; UpdateHalveUi(); }
+            }
             if (_clickHits.Count > 0 && _clickHits[0].gameObject != null)
             {
                 var hit = _clickHits[0].gameObject;
@@ -988,6 +1080,8 @@ namespace BlackWhale.UI.View
     {
         private readonly int _index;
         private readonly Image _border;
+        private readonly RectTransform _targetFrame;
+        public string PlayerId => _row?.PlayerId;
         private readonly Text _text, _assets;
         private readonly RectTransform _rt;
         private RankRow _row;
@@ -1023,7 +1117,25 @@ namespace BlackWhale.UI.View
             // 플레이어 칸을 클릭해서 팝업을 고정하지 않고, 마우스가 칸 위에 있을 때만 표시합니다.
             // 칸에서 마우스가 벗어나면 즉시 숨겨서 이전처럼 팝업이 화면에 남지 않게 합니다.
             UiKit.Hover(bg.gameObject, () => owner.ShowPlayerPopup(_row, _rt), owner.HidePopup);
+            // 클릭: 반토막 대상 선택 중이면 대상으로 지정, 아니면 정보 창 표시
+            UiKit.Click(bg.gameObject, () => { if (!owner.OnRankSlotClicked(_row)) owner.ShowPlayerPopup(_row, _rt); });
+            // 반토막 대상이 된 플레이어 칸: 빨간 테두리
+            _targetFrame = UiKit.Rect(_rt, "HalveTargetFrame");
+            UiKit.Stretch(_targetFrame);
+            var red = new Color32(0xE5, 0x2B, 0x2B, 0xFF);
+            for (int e = 0; e < 4; e++)
+            {
+                var edge = UiKit.Panel(_targetFrame, "Edge" + e, red).rectTransform;
+                edge.anchorMin = e == 1 ? new Vector2(0, 1) : Vector2.zero;
+                edge.anchorMax = e == 0 ? new Vector2(1, 0) : e == 1 ? Vector2.one : e == 2 ? new Vector2(0, 1) : Vector2.one;
+                if (e == 3) edge.anchorMin = new Vector2(1, 0);
+                edge.offsetMin = e == 1 ? new Vector2(0, -2) : e == 3 ? new Vector2(-2, 0) : Vector2.zero;
+                edge.offsetMax = e == 0 ? new Vector2(0, 2) : e == 2 ? new Vector2(2, 0) : Vector2.zero;
+            }
+            _targetFrame.gameObject.SetActive(false);
         }
+
+        public void SetTargeted(bool on) { if (_targetFrame != null) _targetFrame.gameObject.SetActive(on && _row != null); }
 
         /// <param name="fromIndex">이번에 순서가 바뀌었으면 이 플레이어가 있던 칸 번호, 아니면 -1</param>
         /// <param name="prevAssets">직전에 보여 준 총자산(없으면 null → 세는 효과 없음)</param>
