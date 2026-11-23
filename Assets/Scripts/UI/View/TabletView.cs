@@ -297,18 +297,13 @@ namespace BlackWhale.UI.View
             UiKit.Place((RectTransform)_developerReset.transform, new Vector2(.5f, 1), new Vector2(.5f, 1), new Vector2(0, -190), new Vector2(140, 36));
 
             // 본인 직업 카드
-            // 네모 칸 대신 흰 밑줄만(방송 화면 스타일). 투명 바탕은 클릭·마우스 판정용.
-            var job = UiKit.Panel(col, "OwnJob", Color.clear, raycast: true);
+            // 둥근 모서리 카드(테두리 + 회색빛 바탕). 마우스 올림·클릭 판정은 카드 전체.
+            var job = UiKit.Panel(col, "OwnJob", Palette.CardBorder, rounded: true, raycast: true);
             UiKit.Place(job.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 0), new Vector2(120, 120));
-            var underline = UiKit.Panel(job.transform, "Underline", Color.white);
-            underline.rectTransform.anchorMin = Vector2.zero; underline.rectTransform.anchorMax = new Vector2(1, 0);
-            underline.rectTransform.offsetMin = new Vector2(6, 0); underline.rectTransform.offsetMax = new Vector2(-6, 2);
-            // 왼쪽 세로줄을 더해 'ㄴ'자로 감싼다
-            var leftLine = UiKit.Panel(job.transform, "LeftLine", Color.white);
-            leftLine.rectTransform.anchorMin = Vector2.zero; leftLine.rectTransform.anchorMax = new Vector2(0, 0.5f); // 세로줄은 아래 절반만
-            leftLine.rectTransform.offsetMin = new Vector2(6, 0); leftLine.rectTransform.offsetMax = new Vector2(8, 0);
+            var jobFill = UiKit.Panel(job.transform, "Fill", Palette.Card, rounded: true);
+            UiKit.Stretch(jobFill.rectTransform, 1, 1, 1, 1);
             var inner = UiKit.Rect(job.transform, "Inner");
-            UiKit.Stretch(inner, 0, 0, 0, 6);
+            UiKit.Stretch(inner, 0, 0, 0, 2);
             // 제목은 위에 고정, 목록은 아래부터 쌓인다(새 증강이 생기면 기존 것 위에 하나씩 추가).
             _abilityTitle = UiKit.Label(inner, "", 14, Palette.Text, TextAnchor.UpperCenter, FontStyle.Bold);
             UiKit.Stretch(_abilityTitle.rectTransform, 4, 4, 4, 4);
@@ -316,7 +311,7 @@ namespace BlackWhale.UI.View
             UiKit.Stretch(_abilityLabel.rectTransform, 10, 26, 6, 4);
             // 주식 모드 증강 목록: 새 증강이 맨 아래, 기존은 위로 밀림.
             _augmentList = UiKit.Rect(inner, "AugmentList");
-            UiKit.Stretch(_augmentList, 12, 26, 6, 6);
+            UiKit.Stretch(_augmentList, 8, 26, 6, 6);
             UiKit.Hover(job.gameObject, () => ShowAllPlayersPopup(job.rectTransform), HidePopup);
             UiKit.Click(job.gameObject, () => { HidePopup(); _features?.OpenAbility(); });
         }
