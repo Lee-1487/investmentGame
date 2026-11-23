@@ -444,7 +444,9 @@ namespace BlackWhale.UI.View
             {
                 string id = choices[i];
                 var cell = UiKit.Rect(root, "Augment_" + id); UiKit.Anchor(cell, i / columns, 0, (i + 1) / columns, 1, 6, 90);
-                var panel = UiKit.Panel(cell, "Card", Palette.Card, rounded: true); UiKit.Stretch(panel.rectTransform);
+                // 카드: 둥근 모서리 + 테두리 + 회색 바탕(배경과 확실히 구분되게)
+                var frame = UiKit.Panel(cell, "CardFrame", new Color32(0x44, 0x44, 0x44, 0xFF), rounded: true); UiKit.Stretch(frame.rectTransform);
+                var panel = UiKit.Panel(frame.transform, "Card", new Color32(0x26, 0x26, 0x26, 0xFF), rounded: true); UiKit.Stretch(panel.rectTransform, 1.5f, 1.5f, 1.5f, 1.5f);
                 var name = UiKit.Label(panel.transform, StockRules.Name(id), 20, Palette.Accent, TextAnchor.UpperCenter, FontStyle.Bold); UiKit.Stretch(name.rectTransform, 12, 20, 12, 0);
                 var description = UiKit.Label(panel.transform, StockRules.Description(id), 15, Palette.Text, TextAnchor.UpperLeft); UiKit.Stretch(description.rectTransform, 16, 64, 16, 225);
                 var artwork = AugmentArtwork.Create(panel.transform, id, 150);
