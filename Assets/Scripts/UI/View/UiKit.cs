@@ -34,6 +34,12 @@ namespace BlackWhale.UI.View
         public static readonly Color Dim = new Color32(0x00, 0x00, 0x00, 0xB0);
         public static readonly Color Warning = new Color32(0xC8, 0xC8, 0xC8, 0xFF);
         public static readonly Color Success = new Color32(0x22, 0xC5, 0x5E, 0xFF); // 초록은 유지
+        // 중요 표시 글자색: 초록 = 잘 됨(준비 완료·확정·내 차례), 빨강 = 주의(오류·연결 끊김·마감 임박)
+        public const string GoodHex = "#34D399", BadHex = "#FF5A5A";
+        public static readonly Color Good = new Color32(0x34, 0xD3, 0x99, 0xFF);
+        public static readonly Color Bad = new Color32(0xFF, 0x5A, 0x5A, 0xFF);
+        public static string GoodText(string s) => "<color=" + GoodHex + ">" + s + "</color>";
+        public static string BadText(string s) => "<color=" + BadHex + ">" + s + "</color>";
 
         /// <summary>REQ-007 개인별 색상. 플레이어 ID 순서대로.</summary>
         public static Color Player(string playerId)

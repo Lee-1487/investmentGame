@@ -149,7 +149,7 @@ namespace BlackWhale.UI.View
                     ? "<color=#A3A3A3>빈 자리 · 접속 대기</color>"
                     : "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(p.playerId)) + ">■</color>  <b>" + p.playerId + "</b>  "
                       + (p.displayName ?? "").Replace("<", "‹").Replace(">", "›") + (p.isBot ? "  <size=11>BOT</size>" : "") + (p.playerId == _c.LocalPlayerId ? " (나)" : "") + (p.playerId == "P1" ? "  <size=11>방장</size>" : "")
-                      + "      " + (!p.connected ? "<color=#FFFFFF>연결 끊김</color>" : p.ready ? "<color=#34D399><b>준비 완료</b></color>" : "<color=#8C8C8C>준비 전</color>");
+                      + "      " + (!p.connected ? Palette.BadText("연결 끊김") : p.ready ? "<color=#34D399><b>준비 완료</b></color>" : "<color=#8C8C8C>준비 전</color>");
                 var label = UiKit.Label(row.transform, text, 15, Palette.Text, TextAnchor.MiddleLeft);
                 label.resizeTextForBestFit = true;
                 label.resizeTextMinSize = 10;

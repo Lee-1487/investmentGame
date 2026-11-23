@@ -278,7 +278,7 @@ namespace BlackWhale.UI.View
             else
             {
                 string error = _c.Store.TradePlans.TryAddInterval(_zoomCompany, _entryDay.Value, day);
-                if (error.Length > 0) _note = ErrorMessages.ToKorean(error);
+                if (error.Length > 0) _note = Palette.BadText(ErrorMessages.ToKorean(error));
                 else { _entryDay = null; _note = "개인 계획을 저장했습니다. 선택한 기업의 투자 초안에 적용됩니다."; }
             }
             RefreshZoom();
@@ -409,7 +409,7 @@ namespace BlackWhale.UI.View
             var selection = _zoomWindow.Selection;
             _zoomChart.SetInformationRange(selection.HasSelection ? new Vector2Int(selection.Start, selection.End) : (Vector2Int?)null);
             _zoomWindow.Refresh();
-            if (!string.IsNullOrEmpty(_zoomPointer.LastEditError)) _zoomTip.text = ErrorMessages.ToKorean(_zoomPointer.LastEditError);
+            if (!string.IsNullOrEmpty(_zoomPointer.LastEditError)) _zoomTip.text = Palette.BadText(ErrorMessages.ToKorean(_zoomPointer.LastEditError));
             else if (selection.HasSelection)
             {
                 int? rate = DailyBarModel.IntervalReturnBps(_zoomBars, selection.Start, selection.End, _c.Store.View?.entryAtOpen == true);
@@ -681,7 +681,7 @@ namespace BlackWhale.UI.View
             string error = Selection.SelectedIndex >= 0 ? _c.Store.TradePlans.TryReplaceInterval(_companyId, index, Selection.Start, Selection.End)
                 : _c.Store.TradePlans.TryAddInterval(_companyId, Selection.Start, Selection.End);
             if (error == "") { Selection.SelectInterval(index, Selection.Start, Selection.End); DrawSelection(); _window.Refresh(); }
-            return error == "" ? "예약했습니다. 선택한 기업이면 투자 마감 때 자동 적용됩니다." : ErrorMessages.ToKorean(error);
+            return error == "" ? Palette.GoodText("예약했습니다.") + " 선택한 기업이면 투자 마감 때 자동 적용됩니다." : Palette.BadText(ErrorMessages.ToKorean(error));
         }
         /// <summary>고른 예약(매수·청산 구간)을 취소한다. 결과 문구를 돌려준다.</summary>
         public string CancelSelected()
