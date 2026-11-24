@@ -395,7 +395,8 @@ namespace BlackWhale.UI.View
                 card.Chart.SetData(DailyBarModel.Build(visible, revealed));
                 card.Chart.SetTrendThroughDay(revealed != null ? 30 : State.phase == Protocol.Investment ? Portfolio?.processedDay : (int?)null);
                 card.Chart.SetCurrentDay(StockRules.CurrentDay(State, Portfolio));
-                card.Chart.SetFills(null); // 진입·청산 체결 막대는 그래프에 그리지 않음
+                // 체결 표시는 확대 차트에서만 보여 주어 작은 카드 차트가 복잡해지지 않게 합니다.
+                card.Chart.SetFills(null);
                 card.Chart.ShowTradeLabels = false; // 예약 구간은 띠만(시가·종가 글자 없음)
                 if (investing) {
                     int? close = InformationWindowRules.KnownDays(visible)[Portfolio.processedDay];
@@ -443,12 +444,25 @@ namespace BlackWhale.UI.View
             for (int i = 0; i < choices.Length; i++)
             {
                 string id = choices[i];
+                // 카드의 위쪽 위치는 유지하고 아래쪽 여백만 줄여 한 줄 정도 확장합니다.
+                // 따라서 상단 안내 문구는 가리지 않으면서 설명·이미지·버튼에 아래 공간을 제공합니다.
                 var cell = UiKit.Rect(root, "Augment_" + id); UiKit.Anchor(cell, i / columns, 0, (i + 1) / columns, 1, 6, 90);
-                // 카드: 둥근 모서리 + 테두리 + 회색 바탕(배경과 확실히 구분되게)
-                var frame = UiKit.Panel(cell, "CardFrame", new Color32(0x44, 0x44, 0x44, 0xFF), rounded: true); UiKit.Stretch(frame.rectTransform);
-                var panel = UiKit.Panel(frame.transform, "Card", new Color32(0x26, 0x26, 0x26, 0xFF), rounded: true); UiKit.Stretch(panel.rectTransform, 1.5f, 1.5f, 1.5f, 1.5f);
+                cell.offsetMin = new Vector2(cell.offsetMin.x, 30);
+                var panel = UiKit.Panel(cell, "Card", Palette.Card, rounded: true); UiKit.Stretch(panel.rectTransform);
+                // 증강 이름은 규칙 카탈로그의 원래 표기를 그대로 사용합니다.
+                // HIDDEN 손실 제어도 다른 증강 이름과 마찬가지로 한 줄로 표시합니다.
                 var name = UiKit.Label(panel.transform, StockRules.Name(id), 20, Palette.Accent, TextAnchor.UpperCenter, FontStyle.Bold); UiKit.Stretch(name.rectTransform, 12, 20, 12, 0);
-                var description = UiKit.Label(panel.transform, StockRules.Description(id), 15, Palette.Text, TextAnchor.UpperLeft); UiKit.Stretch(description.rectTransform, 16, 64, 16, 225);
+                var description = UiKit.Label(panel.transform, StockRules.Description(id), 15, Palette.Text, TextAnchor.UpperLeft);
+                // 아래쪽으로 확장된 카드 안에서 설명 영역의 아래쪽을 이미지 바로 위까지 확장합니다.
+                // 특히 HIDDEN 설명은 문장이 길기 때문에 이미지와의 여백을 더 줄여 세로 공간을 확보합니다.
+                // 글자 크기는 다른 설명과 크게 차이 나지 않도록 13~15 범위에서만 자동 조정합니다.
+                // 문장을 강제로 잘라내지 않고 모두 표시하여 설명의 의미가 사라지지 않게 합니다.
+                float descriptionBottom = id == "HIDDEN_LOSS_CONTROL" ? 205 : 220;
+                UiKit.Stretch(description.rectTransform, 16, 64, 16, descriptionBottom);
+                description.resizeTextForBestFit = true;
+                description.resizeTextMinSize = 13;
+                description.resizeTextMaxSize = 15;
+                description.verticalOverflow = VerticalWrapMode.Overflow;
                 var artwork = AugmentArtwork.Create(panel.transform, id, 150);
                 UiKit.Place(artwork, new Vector2(.5f, 0), new Vector2(.5f, 0), new Vector2(0, 60), new Vector2(150, 150));
                 var button = UiKit.Button(panel.transform, "이 증강 선택", 14, Palette.Accent, Color.white, () => controller.ChooseAugment(id, focus));

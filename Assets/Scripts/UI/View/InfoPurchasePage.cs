@@ -314,10 +314,24 @@ namespace BlackWhale.UI.View
             _zoomChart.SetCurrentDay(StockRules.CurrentDay(store.Public, store.View?.portfolio));
             var intervals = store.TradePlans.ChartIntervals(store.View, store.CurrentTurn, _zoomCompany, store.OrderLocked);
             _zoomChart.ShowTradeLabels = false; // 예약·진입청산 구간은 띠만(시가·종가 글자 없음)
-            if (revealed != null) { } // 시장 공개·투자 결과: 그래프에 진입·청산·수익률 표시 없이 주가만 (아래 SetFills 뒤에서 지움)
+            if (revealed != null) _zoomChart.SetRevealedInvestments(revealed.investments); // 시장 공개 결과: 공개된 모든 투자 구간을 표시
             else _zoomChart.SetTradeIntervals(intervals, !store.OrderLocked);
-            _zoomChart.SetFills(null); // 진입·청산 체결 막대는 그래프에 그리지 않음
-            if (revealed != null) _zoomChart.ClearTradeOverlays();
+            // 확대된 실시간 투자 차트에서만 본인의 체결 B/S를 표시합니다.
+            // 투자 결과 확대 차트에서도 B/S는 본인 체결만 표시하고,
+            // 다른 플레이어는 SetRevealedInvestments가 그리는 색상 구간으로만 표시합니다.
+            var marketCompany = store.Public?.shareMarket?.FirstOrDefault(c => c.companyId == _zoomCompany);
+            bool liveTrading = stockSystem && store.Public?.phase == Protocol.Investment && revealed == null;
+            var resultFills = revealed?.investments?.Where(p => p.playerId == _c.LocalPlayerId)
+                .SelectMany(p => (p.intervals ?? Array.Empty<RevealedTrade>())
+                .SelectMany(v => new[] {
+                    new StockFill { playerId = p.playerId, day = v.entryDay, quantity = 1 },
+                    new StockFill { playerId = p.playerId, day = v.exitDay, quantity = -1 }
+                })).ToArray();
+            _zoomChart.SetFills(revealed != null
+                ? resultFills
+                : liveTrading
+                    ? marketCompany?.fills?.Where(f => f.playerId == _c.LocalPlayerId).ToArray()
+                    : null);
             _zoomChart.SetCandidate(_entryDay);
             Vector2Int? allowed = null;
             if (CanPlan && !_selectInformation && (_entryDay.HasValue || plan.Intervals.Length < UiRules.MaxIntervalsPerCompany))
