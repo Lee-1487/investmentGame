@@ -17,6 +17,7 @@ using BlackWhale.UI.Presentation;
 using BlackWhale.UI.View;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
@@ -107,9 +108,12 @@ namespace BlackWhale.UI.Dev
             var imageRoot = UiKit.Rect(prologueRoot, "PrologueImage");
             prologueImage = imageRoot.gameObject.AddComponent<Image>();
             prologueImage.color = Color.white;
-            prologueImage.preserveAspect = true;
+            prologueImage.preserveAspect = false;
             prologueImage.raycastTarget = false;
             UiKit.Stretch(imageRoot);
+            var aspect = imageRoot.gameObject.AddComponent<AspectRatioFitter>();
+            aspect.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+            aspect.aspectRatio = 16f / 9f;
 
             prologueTitle = UiKit.Label(prologueRoot, "Black Whale", 54, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
             UiKit.Place(prologueTitle.rectTransform, new Vector2(.5f, .5f), new Vector2(.5f, .5f), new Vector2(0, 0), new Vector2(900, 100));
@@ -161,7 +165,7 @@ namespace BlackWhale.UI.Dev
             prologueImage.sprite = prologueSprites != null && prologueSprites.Length > 0 ? prologueSprites[0] : null;
             prologueTitle.gameObject.SetActive(true);
             prologueCaption.gameObject.SetActive(false);
-            prologueHint.text = "화면을 클릭해 시작";
+            prologueHint.text = "클릭 또는 아무 키나 눌러 시작";
             prologueHint.gameObject.SetActive(true);
         }
 
@@ -191,9 +195,14 @@ namespace BlackWhale.UI.Dev
             prologueTitle.gameObject.SetActive(false);
             prologueCaption.gameObject.SetActive(!string.IsNullOrEmpty(PrologueCaptions[prologueCut]));
             prologueCaption.text = PrologueCaptions[prologueCut];
-            prologueHint.text = prologueCut == prologueSprites.Length - 1 ? "클릭하면 방 만들기로 이동" : "클릭하면 다음 장면";
+            prologueHint.text = prologueCut == prologueSprites.Length - 1
+                ? "클릭 또는 아무 키나 눌러 방 만들기로 이동"
+                : "클릭 또는 아무 키나 눌러 다음 장면";
             prologueHint.gameObject.SetActive(true);
-            prologueNextAt = Time.unscaledTime + PrologueCutSeconds;
+            // 마지막 초대장은 충분히 읽을 수 있도록 자동 전환하지 않는다.
+            prologueNextAt = prologueCut == prologueSprites.Length - 1
+                ? float.PositiveInfinity
+                : Time.unscaledTime + PrologueCutSeconds;
         }
 
         /// <summary>Reveals the room-creation controls after the prologue.</summary>
@@ -421,7 +430,11 @@ namespace BlackWhale.UI.Dev
         {
             // After the title click, cuts advance automatically. Clicking still
             // advances immediately so the player controls the reading pace.
-            if (!prologueFinished && prologueCut >= 0 && Time.unscaledTime >= prologueNextAt)
+            // Mouse clicks are handled by ClickRelay; keyboard input is handled here.
+            if (!prologueFinished && prologueRoot.gameObject.activeSelf && Keyboard.current?.anyKey.wasPressedThisFrame == true)
+                AdvancePrologue();
+            if (!prologueFinished && prologueCut >= 0 && prologueCut < prologueSprites.Length - 1
+                && Time.unscaledTime >= prologueNextAt)
                 AdvancePrologue();
 
             foreach (var bot in bots)
