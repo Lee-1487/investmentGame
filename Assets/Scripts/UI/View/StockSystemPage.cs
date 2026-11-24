@@ -355,8 +355,7 @@ namespace BlackWhale.UI.View
             if (summary != null) summary.text = State.phase == Protocol.Selection
                 ? (Editable ? "내 차례 · 남은 매수 " + Portfolio.draftSharesRemaining + "/15주" : pending ? "매수 처리 중" : State.currentPlayerId + " 차례") + " · 보유 " + Portfolio.usedSlots + "/30주 · BANK " + Portfolio.CashSlots + "주"
                 : State.phase == Protocol.Info ? "정보 탐색 · 차트를 누르면 크게 볼 수 있습니다."
-                : State.phase == Protocol.Investment ? "실시간 매매 · 현재 " + StockRules.CurrentDay(State, Portfolio) + "/30일차 · "
-                    + (State.lobbySettings?.daySeconds ?? StockRules.DaySeconds) + "초/일 · 실선 매수 · 점선 매도 · 색상은 참가자별"
+                : State.phase == Protocol.Investment ? "" // '실시간 매매 · …' 안내 문구는 표시하지 않음
                 : "확정된 기업별 주식 현황 · 차트를 눌러 확인하세요.";
             foreach (var pair in cards)
             {

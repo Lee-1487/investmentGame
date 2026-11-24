@@ -278,7 +278,7 @@ namespace BlackWhale.UI.View
             else
             {
                 string error = _c.Store.TradePlans.TryAddInterval(_zoomCompany, _entryDay.Value, day);
-                if (error.Length > 0) _note = ErrorMessages.ToKorean(error);
+                if (error.Length > 0) _note = Palette.BadText(ErrorMessages.ToKorean(error));
                 else { _entryDay = null; _note = "개인 계획을 저장했습니다. 선택한 기업의 투자 초안에 적용됩니다."; }
             }
             RefreshZoom();
@@ -423,7 +423,7 @@ namespace BlackWhale.UI.View
             var selection = _zoomWindow.Selection;
             _zoomChart.SetInformationRange(selection.HasSelection ? new Vector2Int(selection.Start, selection.End) : (Vector2Int?)null);
             _zoomWindow.Refresh();
-            if (!string.IsNullOrEmpty(_zoomPointer.LastEditError)) _zoomTip.text = ErrorMessages.ToKorean(_zoomPointer.LastEditError);
+            if (!string.IsNullOrEmpty(_zoomPointer.LastEditError)) _zoomTip.text = Palette.BadText(ErrorMessages.ToKorean(_zoomPointer.LastEditError));
             else if (selection.HasSelection)
             {
                 int? rate = DailyBarModel.IntervalReturnBps(_zoomBars, selection.Start, selection.End, _c.Store.View?.entryAtOpen == true);
@@ -504,7 +504,7 @@ namespace BlackWhale.UI.View
             _title.text = showingResults ? "시장 공개 · 투자 결과" : phase == Protocol.Investment && state?.stockSystem == true ? "실시간 진입·청산" : state?.publicSelectionActive == true ? "공용 정보 선택" : "정보 구매 창";
             _publicHistory.gameObject.SetActive(windows);
             UiKit.Stretch(_grid, 0, windows ? 76 : 34, 0, 0);
-            if (windows) _publicHistory.text = showingResults ? "이번 턴 주가가 모두 공개되었습니다 · 수익과 순위는 전광판에서 확인하세요."
+            if (windows) _publicHistory.text = showingResults ? "" /* 결과 안내 문구는 표시하지 않음 */
                 : (state.publicSelectionActive ? "기업 선택 · " + (state.lobbySettings?.publicRevealDays ?? 5) + "일 무료 공개 · "
                     + (state.lobbySettings?.scatteredPublicDays == true ? "무작위 날짜 · " : "연속 구간 · ") : "새 정보 1일 = 1코인 · 마우스로 선택 후 정보 사기 / 예약하기 · ")
                 + string.Join(" / ", (state.publicInformation ?? Array.Empty<PublicInformationChoice>()).Select(InformationWindowRules.PublicChoiceLabel));
@@ -519,7 +519,7 @@ namespace BlackWhale.UI.View
                 _publicHistory.text = (phase == Protocol.Investment ? state.developerMode && !state.developerTimerRunning
                     ? "방장 확인 버튼으로 하루씩 진행합니다. 현재 " + StockRules.CurrentDay(state, v?.portfolio) + "일차\n"
                     : (state.lobbySettings?.daySeconds ?? StockRules.DaySeconds) + "초마다 하루가 공개됩니다. 현재 " + StockRules.CurrentDay(state, v?.portfolio) + "일차\n"
-                    : "BANK 전체 공개 · 각 기업 랜덤 " + (state.lobbySettings?.publicRevealDays ?? 5) + "일 공동 공개 · 1코인 = 범위 내 미공개 랜덤 1일 · 드래그는 거래 구간 예약\n")
+                    : "")  // 정보 구매 창 아래 안내 문구는 표시하지 않음
                     + string.Join(" / ", (v?.portfolio?.insights ?? Array.Empty<StockInsight>()).Select(i => i.companyId + " 이벤트 성공 가능성 " + DisplayFormat.Percent(i.probabilityBps, false)));
             foreach (var card in _cards) card.Refresh();
             if (_zoomCompany != null)
@@ -695,7 +695,7 @@ namespace BlackWhale.UI.View
             string error = Selection.SelectedIndex >= 0 ? _c.Store.TradePlans.TryReplaceInterval(_companyId, index, Selection.Start, Selection.End)
                 : _c.Store.TradePlans.TryAddInterval(_companyId, Selection.Start, Selection.End);
             if (error == "") { Selection.SelectInterval(index, Selection.Start, Selection.End); DrawSelection(); _window.Refresh(); }
-            return error == "" ? "예약했습니다. 선택한 기업이면 투자 마감 때 자동 적용됩니다." : ErrorMessages.ToKorean(error);
+            return error == "" ? Palette.GoodText("예약했습니다.") + " 선택한 기업이면 투자 마감 때 자동 적용됩니다." : Palette.BadText(ErrorMessages.ToKorean(error));
         }
         /// <summary>고른 예약(매수·청산 구간)을 취소한다. 결과 문구를 돌려준다.</summary>
         public string CancelSelected()

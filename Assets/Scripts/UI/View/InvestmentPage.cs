@@ -122,7 +122,7 @@ namespace BlackWhale.UI.View
 
         private void BuildLobby(PublicState s)
         {
-            _status.text = "대기실 · 4명이 모두 준비하면 방장이 시작합니다";
+            _status.text = ""; // 대기실 안내 문구는 표시하지 않음
             var card = UiKit.Panel(_body, "Lobby", Color.clear); // 큰 네모 바탕 없이
             UiKit.Stretch(card.rectTransform, 28, 12, 28, 12);
             var root = card.rectTransform;
@@ -149,7 +149,7 @@ namespace BlackWhale.UI.View
                     ? "<color=#A3A3A3>빈 자리 · 접속 대기</color>"
                     : "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(p.playerId)) + ">■</color>  <b>" + p.playerId + "</b>  "
                       + (p.displayName ?? "").Replace("<", "‹").Replace(">", "›") + (p.isBot ? "  <size=11>BOT</size>" : "") + (p.playerId == _c.LocalPlayerId ? " (나)" : "") + (p.playerId == "P1" ? "  <size=11>방장</size>" : "")
-                      + "      " + (!p.connected ? "<color=#FFFFFF>연결 끊김</color>" : p.ready ? "<color=#34D399><b>준비 완료</b></color>" : "<color=#8C8C8C>준비 전</color>");
+                      + "      " + (!p.connected ? Palette.BadText("연결 끊김") : p.ready ? "<color=#34D399><b>준비 완료</b></color>" : "<color=#8C8C8C>준비 전</color>");
                 var label = UiKit.Label(row.transform, text, 15, Palette.Text, TextAnchor.MiddleLeft);
                 label.resizeTextForBestFit = true;
                 label.resizeTextMinSize = 10;
@@ -230,7 +230,7 @@ namespace BlackWhale.UI.View
             LobbyNumber(panel, "DaySeconds", "일차당 시간 (1~60초)", _lobbySettingsDraft.daySeconds, 144, editable, v => _lobbySettingsDraft.daySeconds = v);
             LobbyNumber(panel, "InformationStartDay", "정보 추첨 시작일 (0~25)", _lobbySettingsDraft.informationStartDay, 182, editable, v => _lobbySettingsDraft.informationStartDay = v);
             LobbyNumber(panel, "InformationEndDay", "정보 추첨 종료일 (0~25)", _lobbySettingsDraft.informationEndDay, 220, editable, v => _lobbySettingsDraft.informationEndDay = v);
-            var hint = UiKit.Label(panel, "BANK·0일차는 항상 공개 · 랜덤 날짜는 전원 동일 · 변경 시 준비 해제", 10, Palette.SubText, TextAnchor.UpperLeft);
+            var hint = UiKit.Label(panel, "", 10, Palette.SubText, TextAnchor.UpperLeft); // 설정 안내 문구는 표시하지 않음
             hint.rectTransform.anchorMin = new Vector2(0, 1); hint.rectTransform.anchorMax = Vector2.one;
             hint.rectTransform.offsetMin = new Vector2(0, -280); hint.rectTransform.offsetMax = new Vector2(0, -258);
             if (_c.IsHost) {
