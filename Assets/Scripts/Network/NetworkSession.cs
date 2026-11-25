@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
 using BlackWhale.Flow;
@@ -56,6 +56,7 @@ namespace BlackWhale.Network
         }
         // Host-process operations only. These are deliberately not network command types.
         public bool RegisterLocalBot(string playerId) => IsHost && hostedRoom.RegisterLocalBot(playerId);
+        public bool SetBotProfile(string playerId, string difficulty, string personality) => IsHost && hostedRoom.SetBotProfile(playerId, difficulty, personality);
         public bool SetBotDifficulty(string difficulty) => IsHost && hostedRoom.SetBotDifficulty(difficulty);
         public bool RemoveLobbyBot(string playerId) => IsHost && hostedRoom.RemoveLobbyBot(playerId);
         public void ReleaseDisconnectedLobbySlots() { if (IsHost) hostedRoom.ReleaseDisconnectedLobbySlots(); }

@@ -27,6 +27,16 @@ internal static class Program
     {
         try
         {
+            if (args.Contains("--bot-lab"))
+            {
+                foreach (string check in BotExperimentValidation.RunAll(new TestJson())) Console.WriteLine("PASS " + check);
+                return 0;
+            }
+            if (args.Contains("--bots-only"))
+            {
+                foreach (string check in NextAValidation.RunBots()) Console.WriteLine("PASS " + check);
+                return 0;
+            }
             if (args.Contains("--patterns-only"))
             {
                 foreach (string check in StockPatternValidation.Run().Concat(StockSystemValidation.Run())) Console.WriteLine("PASS " + check);

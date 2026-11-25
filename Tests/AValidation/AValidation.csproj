@@ -26,6 +26,8 @@
     <Compile Include="../../Assets/Scripts/UI/Presentation/UiRules.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/PhaseClock.cs" />
     <Compile Include="../../Assets/Scripts/UI/Dev/DevBot.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Dev/BotExperiment.cs" />
+    <Compile Include="../../Assets/Tests/Network/Editor/BotExperimentValidation.cs" />
     <Compile Include="../../Assets/Scripts/Network/TcpTransport.cs" />
     <Compile Include="../../Assets/Scripts/Network/RequestJsonValidator.cs" />
     <Compile Include="../../Assets/Tests/Network/Editor/FixtureServices.cs" />

@@ -62,13 +62,13 @@ namespace BlackWhale.UI.Dev
         private int prologueCut = -1;
         private float prologueNextAt;
         private bool prologueFinished;
-        // D binds a lobby control here. Existing/new BOTs share the setting, frozen at start.
+        // Default for future bots. Registered bots have independent profiles.
         public bool SetBotDifficulty(BotDifficulty difficulty)
         {
             if (!Enum.IsDefined(typeof(BotDifficulty), difficulty) || session?.IsHost != true ||
                 !session.SetBotDifficulty(difficulty.ToString())) return false;
             botDifficulty = difficulty;
-            foreach (var bot in bots) bot.SetDifficulty(difficulty);
+            // This setting is the default for future bots; existing profiles are independent.
             return true;
         }
 
@@ -321,6 +321,7 @@ namespace BlackWhale.UI.Dev
                 await WaitForWelcome(active.Client, active, current.Token);
                 if (host && !active.IsHost) throw new InvalidOperationException("방장 입장에 실패했습니다. 다시 방을 만들어 주세요.");
                 lobby = new LobbyActions { FillBots = FillBots, RemoveBots = RemoveBots, Leave = Leave, Status = LobbyStatus(host),
+                    SetBotProfile = (id, difficulty, personality) => session?.SetBotProfile(id, difficulty, personality) == true,
                     SetDifficulty = value => Enum.TryParse(value.ToString(), out BotDifficulty selected) && SetBotDifficulty(selected),
                     SetPaused = active.SetGamePaused };
                 view = TabletView.Create(canvasRoot, controller, lobby);

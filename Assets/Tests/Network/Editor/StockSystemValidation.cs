@@ -531,7 +531,7 @@ namespace BlackWhale.Tests
                     int expected = sample[player == "P1" ? 2 : 3];
                     var profit = detail.Single(p => p.playerId == player).companyProfits.Single(p => p.companyId == "AI");
                     Check(profit.returnBps == expected, "only held hidden days change: losses to 20%, gains to 50%, prelude unchanged");
-                    Check(profit.profit == (long)Math.Round(10000m * 10 / 30 * expected / 10000, MidpointRounding.AwayFromZero), "hidden return settles against the ten held slots");
+                    Check(profit.profit == (long)Math.Round((decimal)market.GetTurnStartAssets(player) * 10 / 30 * expected / 10000, MidpointRounding.AwayFromZero), "hidden return settles against the ten held slots");
                     Check(market.GetRevealedMarket(new RequestContext("H", 1, Protocol.Reveal)).Single(c => c.companyId == "AI")
                         .investments.Single(p => p.playerId == player).returnBps == expected, "revealed returns match hidden-adjusted settlement");
                 }

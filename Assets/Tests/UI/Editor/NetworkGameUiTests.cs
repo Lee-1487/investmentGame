@@ -28,6 +28,55 @@ namespace BlackWhale.UI.Tests
     public class NetworkGameUiTests
     {
         [UnityTest]
+        public IEnumerator BotReadyDropdownsBuildWithInactiveTemplatesAndOpenOptions()
+        {
+            var client = new PlanningClient(); var controller = new GameClientController(client);
+            var canvas = new GameObject("Bot ready UI", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
+            canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            var events = EventSystem.current == null ? new GameObject("Bot ready events", typeof(EventSystem)) : null;
+            try
+            {
+                client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+                controller.Store.SetPublicState(new PublicState { phase = Protocol.Lobby, stockSystem = true, windowInformation = true,
+                    players = new[] {
+                        new Player { playerId = "P1", displayName = "Host", connected = true },
+                        new Player { playerId = "P2", displayName = "BOT 1", connected = true, ready = true, isBot = true,
+                            botPersonality = "Adventurous", botDifficulty = "Normal" }
+                    } });
+                int profileChanges = 0;
+                var lobby = new LobbyActions { SetBotProfile = (id, level, style) => { profileChanges++; return true; } };
+                var page = new InvestmentPage(UiKit.Rect(canvas.transform, "Ready page"), controller, lobby);
+                Assert.DoesNotThrow(() => page.Refresh(), "building the inactive option template must not throw");
+                var dropdowns = canvas.GetComponentsInChildren<Dropdown>();
+                Assert.AreEqual(2, dropdowns.Length);
+                foreach (var dropdown in dropdowns)
+                {
+                    Canvas.ForceUpdateCanvases();
+                    Assert.IsFalse(string.IsNullOrEmpty(dropdown.captionText.text));
+                    Assert.GreaterOrEqual(dropdown.captionText.rectTransform.rect.height, dropdown.captionText.preferredHeight,
+                        "the closed selector must have room to draw its Korean selection");
+                    Assert.IsFalse(dropdown.template.gameObject.activeSelf);
+                    Assert.IsNotNull(dropdown.itemText.GetComponentInParent<Toggle>(true));
+                    Assert.IsTrue(dropdown.interactable);
+                    dropdown.Show();
+                    var list = dropdown.transform.Find("Dropdown List");
+                    Assert.IsNotNull(list, "the selector opens its options");
+                    Assert.AreEqual(3, list.GetComponentsInChildren<Toggle>().Length);
+                    dropdown.Hide();
+                    yield return new WaitForSecondsRealtime(.2f);
+                }
+                Assert.AreEqual(0, profileChanges, "building and opening do not change the bot profile");
+                dropdowns.Single(d => d.name == "BotDifficulty_P2").value = 2;
+                Assert.AreEqual(1, profileChanges);
+            }
+            finally
+            {
+                controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas);
+                if (events != null) UnityEngine.Object.DestroyImmediate(events);
+            }
+        }
+
+        [UnityTest]
         public IEnumerator DeveloperStockControlsAndPublicAugmentPopupUseServerState()
         {
             var client = new PlanningClient(); var controller = new GameClientController(client);
@@ -764,13 +813,19 @@ namespace BlackWhale.UI.Tests
             Assert.IsFalse(host.GetComponentsInChildren<Text>().Any(t => t.text.Contains("사람이 입장한 뒤") || t.text.Contains("혼자 테스트할 때는")), "lobby has no small setup instructions");
             Assert.AreEqual("P1", C(host).LocalPlayerId);
             Assert.IsFalse(C(host).Store.Public.players[0].isBot);
-            Click(host, "OpenDifficulty");
-            Click(host, "BotDifficulty_Hard");
-            yield return Until(() => C(host).Store.Public.botDifficulty == "Hard", "D difficulty screen updates actual room setting");
-            Click(host, "CloseGameScreen");
             Click(host, "FillBots");
             yield return Until(() => C(host).Store.Public.players.Length == 4 && C(host).Store.Public.players.Skip(1).All(p => p.isBot && p.ready), "three bot clients ready");
             Assert.AreEqual(Protocol.Lobby, C(host).Store.Public.phase, "host chooses when to start");
+            CollectionAssert.AreEqual(new[] { "Adventurous", "Stable", "Strategic" }, C(host).Store.Public.players.Skip(1).Select(p => p.botPersonality));
+            Assert.IsFalse(host.GetComponentsInChildren<Button>().Any(b => b.name == "OpenDifficulty"), "bot settings are inline in the ready roster");
+            var difficultyDropdown = host.GetComponentsInChildren<Dropdown>().Single(d => d.name == "BotDifficulty_P2");
+            Assert.AreEqual("Player2", difficultyDropdown.transform.parent.name);
+            CollectionAssert.AreEqual(new[] { "난이도: 쉬움", "난이도: 보통", "난이도: 어려움" }, difficultyDropdown.options.Select(o => o.text));
+            difficultyDropdown.value = 2;
+            yield return Until(() => C(host).Store.Public.players.Single(p => p.playerId == "P2").botDifficulty == "Hard", "individual bot difficulty");
+            host.GetComponentsInChildren<Dropdown>().Single(d => d.name == "BotPersonality_P2").value = 1;
+            yield return Until(() => C(host).Store.Public.players.Single(p => p.playerId == "P2").botPersonality == "Stable", "individual bot personality");
+            Assert.IsTrue(C(host).Store.Public.players.Skip(2).All(p => p.botDifficulty == "Normal"), "other bots keep difficulty");
             Click(host, "RemoveBots");
             yield return Until(() => C(host).Store.Public.players.Length == 1, "remove all bots");
 
@@ -780,13 +835,14 @@ namespace BlackWhale.UI.Tests
             Click(guest, "Join");
             yield return Until(() => C(guest)?.Store.Public?.players.Length == 2, "human reuses released P2 slot");
             Assert.AreEqual("P2", C(guest).LocalPlayerId);
-            Click(guest, "OpenDifficulty");
-            Assert.IsTrue(guest.GetComponentsInChildren<Button>().Where(b => b.name.StartsWith("BotDifficulty_")).All(b => !b.interactable), "guest cannot edit host difficulty");
-            Click(guest, "CloseGameScreen");
+            Assert.IsFalse(guest.GetComponentsInChildren<Button>().Any(b => b.name == "OpenDifficulty"), "guest has no separate bot settings tab");
             Assert.IsFalse(guest.GetComponentsInChildren<Button>().Any(b => b.name == "FillBots" || b.name == "RemoveBots"), "guest has no host controls");
             Click(host, "FillBots");
             yield return Until(() => C(host).Store.Public.players.Length == 4 && C(host).Store.Public.players.Count(p => p.isBot && p.ready) == 2, "two humans and two bots");
             CollectionAssert.AreEqual(new[] { "P1", "P2", "P3", "P4" }, C(host).Store.Public.players.Select(p => p.playerId));
+            var guestBotOptions = guest.GetComponentsInChildren<Dropdown>().Where(d => d.name.StartsWith("BotDifficulty_") || d.name.StartsWith("BotPersonality_")).ToArray();
+            Assert.AreEqual(4, guestBotOptions.Length, "guest sees two dropdowns per bot in the ready roster");
+            Assert.IsTrue(guestBotOptions.All(b => !b.interactable), "guest cannot edit individual bot profiles");
 
             var extra = Create("Full room UI");
             yield return null;

@@ -61,8 +61,11 @@ namespace BlackWhale.Rules.Information
 
         // 시장 데이터 원본 없이는 공개 정보와 구매 결과를 만들 수 없으므로 생성 시 즉시
         // 오류를 발견한다.
-        public SharedInformationService(IMarketDataSource source)
-        { this.source = source ?? throw new ArgumentNullException(nameof(source)); }
+        public SharedInformationService(IMarketDataSource source, int? randomSeed = null)
+        {
+            this.source = source ?? throw new ArgumentNullException(nameof(source));
+            informationRandom = randomSeed.HasValue ? new Random(randomSeed.Value) : new Random();
+        }
 
         // 새 턴의 시작 때 플레이어별 코인을 지급한다. 같은 턴의 재호출은 내부 서비스가
         // 멱등적으로 처리하며, 더 오래된 턴의 신호는 현재 코인을 변경하지 않는다.

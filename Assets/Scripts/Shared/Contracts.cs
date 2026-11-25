@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace BlackWhale.Shared
 {
@@ -90,6 +90,7 @@ namespace BlackWhale.Shared
         public string playerId, displayName;
         public bool connected, ready;
         public bool isBot;
+        public string botDifficulty, botPersonality;
         public string[] augments;
     }
     [Serializable] public sealed class CompanySeat { public string companyId; public int remainingSeats; }
