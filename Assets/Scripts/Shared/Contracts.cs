@@ -4,8 +4,8 @@ namespace BlackWhale.Shared
 {
     public static class Protocol
     {
-        public const string Version = "prototype-v6-stock";
-        public const string RulesVersion = "rules-v6-random-information-eight-augments";
+        public const string Version = "prototype-v8-exchange";
+        public const string RulesVersion = "rules-v8-exchange-social-bots";
         public const string Info = "INFO", Selection = "SELECTION", Investment = "INVESTMENT";
         public const string Reveal = "MARKET_REVEAL", Result = "RESULT", Lobby = "LOBBY", Ended = "ENDED";
         public const string AbilitySelection = "ABILITY_SELECTION", Auction = "AUCTION";
@@ -26,6 +26,9 @@ namespace BlackWhale.Shared
         public int startDay, endDay;
         public int informationDays = 1;
         public string itemId, targetPlayerId;
+        public string exchangeId, requestedCompanyId;
+        public int requestedStartDay;
+        public bool acceptExchange;
         public int historyTurn;
         public Investment[] investments;
         public bool ready;
@@ -71,6 +74,7 @@ namespace BlackWhale.Shared
         public Investment[] investments;
         public string source;
         public string recordId;
+        public string exchangeId;
         public int paidCoins;
     }
     [Serializable] public sealed class CommandResult
@@ -113,9 +117,19 @@ namespace BlackWhale.Shared
         public PublicInformationChoice[] publicInformation;
         public bool stockSystem;
         public int totalTurns;
+        public int stockSegmentIndex;
+        public bool stockSegmentRevealing;
+        public StockSegmentRecord[] stockSegmentHistory;
         public string[] draftOrder;
         public CompanyShareState[] shareMarket;
+        public SegmentKnowledge[] segmentKnowledge;
         public LobbySettings lobbySettings;
+    }
+    [Serializable] public sealed class SegmentKnowledge
+    {
+        public string companyId;
+        public int startDay;
+        public string[] playerIds;
     }
     [Serializable] public sealed class VisibleBundle
     {
@@ -157,6 +171,8 @@ namespace BlackWhale.Shared
         public AuctionState auction;
         public string[] inventory;
         public PortfolioState portfolio;
+        public TradeIntent[] receivedTradeIntents;
+        public InformationExchange[] informationExchanges;
     }
     [Serializable] public sealed class ReturnPoint { public int turn, returnBps; }
     [Serializable] public sealed class ScoreRow

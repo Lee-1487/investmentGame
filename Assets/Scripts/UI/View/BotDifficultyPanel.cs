@@ -44,7 +44,7 @@ namespace BlackWhale.UI.View
                 }
             }
             string note = bots.Length == 0 ? "대기실에서 BOT을 추가하면 각 BOT의 성향과 난이도를 선택할 수 있습니다."
-                : "모험: AI·BIO·SPACE / 안정: FOOD·AUTO / 전략: 전체 기업의 기대 수익 비교\n쉬움 → 어려움: 예측·시점·경쟁 판단 오차와 반응 지연 감소. 정보 코인은 동일합니다.";
+                : "모험: AI·BIO / 안정: FOOD·AUTO / 전략: 전체 기업의 기대 수익 비교\n쉬움 → 어려움: 예측·시점·경쟁 판단 오차와 반응 지연 감소. 정보 코인은 동일합니다.";
             var foot = UiKit.Label(_root, note, 13, Palette.SubText);
             UiKit.Place(foot.rectTransform, new Vector2(.5f, 0), new Vector2(.5f, 0), new Vector2(0, 38), new Vector2(650, 65));
         }

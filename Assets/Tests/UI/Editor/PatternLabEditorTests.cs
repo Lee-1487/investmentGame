@@ -417,8 +417,8 @@ namespace BlackWhale.UI.Tests
                 Assert.AreEqual(game[day].Move, preview[day].Move);
             }
             var migrated = JsonUtility.FromJson<StockPatternLibrary>("{\"patterns\":[]}").Copy();
-            Assert.AreEqual(200, migrated.volatility.bankBps);
-            Assert.AreEqual(2500, migrated.volatility.spaceBps);
+            Assert.AreEqual(500, migrated.volatility.foodBps);
+            Assert.AreEqual(2000, migrated.volatility.bioBps);
             var roundTrip = JsonUtility.FromJson<StockPatternLibrary>(JsonUtility.ToJson(migrated));
             Assert.AreEqual(1500, roundTrip.volatility.aiBps);
             migrated.UpgradeLegacy();

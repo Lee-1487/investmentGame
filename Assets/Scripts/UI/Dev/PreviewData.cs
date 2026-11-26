@@ -140,7 +140,7 @@ namespace BlackWhale.UI.Dev
             {
                 case "POLITICIAN": return new AbilityStatusModel { AbilityId = abilityId, State = "방어 가능", Detail = "다음 공격 1회를 자동으로 막습니다." };
                 case "INFOBROKER": return new AbilityStatusModel { AbilityId = abilityId, State = "이번 턴 무료 1회 남음", Detail = "처음 사는 정보 1묶음이 무료입니다." };
-                case "GAMBLER": return new AbilityStatusModel { AbilityId = abilityId, State = "항상 적용", Detail = "AI·SPACE·BIO 손익 ×1.2" };
+                case "GAMBLER": return new AbilityStatusModel { AbilityId = abilityId, State = "항상 적용", Detail = "AI·BIO 손익 ×1.2" };
                 default: return new AbilityStatusModel { AbilityId = abilityId, State = "", Detail = "" };
             }
         }
@@ -161,10 +161,10 @@ namespace BlackWhale.UI.Dev
                 Turn = 7
             };
             m.OwnCompanies.Add(new TargetOption { Key = "AI", Label = CompanyCatalog.Get("AI").DisplayName + " (AI)" });
-            m.OwnCompanies.Add(new TargetOption { Key = "BANK", Label = CompanyCatalog.Get("BANK").DisplayName + " (BANK)" });
+            m.OwnCompanies.Add(new TargetOption { Key = "FOOD", Label = CompanyCatalog.Get("FOOD").DisplayName + " (FOOD)" });
             m.OwnIntervals.Add(new TargetOption { Key = "AI:0", Label = "뉴럴코어 10→15일" });
-            m.OwnIntervals.Add(new TargetOption { Key = "BANK:0", Label = "새벽은행 5→10일" });
-            foreach (var id in new[] { "AI", "SPACE", "FOOD" })
+            m.OwnIntervals.Add(new TargetOption { Key = "FOOD:0", Label = "그린테이블 5→10일" });
+            foreach (var id in new[] { "AI", "AUTO", "FOOD" })
                 m.Companies.Add(new TargetOption { Key = id, Label = CompanyCatalog.Get(id).DisplayName });
             m.Players.Add(new TargetOption { Key = "P1", Label = NameOf("P1") });
             m.Players.Add(new TargetOption { Key = "P3", Label = NameOf("P3") });

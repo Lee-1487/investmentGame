@@ -87,6 +87,11 @@ namespace BlackWhale.Shared
         bool UsesWindowInformation { get; }
         void ConfigureRoom(string roomId, LobbySettings settings);
         void PrepareRandomInformation(RequestContext context);
+        RuleResult ShareKnownWindow(RequestContext context, string targetPlayerId, string companyId, int startDay);
+        RuleResult RequestInformationExchange(RequestContext context, string target, string offeredCompany, int offeredStart, string requestedCompany, int requestedStart);
+        RuleResult RespondInformationExchange(RequestContext context, string exchangeId, bool accept);
+        bool HasPendingInformationExchange(RequestContext context);
+        RuleResult SendTradeIntent(RequestContext context, string targetPlayerId, string companyId, int entryDay, int exitDay);
         RuleResult BuyRandomDays(RequestContext context, string companyId, int count = 1);
         void GrantAnalystCoins(RequestContext context, string playerId);
         RuleResult RevealPublicDays(RequestContext context, string companyId, int[] days, bool automatic);
@@ -94,6 +99,7 @@ namespace BlackWhale.Shared
         RuleResult BuyWindow(RequestContext context, string companyId, int startDay, int endDay = 0);
         RuleResult UseInformationItem(RequestContext context, string itemId, string companyId, int startDay, string targetPlayerId, double now);
         PublicInformationChoice[] GetPublicInformation(RequestContext context);
+        SegmentKnowledge[] GetSegmentKnowledge(RequestContext context);
         bool ExpireDistortions(RequestContext context, double now);
     }
     public interface IMarketHistory

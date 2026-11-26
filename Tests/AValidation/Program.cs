@@ -27,6 +27,17 @@ internal static class Program
     {
         try
         {
+            if (args.Contains("--board-game"))
+            {
+                foreach (string check in BoardGameValidation.Run()) Console.WriteLine("PASS " + check);
+                Console.WriteLine("PASS " + await BoardGameValidation.RunNetwork(new TestJson()));
+                return 0;
+            }
+            if (args.Contains("--four-stocks-cash"))
+            {
+                foreach(string check in StockSystemValidation.RunFourStocksCash()) Console.WriteLine("PASS "+check);
+                return 0;
+            }
             if (args.Contains("--bot-lab"))
             {
                 foreach (string check in BotExperimentValidation.RunAll(new TestJson())) Console.WriteLine("PASS " + check);

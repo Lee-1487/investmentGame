@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using BlackWhale.Bots;
@@ -22,9 +22,15 @@ namespace BlackWhale.UI.Dev
         private readonly PhaseClock clock = new PhaseClock();
         private PublicState syncedState;
         private string stateKey = "";
-        private int currentTurn = -1, currentRevision = -1, purchases, failures, orderAttempts;
+        private int currentTurn = -1, currentRevision = -1, purchases, failures, orderAttempts, exchangeAttempts, rumorAttempts;
         private float since;
         private readonly HashSet<string> attempted = new HashSet<string>();
+        private readonly HashSet<string> triedExchangeTargets = new HashSet<string>();
+        private readonly HashSet<string> sentRumorTargets = new HashSet<string>();
+        private readonly HashSet<string> seenExchangeOutcomes = new HashSet<string>();
+        private readonly HashSet<string> seenSegments = new HashSet<string>();
+        private string boardAllocationKey;
+        private Dictionary<string, int> boardAllocation;
         public IGameClient Client { get; }
         public GameClientController Controller => controller;
         public DevBot(IGameClient client, float thinkSeconds, int seed = 1, BotDifficulty difficulty = BotDifficulty.Normal, BotPersonality personality = BotPersonality.Strategic)
@@ -60,7 +66,11 @@ namespace BlackWhale.UI.Dev
                     personality = style; difficulty = selected; strategy = new InformationBotStrategy(seed, new BotPolicy(selected, style));
                 }
             }
-            if (currentTurn != s.turn || currentRevision != s.developerRevision) { currentTurn = s.turn; currentRevision = s.developerRevision; purchases = failures = orderAttempts = 0; attempted.Clear(); }
+            if (currentTurn != s.turn || currentRevision != s.developerRevision) {
+                currentTurn = s.turn; currentRevision = s.developerRevision;
+                purchases = failures = orderAttempts = exchangeAttempts = rumorAttempts = 0;
+                attempted.Clear(); triedExchangeTargets.Clear(); sentRumorTargets.Clear(); seenExchangeOutcomes.Clear(); seenSegments.Clear();
+            }
             string key = s.turn + "|" + s.phase + "|" + s.selectionIndex + "|" + s.currentPlayerId + "|" + s.developerRevision;
             if (key != stateKey) { stateKey = key; since = now; actionDelay = s.stockSystem ? strategy.NextReactionSeconds() : 0; }
             if (now - since < thinkSeconds + (s.stockSystem && s.phase == Protocol.Investment ? 0 : actionDelay)) return;
@@ -80,7 +90,7 @@ namespace BlackWhale.UI.Dev
                 var ranked = ranks.Select(id => s.shareMarket.First(c => c.companyId == id));
                 int budget = Math.Min(p.CashSlots, p.draftSharesRemaining);
                 var shareOrders = new System.Collections.Generic.List<ShareOrder>();
-                foreach (var c in ranked.Where(company => company.companyId != "BANK"))
+                foreach (var c in ranked)
                 {
                     int own = p.holdings.First(v => v.companyId == c.companyId).shares;
                     int remaining = StockRules.Supply - c.owners.Sum(v => v.shares + v.reserved);
@@ -91,18 +101,70 @@ namespace BlackWhale.UI.Dev
                 if (shareOrders.Count > 0) { controller.TradeShares(shareOrders.ToArray()); since = now; return; }
                 controller.PassStockDraft(); since = now; return;
             }
+            if (s.stockSystem && view != null) {
+                foreach (var ex in view.informationExchanges ?? Array.Empty<InformationExchange>()) {
+                    if ((ex.status == "ACCEPTED" || ex.status == "REJECTED") && seenExchangeOutcomes.Add(ex.id + ":" + ex.status)) {
+                        string other = ex.senderId == controller.LocalPlayerId ? ex.targetPlayerId : ex.senderId;
+                        strategy.RecordExchangeOutcome(other, ex.status == "ACCEPTED");
+                    }
+                }
+                if (s.phase == Protocol.Investment && !s.stockSegmentRevealing) {
+                    foreach (var rec in s.stockSegmentHistory ?? Array.Empty<StockSegmentRecord>())
+                        if (seenSegments.Add(s.turn + ":" + rec.segmentIndex))
+                            strategy.RecordSegmentOutcome(view, s, rec.segmentIndex);
+                }
+            }
             if (s.stockSystem && s.phase == Protocol.Investment)
             {
+                if (s.stockSegmentRevealing) return;
                 if (controller.Store.HasPending(StockRules.Position)) return;
-                foreach (var id in strategy.RankStockCompanies(view, s))
-                {
-                    var holding = view.portfolio.holdings.FirstOrDefault(h => h.companyId == id);
-                    if (holding == null) continue;
-                    int target = strategy.StockTarget(view, s, id, now);
-                    if (holding.activeShares == target) continue;
-                    controller.SetStockPosition(id, target); break;
+                string allocationKey = s.turn + ":" + s.stockSegmentIndex + ":" + s.developerRevision;
+                if (boardAllocationKey != allocationKey) {
+                    boardAllocationKey = allocationKey;
+                    boardAllocation = strategy.AllocateBoardTokens(view, s);
                 }
+                // Release excess tokens before moving them to another company.
+                var change = view.portfolio.holdings.Where(h => h.shares != boardAllocation[h.companyId])
+                    .OrderBy(h => boardAllocation[h.companyId] - h.shares).FirstOrDefault();
+                if (change != null) controller.SetStockPosition(change.companyId, boardAllocation[change.companyId]);
                 since = now; return;
+            }
+            if (s.stockSystem && s.phase == Protocol.Info) {
+                if (controller.Store.HasPending(StockRules.ShareInformation) || controller.Store.HasPending(StockRules.RespondExchange)
+                    || controller.Store.HasPending(StockRules.SendPlan)) return;
+                var incoming = (view.informationExchanges ?? Array.Empty<InformationExchange>())
+                    .FirstOrDefault(e => e.status == "PENDING" && e.targetPlayerId == controller.LocalPlayerId);
+                if (incoming != null) {
+                    controller.RespondInformationExchange(incoming.id, strategy.ShouldAcceptExchange(view, incoming));
+                    since = now; return;
+                }
+                if (controller.IsDoneForCurrentPhase) return;
+                bool hasOutgoingPending = (view.informationExchanges ?? Array.Empty<InformationExchange>())
+                    .Any(e => e.status == "PENDING" && e.senderId == controller.LocalPlayerId);
+                if (!hasOutgoingPending && exchangeAttempts < 3) {
+                    var req = strategy.ChooseExchangeRequest(view, s, triedExchangeTargets);
+                    if (req != null) {
+                        exchangeAttempts++;
+                        triedExchangeTargets.Add(req.TargetPlayerId);
+                        controller.ShareInformation(req.TargetPlayerId, req.OfferedCompanyId, req.OfferedStartDay, req.RequestedCompanyId, req.RequestedStartDay);
+                        since = now; return;
+                    }
+                    exchangeAttempts = 3;
+                }
+                if (rumorAttempts < 2) {
+                    var rumor = strategy.ChooseTradeIntent(view, s, sentRumorTargets);
+                    if (rumor != null) {
+                        rumorAttempts++;
+                        sentRumorTargets.Add(rumor.TargetPlayerId);
+                        controller.SendTradeIntent(rumor.TargetPlayerId, rumor.CompanyId, rumor.EntryDay, rumor.ExitDay);
+                        since = now; return;
+                    }
+                    rumorAttempts = 2;
+                }
+                bool anyPendingExchange = (view.informationExchanges ?? Array.Empty<InformationExchange>())
+                    .Any(e => e.status == "PENDING" && (e.senderId == controller.LocalPlayerId || e.targetPlayerId == controller.LocalPlayerId));
+                if (!anyPendingExchange && controller.CanFinishPhase()) controller.FinishPhase();
+                return;
             }
             switch (s.phase)
             {

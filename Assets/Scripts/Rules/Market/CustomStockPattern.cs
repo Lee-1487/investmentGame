@@ -174,7 +174,7 @@ namespace BlackWhale.Rules
         {
             var copy = new StockPatternLibrary { registeredVersion = registeredVersion, volatility = (volatility ?? new StockVolatilitySettings()).Copy(),
                 baseSettings = (baseSettings ?? new BasePatternSettings()).Copy() };
-            foreach (var pattern in patterns) { pattern.Validate(); copy.patterns.Add(pattern.Copy()); }
+            foreach (var pattern in patterns) { if (Array.IndexOf(InvestmentRules.CompanyIds, pattern.companyId) < 0) continue; pattern.Validate(); copy.patterns.Add(pattern.Copy()); }
             foreach (string company in InvestmentRules.CompanyIds) copy.Probabilities(company);
             return copy;
         }

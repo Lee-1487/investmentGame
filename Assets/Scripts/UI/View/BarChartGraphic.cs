@@ -37,6 +37,12 @@ namespace BlackWhale.UI.View
         public static readonly Color32 CurrentDayColor = new Color32(0xFF, 0xFF, 0xFF, 0x18);
         public static readonly Color32 CurrentDayEdgeColor = new Color32(0xFF, 0xFF, 0xFF, 0xE0);
         public static readonly Color32 TrendColor = new Color32(0xCF, 0xCF, 0xCF, 0xFF);
+        private bool IsDayRevealed(int day)
+        {
+            if (_bars == null || day < 0 || day >= _bars.Length) return false;
+            var b = _bars[day];
+            return b.Day == day && b.State != DayBarState.Hidden && b.Bps.HasValue;
+        }
         private int? _trendThroughDay;
         public void SetTrendThroughDay(int? day)
         {
@@ -109,6 +115,62 @@ namespace BlackWhale.UI.View
                 s_revealStart = Time.unscaledTime;
         }
         private ChartVerticalRange _verticalRange = ChartVerticalRange.FromVisibleValues(null);
+        private bool _bioFixedAxis;
+        private bool _showFiveDaySegments;
+        private RectTransform _segmentKnowledgeRoot;
+        private Text[] _segmentKnowledgeLabels;
+        private string _segmentKnowledgeKey;
+        public void SetCompany(string company)
+        {
+            bool bio = company == "BIO";
+            bool bioChanged = _bioFixedAxis != bio;
+            _bioFixedAxis = bio;
+            if (!_showFiveDaySegments) {
+                _showFiveDaySegments = true;
+                SetVerticesDirty();
+            }
+            if (bioChanged && _bars.Length > 0) {
+                _verticalRange = _bioFixedAxis ? ChartVerticalRange.BioFixed : ChartVerticalRange.FromVisibleValues(_bars.Where(b => b.Bps.HasValue).Select(b => b.Bps.Value)
+                    .Concat(_bars.Where(b => b.Bps.HasValue && b.OpenBps.HasValue).Select(b => b.OpenBps.Value)));
+                RefreshAxisLabels();
+                SetVerticesDirty();
+            }
+        }
+        public void SetSegmentKnowledge(SegmentKnowledge[] knowledge, string companyId)
+        {
+            var entries = (knowledge ?? System.Array.Empty<SegmentKnowledge>()).Where(k => k.companyId == companyId).ToArray();
+            if (entries.Length == 0) {
+                if (_segmentKnowledgeRoot != null) _segmentKnowledgeRoot.gameObject.SetActive(false);
+                _segmentKnowledgeKey = null;
+                return;
+            }
+            if (_segmentKnowledgeRoot == null) {
+                _segmentKnowledgeRoot = UiKit.Rect(transform, "SegmentKnowledge"); UiKit.Stretch(_segmentKnowledgeRoot);
+                _segmentKnowledgeLabels = new Text[6];
+                for (int segment = 0; segment < 6; segment++) {
+                    int start = 1 + segment * 5;
+                    var label = UiKit.Label(_segmentKnowledgeRoot, "", 9, Palette.SubText, TextAnchor.LowerCenter, FontStyle.Bold);
+                    label.raycastTarget = false; label.supportRichText = true;
+                    label.horizontalOverflow = HorizontalWrapMode.Overflow;
+                    label.rectTransform.anchorMin = new Vector2(start / 31f, 0);
+                    label.rectTransform.anchorMax = new Vector2((start + 5) / 31f, 0);
+                    label.rectTransform.offsetMin = new Vector2(1, 1); label.rectTransform.offsetMax = new Vector2(-1, 15);
+                    _segmentKnowledgeLabels[segment] = label;
+                }
+            }
+            _segmentKnowledgeRoot.gameObject.SetActive(true);
+            string key = companyId + "|" + string.Join("|", entries.OrderBy(e => e.startDay).Select(e => e.startDay + ":" + string.Join(",", e.playerIds ?? System.Array.Empty<string>())));
+            if (key == _segmentKnowledgeKey) return;
+            _segmentKnowledgeKey = key;
+            for (int segment = 0; segment < 6; segment++) {
+                int start = 1 + segment * 5;
+                var entry = entries.FirstOrDefault(e => e.startDay == start);
+                var ids = entry?.playerIds ?? System.Array.Empty<string>();
+                if (ids.Length == 0) _segmentKnowledgeLabels[segment].text = "";
+                else if (ids.Contains("ALL")) _segmentKnowledgeLabels[segment].text = "공용";
+                else _segmentKnowledgeLabels[segment].text = string.Join(" ", ids.Select(id => "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(id)) + ">" + id + "</color>"));
+            }
+        }
         private readonly List<Vector2Int> _bands = new List<Vector2Int>();
         private RevealedInvestment[] _revealedInvestments = new RevealedInvestment[0];
         private int? _candidate;
@@ -117,8 +179,45 @@ namespace BlackWhale.UI.View
         private int? _hover;
         private Vector2Int? _allowed;
         private Vector2Int? _informationRange;
+        private int? _exchangeSendStart, _exchangeReceiveStart;
+        private RectTransform _exchangeLabelRoot;
+        private Text _exchangeSendLabel, _exchangeReceiveLabel;
         public void SetInformationWindow(int? start) => SetInformationRange(start.HasValue ? new Vector2Int(start.Value, start.Value + 4) : (Vector2Int?)null);
         public void SetInformationRange(Vector2Int? range) { _informationRange = range; SetVerticesDirty(); }
+        public void SetExchangeOverlays(int? sendStartDay, int? receiveStartDay)
+        {
+            _exchangeSendStart = sendStartDay;
+            _exchangeReceiveStart = receiveStartDay;
+            if (_exchangeLabelRoot == null && (sendStartDay.HasValue || receiveStartDay.HasValue)) {
+                _exchangeLabelRoot = UiKit.Rect(transform, "ExchangeLabels"); UiKit.Stretch(_exchangeLabelRoot);
+                _exchangeSendLabel = MakeExchangeBadge("보낼 구간", new Color32(0xFF, 0xA9, 0x28, 0xE8), new Color32(0x18, 0x18, 0x18, 0xFF));
+                _exchangeReceiveLabel = MakeExchangeBadge("받을 구간", new Color32(0x38, 0xBD, 0xF8, 0xE8), new Color32(0x18, 0x18, 0x18, 0xFF));
+            }
+            if (_exchangeLabelRoot != null) {
+                PositionExchangeBadge(_exchangeSendLabel, sendStartDay);
+                PositionExchangeBadge(_exchangeReceiveLabel, receiveStartDay);
+            }
+            SetVerticesDirty();
+        }
+        private Text MakeExchangeBadge(string caption, Color32 bg, Color32 fg)
+        {
+            var pill = UiKit.Panel(_exchangeLabelRoot, "ExchangeBadge", bg, rounded: true);
+            pill.raycastTarget = false;
+            var label = UiKit.Label(pill.transform, caption, 10, fg, TextAnchor.MiddleCenter, FontStyle.Bold);
+            label.raycastTarget = false;
+            UiKit.Stretch(label.rectTransform, 2, 0, 2, 0);
+            return label;
+        }
+        private static void PositionExchangeBadge(Text label, int? startDay)
+        {
+            var box = label.transform.parent as RectTransform;
+            bool active = startDay.HasValue && startDay.Value >= 1 && startDay.Value <= 26;
+            box.gameObject.SetActive(active);
+            if (!active) return;
+            box.anchorMin = new Vector2(startDay.Value / 31f, 1);
+            box.anchorMax = new Vector2((startDay.Value + 5) / 31f, 1);
+            box.offsetMin = new Vector2(2, -18); box.offsetMax = new Vector2(-2, -1);
+        }
         private RectTransform _tradeMarkerRoot;
         private string _tradeMarkerKey;
 
@@ -136,7 +235,7 @@ namespace BlackWhale.UI.View
         {
             _bars = bars ?? new DayBar[0];
             NoteReveal();
-            _verticalRange = ChartVerticalRange.FromVisibleValues(_bars.Where(b => b.Bps.HasValue).Select(b => b.Bps.Value)
+            _verticalRange = _bioFixedAxis ? ChartVerticalRange.BioFixed : ChartVerticalRange.FromVisibleValues(_bars.Where(b => b.Bps.HasValue).Select(b => b.Bps.Value)
                 .Concat(_bars.Where(b => b.Bps.HasValue && b.OpenBps.HasValue).Select(b => b.OpenBps.Value)));
             RefreshAxisLabels();
             SetVerticesDirty();
@@ -245,6 +344,17 @@ namespace BlackWhale.UI.View
 
         /// <summary>false면 구간 띠만 그리고 'N일 시가 / N일 종가' 글자는 붙이지 않는다(정보 구매 창 예약용).</summary>
         public bool ShowTradeLabels = true;
+        private ChartPlanOverlay[] _planOverlays = System.Array.Empty<ChartPlanOverlay>();
+        public ChartPlanOverlay[] PlanOverlays => _planOverlays.Select(i => new ChartPlanOverlay { playerId = i.playerId,
+            entryDay = i.entryDay, exitDay = i.exitDay, rumor = i.rumor }).ToArray();
+        public void SetPlanOverlays(IEnumerable<ChartPlanOverlay> overlays)
+        {
+            var next = (overlays ?? System.Array.Empty<ChartPlanOverlay>()).Where(i => i != null).ToArray();
+            if (_planOverlays.Select(i => i.playerId + ":" + i.entryDay + ":" + i.exitDay + ":" + i.rumor)
+                .SequenceEqual(next.Select(i => i.playerId + ":" + i.entryDay + ":" + i.exitDay + ":" + i.rumor))) return;
+            _planOverlays = next.Select(i => new ChartPlanOverlay { playerId = i.playerId, entryDay = i.entryDay, exitDay = i.exitDay, rumor = i.rumor }).ToArray();
+            SetVerticesDirty();
+        }
 
         /// <summary>진입·청산 띠/표시, 플레이어 수익률 글자, 매수·매도 체결 표시를 모두 지운다(시장 공개·투자 결과 화면용).</summary>
         public void ClearTradeOverlays()
@@ -253,6 +363,7 @@ namespace BlackWhale.UI.View
             fills = System.Array.Empty<StockFill>();
             _fillMarkerKey = string.Empty;
             _bands.Clear();
+            _planOverlays = System.Array.Empty<ChartPlanOverlay>();
             SetVerticesDirty();
             if (_tradeMarkerKey == "none") return;
             _tradeMarkerKey = "none";
@@ -406,6 +517,25 @@ namespace BlackWhale.UI.View
                 Quad(vh, left, r.yMin, right, r.yMax, CurrentDayColor); // 테두리는 맨 위에 따로
             }
             foreach (var b in _bands) Band(vh, r, b.x, b.y, BandColor, false); // 테두리는 맨 위에 네 변 모두(아래)
+            foreach (var note in _planOverlays) {
+                Color32 edge = Palette.Player(note.playerId); var fill = edge; fill.a = note.rumor ? (byte)16 : (byte)34;
+                Band(vh, r, note.entryDay, note.exitDay, fill, false);
+                float left = DayAxis.LeftX(note.entryDay, r.xMin, r.width);
+                float right = DayAxis.LeftX(note.exitDay + 1, r.xMin, r.width);
+                int laneIndex = Mathf.Max(0, note.playerId == "P1" ? 0 : note.playerId == "P2" ? 1 : note.playerId == "P3" ? 2 : 3);
+                float lane = r.yMin + 3 + laneIndex * 5;
+                if (note.rumor) {
+                    for (float x = left; x < right; x += 8) Quad(vh, x, lane, Mathf.Min(x + 5, right), lane + 3, edge);
+                    for (float y = r.yMin; y < r.yMax; y += 8) {
+                        Quad(vh, left, y, left + 1.5f, Mathf.Min(y + 4, r.yMax), edge);
+                        Quad(vh, right - 1.5f, y, right, Mathf.Min(y + 4, r.yMax), edge);
+                    }
+                } else {
+                    Quad(vh, left, lane, right, lane + 3, edge);
+                    Quad(vh, left, r.yMin, left + 1.5f, r.yMax, edge);
+                    Quad(vh, right - 1.5f, r.yMin, right, r.yMax, edge);
+                }
+            }
             for (int p = 0; p < _revealedInvestments.Length; p++)
             {
                 var position = _revealedInvestments[p];
@@ -420,6 +550,11 @@ namespace BlackWhale.UI.View
                     Quad(vh, left, lane, left + 2, r.yMax - p * 2, edge);
                     Quad(vh, right - 2, lane, right, r.yMax - p * 2, edge);
                 }
+            }
+            if (_showFiveDaySegments) for (int boundary = 6; boundary <= 26; boundary += 5) {
+                if (IsDayRevealed(boundary - 1) && IsDayRevealed(boundary)) continue;
+                float x = DayAxis.LeftX(boundary, r.xMin, r.width);
+                Quad(vh, x - 0.75f, r.yMin, x + 0.75f, r.yMax, new Color32(255, 255, 255, 195));
             }
             if (_preview.HasValue) Band(vh, r, _preview.Value.x, _preview.Value.y, _previewOk ? PreviewOkColor : PreviewBadColor, false);
 
@@ -526,6 +661,20 @@ namespace BlackWhale.UI.View
             {
                 float left = DayAxis.LeftX(_currentDay.Value, r.xMin, r.width);
                 BoxOutline(vh, r, left, left + slot, 2f, CurrentDayEdgeColor);
+            }
+            if (_exchangeSendStart.HasValue)
+            {
+                float left = DayAxis.LeftX(_exchangeSendStart.Value, r.xMin, r.width);
+                float right = DayAxis.LeftX(Mathf.Min(30, _exchangeSendStart.Value + 4), r.xMin, r.width) + slot;
+                Quad(vh, left, r.yMin, right, r.yMax, new Color32(0xFF, 0xA9, 0x28, 0x3C));
+                BoxOutline(vh, r, left, right, 2.5f, new Color32(0xFF, 0xA9, 0x28, 0xFF));
+            }
+            if (_exchangeReceiveStart.HasValue)
+            {
+                float left = DayAxis.LeftX(_exchangeReceiveStart.Value, r.xMin, r.width);
+                float right = DayAxis.LeftX(Mathf.Min(30, _exchangeReceiveStart.Value + 4), r.xMin, r.width) + slot;
+                Quad(vh, left, r.yMin, right, r.yMax, new Color32(0x38, 0xBD, 0xF8, 0x3C));
+                BoxOutline(vh, r, left, right, 2.5f, new Color32(0x38, 0xBD, 0xF8, 0xFF));
             }
             // 진입일 후보 표식
             if (_candidate.HasValue && _candidate.Value >= 0 && _candidate.Value < DayAxis.Count)

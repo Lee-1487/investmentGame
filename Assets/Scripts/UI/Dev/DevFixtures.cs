@@ -14,7 +14,7 @@ namespace BlackWhale.UI.Dev
     public static class DevFixtures
     {
         /// <summary>fixture 기준 선택 순서(A_selection_replay). 봇이 가능하면 이 순서대로 고른다.</summary>
-        public static readonly string[] ReplayPicks = { "AI", "SPACE", "BIO", "AI", "BIO", "AUTO", "BANK", "FOOD" };
+        public static readonly string[] ReplayPicks = { "AI", "AUTO", "BIO", "AI", "BIO", "AUTO", "FOOD", "FOOD" };
 
         public static string FixtureDir
             => Path.Combine(Directory.GetParent(Application.dataPath).FullName, "개발 정리", "임시 데이터 및 검증용");
@@ -26,6 +26,7 @@ namespace BlackWhale.UI.Dev
             try
             {
                 market = JsonUtility.FromJson<MarketData>(File.ReadAllText(Path.Combine(FixtureDir, "B_market_server.json")));
+                market.companies = market.companies.Where(c => UiRules.IsKnownCompany(c.companyId)).ToArray();
                 new MarketBook(market, new InvestmentRules());
                 if (market.turn == 1)
                 {

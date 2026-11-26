@@ -49,12 +49,20 @@ namespace BlackWhale.Rules
                     publicBundleIndices = (int[])c.publicBundleIndices.Clone()
                 });
             }
-            if (companies.Count != InvestmentRules.CompanyIds.Length) throw new ArgumentException("Exactly 6 companies required.");
+            if (companies.Count != InvestmentRules.CompanyIds.Length) throw new ArgumentException("Exactly " + InvestmentRules.CompanyIds.Length + " companies required.");
         }
 
         public bool HasCompany(string companyId) { return companyId != null && companies.ContainsKey(companyId); }
 
         public int ChangeBps(string companyId, int day) { return companies[companyId].dailyChangesBps[day]; }
+
+        // Reactive prices are committed once, at the start of each five-day reveal.
+        internal void SetSegment(string companyId, int startDay, int[] closes)
+        {
+            if (startDay < 1 || closes == null || closes.Length != 5 || startDay + closes.Length > 31)
+                throw new ArgumentException("A market segment requires five closes within day 1..30.");
+            Array.Copy(closes, 0, companies[companyId].dailyChangesBps, startDay, closes.Length);
+        }
 
         public int[] Bundle(string companyId, int bundleIndex, out int startDay)
         {

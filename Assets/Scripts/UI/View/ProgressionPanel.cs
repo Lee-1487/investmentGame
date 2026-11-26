@@ -46,7 +46,7 @@ namespace BlackWhale.UI.View
             string[] labels = { "전광판", "입찰 결과", "내 능력" };
             Page[] pages = { Page.Board, Page.Auction, Page.Ability };
             if (controller.Store.Public?.stockSystem == true)
-            { labels = new[] { "전광판", "주식 현황", "내 증강" }; pages = new[] { Page.Board, Page.Auction, Page.Ability }; }
+            { labels = new[] { "전광판", "공개된 배치", "게임 규칙" }; pages = new[] { Page.Board, Page.Auction, Page.Ability }; }
             for (int i = 0; i < labels.Length; i++)
             {
                 Page target = pages[i];
@@ -135,7 +135,7 @@ namespace BlackWhale.UI.View
                 case Page.Ability:
                     if (state.stockSystem)
                     {
-                        Message("<b>내 증강</b>\n\n" + string.Join("\n\n", (view?.portfolio?.augments ?? new string[0]).Select(id => "<b>" + StockRules.Name(id) + "</b>\n" + StockRules.Description(id))) + "\n\n증강은 1·4턴 시작에 선택합니다(최대 2개).");
+                        Message("<b>게임 규칙</b>\n\n투자말 3개 · 정보 공유 120초\n비공개 선택 10초 → 5일 시장 공개 2초 · 총 6구간\n\nFOOD: 기본 흐름 + 투자말 1개당 변동폭 2%p (최대 20%p)\nAUTO: 기본 흐름만 적용\nAI: 구간 상승 +15%p / 하락 −30%p · 투자말 4개 이상이면 하락\nBIO: 평소 ±1%p · Lightening은 30일당 최대 1회\n\n왼쪽 플레이어 메뉴에서 정보 카드 / 진입·정산 계획을 보낼 수 있습니다.\n계획 통보는 자동 주문이 아닙니다. 증강은 현재 비활성화되어 있습니다.");
                         break;
                     }
                     var ability = LiveScreenModels.Ability(state, view, abilityDraft, store.HasPending(CommandTypes.SelectAbility), seconds);
@@ -148,8 +148,8 @@ namespace BlackWhale.UI.View
                 case Page.Auction:
                     if (state.stockSystem)
                     {
-                        Message("<b>기업별 주식 보유 현황</b>\n\n" + string.Join("\n\n", (state.shareMarket ?? new CompanyShareState[0]).Select(c =>
-                            "<b>" + c.companyId + "</b>" + (c.companyId == "BANK" ? " · 자동 예금\n" : " · 잔여 ■ ×" + (c.totalShares - c.owners.Sum(v => v.shares + v.reserved)) + "\n") + string.Join("   ", c.owners.Select(v => v.playerId + " " + v.shares + "주")))));
+                        Message("<b>최근 공개된 투자말 배치</b>\n비공개 선택 중에는 직전 구간 배치를 표시합니다.\n\n" + string.Join("\n\n", (state.shareMarket ?? new CompanyShareState[0]).Select(c =>
+                            "<b>" + c.companyId + "</b>\n" + string.Join("   ", c.owners.Select(v => v.playerId + " " + v.shares + "개")))));
                         break;
                     }
                     if (state.phase == Protocol.Auction)

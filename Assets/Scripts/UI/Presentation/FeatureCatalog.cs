@@ -105,7 +105,7 @@ namespace BlackWhale.UI.Presentation
             new AbilityDef { Id = "RAIDER", Name = "기업사냥꾼", Short = "파쇄기 성공 시 상대 수익 감산",
                 Effect = "하락 파쇄기로 떨어진 기업에서 이익을 내면, 같은 기업에서 이익을 본 상대 1명의 수익을 깎고 깎은 금액의 50%를 가져온다." },
             new AbilityDef { Id = "GAMBLER", Name = "도박사", Short = "고변동 기업 손익 ×1.2",
-                Effect = "AI·SPACE·BIO 투자의 수익률과 손실률이 1.2배. 증폭기와 함께면 2.4배, 대폭발 보너스는 +60%p." }
+                Effect = "AI·BIO 투자의 수익률과 손실률이 1.2배. 증폭기와 함께면 2.4배, 대폭발 보너스는 +60%p." }
         };
 
         public static AbilityDef Get(string id) => All.FirstOrDefault(a => a.Id == id);

@@ -1,165 +1,130 @@
-{
-    "registeredVersion": 2,
-    "patterns": [
-        {
-            "id": "builtin-rectangle",
-            "name": "박스권",
-            "companyId": "AI",
-            "enabled": true,
-            "isBasePattern": true,
-            "baseShape": 3,
-            "useCustomProbability": false,
-            "probabilityPercent": 0.0,
-            "amplitudeBps": 1000,
-            "startDay": 0,
-            "vertices": [
-                -0.06857142597436905,
-                0.7047619223594666,
-                -0.5333333611488342,
-                0.6095238327980042,
-                -0.523809552192688,
-                0.6571428775787354,
-                -0.3142857253551483,
-                0.7047619223594666,
-                -0.4095238149166107,
-                0.6190476417541504
-            ],
-            "segmentDays": [
-                2,
-                2,
-                2,
-                2,
-                3,
-                1,
-                2,
-                3,
-                3
-            ]
-        },
-        {
-            "id": "builtin-m",
-            "name": "M",
-            "companyId": "AI",
-            "enabled": true,
-            "isBasePattern": true,
-            "baseShape": 1,
-            "useCustomProbability": false,
-            "probabilityPercent": 0.0,
-            "amplitudeBps": 1000,
-            "startDay": 0,
-            "vertices": [
-                0.0,
-                1.0,
-                0.25,
-                1.0,
-                -0.4,
-                -0.85
-            ],
-            "segmentDays": [
-                4,
-                4,
-                4,
-                4,
-                4
-            ]
-        },
-        {
-            "id": "builtin-w",
-            "name": "W",
-            "companyId": "AI",
-            "enabled": true,
-            "isBasePattern": true,
-            "baseShape": 2,
-            "useCustomProbability": false,
-            "probabilityPercent": 0.0,
-            "amplitudeBps": 1000,
-            "startDay": 0,
-            "vertices": [
-                0.0,
-                -1.0,
-                -0.25,
-                -1.0,
-                0.4,
-                0.85
-            ],
-            "segmentDays": [
-                4,
-                4,
-                4,
-                4,
-                4
-            ]
-        },
-        {
-            "id": "builtin-flag",
-            "name": "FLAG",
-            "companyId": "AI",
-            "enabled": true,
-            "isBasePattern": true,
-            "baseShape": 4,
-            "useCustomProbability": false,
-            "probabilityPercent": 0.0,
-            "amplitudeBps": 1000,
-            "startDay": 0,
-            "vertices": [
-                0.0,
-                1.0,
-                0.7,
-                0.8,
-                0.55,
-                1.6
-            ],
-            "segmentDays": [
-                4,
-                4,
-                4,
-                4,
-                4
-            ]
-        },
-        {
-            "id": "560e9d2646574e1ea690bf6e912c372d",
-            "name": "피뢰침(hidden)",
-            "companyId": "SPACE",
-            "enabled": true,
-            "isBasePattern": false,
-            "baseShape": 0,
-            "useCustomProbability": false,
-            "probabilityPercent": 0.0,
-            "amplitudeBps": 1000,
-            "startDay": 22,
-            "vertices": [
-                -0.37142857909202578,
-                -0.46666666865348818,
-                -0.3333333432674408,
-                -0.4571428596973419,
-                -0.3523809611797333,
-                -0.46666666865348818,
-                0.8952381014823914,
-                0.7904762029647827,
-                0.8571428656578064
-            ],
-            "segmentDays": [
-                1,
-                1,
-                1,
-                1,
-                1,
-                1,
-                1,
-                1
-            ]
-        }
-    ],
-    "volatility": {
-        "bankBps": 200,
-        "foodBps": 500,
-        "autoBps": 700,
-        "aiBps": 1500,
-        "bioBps": 2000,
-        "spaceBps": 2500
-    },
-    "baseSettings": {
-        "surgeMultiplier": 3.0
-    }
+﻿{
+    "registeredVersion":  2,
+    "patterns":  [
+                     {
+                         "id":  "builtin-rectangle",
+                         "name":  "박스권",
+                         "companyId":  "AI",
+                         "enabled":  true,
+                         "isBasePattern":  true,
+                         "baseShape":  3,
+                         "useCustomProbability":  false,
+                         "probabilityPercent":  0.0,
+                         "amplitudeBps":  1000,
+                         "startDay":  0,
+                         "vertices":  [
+                                          -0.06857142597436905,
+                                          0.7047619223594666,
+                                          -0.5333333611488342,
+                                          0.6095238327980042,
+                                          -0.523809552192688,
+                                          0.6571428775787354,
+                                          -0.3142857253551483,
+                                          0.7047619223594666,
+                                          -0.4095238149166107,
+                                          0.6190476417541504
+                                      ],
+                         "segmentDays":  [
+                                             2,
+                                             2,
+                                             2,
+                                             2,
+                                             3,
+                                             1,
+                                             2,
+                                             3,
+                                             3
+                                         ]
+                     },
+                     {
+                         "id":  "builtin-m",
+                         "name":  "M",
+                         "companyId":  "AI",
+                         "enabled":  true,
+                         "isBasePattern":  true,
+                         "baseShape":  1,
+                         "useCustomProbability":  false,
+                         "probabilityPercent":  0.0,
+                         "amplitudeBps":  1000,
+                         "startDay":  0,
+                         "vertices":  [
+                                          0.0,
+                                          1.0,
+                                          0.25,
+                                          1.0,
+                                          -0.4,
+                                          -0.85
+                                      ],
+                         "segmentDays":  [
+                                             4,
+                                             4,
+                                             4,
+                                             4,
+                                             4
+                                         ]
+                     },
+                     {
+                         "id":  "builtin-w",
+                         "name":  "W",
+                         "companyId":  "AI",
+                         "enabled":  true,
+                         "isBasePattern":  true,
+                         "baseShape":  2,
+                         "useCustomProbability":  false,
+                         "probabilityPercent":  0.0,
+                         "amplitudeBps":  1000,
+                         "startDay":  0,
+                         "vertices":  [
+                                          0.0,
+                                          -1.0,
+                                          -0.25,
+                                          -1.0,
+                                          0.4,
+                                          0.85
+                                      ],
+                         "segmentDays":  [
+                                             4,
+                                             4,
+                                             4,
+                                             4,
+                                             4
+                                         ]
+                     },
+                     {
+                         "id":  "builtin-flag",
+                         "name":  "FLAG",
+                         "companyId":  "AI",
+                         "enabled":  true,
+                         "isBasePattern":  true,
+                         "baseShape":  4,
+                         "useCustomProbability":  false,
+                         "probabilityPercent":  0.0,
+                         "amplitudeBps":  1000,
+                         "startDay":  0,
+                         "vertices":  [
+                                          0.0,
+                                          1.0,
+                                          0.7,
+                                          0.8,
+                                          0.55,
+                                          1.6
+                                      ],
+                         "segmentDays":  [
+                                             4,
+                                             4,
+                                             4,
+                                             4,
+                                             4
+                                         ]
+                     }
+                 ],
+    "volatility":  {
+                       "foodBps":  500,
+                       "autoBps":  700,
+                       "aiBps":  1500,
+                       "bioBps":  2000
+                   },
+    "baseSettings":  {
+                         "surgeMultiplier":  3.0
+                     }
 }

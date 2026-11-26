@@ -19,8 +19,8 @@ namespace BlackWhale.Rules
                 var ids = InvestmentRules.CompanyIds;
                 data = new MarketData { turn = turn, companies = ids.Select(id =>
                 {
-                    int daily = id == "BANK" ? 80 : id == "FOOD" ? 120 : id == "AUTO" ? 350 : id == "BIO" ? 1500 : 800;
-                    int cap = id == "BANK" ? 600 : id == "FOOD" ? 800 : id == "AUTO" ? 2000 : id == "BIO" ? 8000 : 5000;
+                    int daily = id == "FOOD" ? 120 : id == "AUTO" ? 350 : id == "BIO" ? 1500 : 800;
+                    int cap = id == "FOOD" ? 800 : id == "AUTO" ? 2000 : id == "BIO" ? 8000 : 5000;
                     daily = daily * (100 + 5 * (turn - 1)) / 100;
                     var values = new int[31];
                     for (int d = 1; d <= 30; d++) values[d] = Math.Max(-cap, Math.Min(cap, values[d - 1] + random.Next(-daily, daily + 1)));

@@ -38,9 +38,8 @@ namespace BlackWhale.UI.EditorTools
             HiddenPatternKind.Decline, HiddenPatternKind.Lightning, HiddenPatternKind.Crash, HiddenPatternKind.None };
         private static readonly int[] StableHiddenIndices = { 0, 1, 2 };
         private static readonly int[] VolatileHiddenIndices = { 0, 3, 4, 5 };
-        private static readonly int[] BankHiddenIndices = { 0, 6 };
-        private int[] CompanyHiddenIndices => InvestmentRules.CompanyIds[authorCompany] == "BANK" ? BankHiddenIndices
-            : InvestmentRules.CompanyIds[authorCompany] == "FOOD" || InvestmentRules.CompanyIds[authorCompany] == "AUTO"
+
+        private int[] CompanyHiddenIndices => InvestmentRules.CompanyIds[authorCompany] == "FOOD" || InvestmentRules.CompanyIds[authorCompany] == "AUTO"
                 ? StableHiddenIndices : VolatileHiddenIndices;
         private void NormalizeHiddenSelection()
         {
@@ -62,6 +61,7 @@ namespace BlackWhale.UI.EditorTools
 
         private void LoadAuthoringLibrary()
         {
+            authorCompany = Mathf.Clamp(authorCompany, 0, InvestmentRules.CompanyIds.Length - 1);
             authoringLibrary = StockPatternLibraryResource.Load();
             if (draft.vertices.Count >= 2 && connectedPoints.Count == drawingPoints.Count) RestoreDrawing();
             Undo.undoRedoPerformed -= AuthoringUndo;
@@ -77,7 +77,7 @@ namespace BlackWhale.UI.EditorTools
             Undo.RecordObject(this, "기업별 하루 변동 한도 편집");
             if (authoringLibrary.volatility == null) authoringLibrary.volatility = new StockVolatilitySettings();
             if (authoringLibrary.baseSettings == null) authoringLibrary.baseSettings = new BasePatternSettings();
-            string[] companies = { "BANK", "FOOD", "AUTO", "AI", "BIO", "SPACE" };
+            string[] companies = { "AI", "FOOD", "AUTO", "BIO" };
             float oldLabelWidth = EditorGUIUtility.labelWidth;
             EditorGUIUtility.labelWidth = 92;
             EditorGUI.BeginChangeCheck();
@@ -85,9 +85,9 @@ namespace BlackWhale.UI.EditorTools
             {
                 for (int row = 0; row < 2; row++)
                     using (new EditorGUILayout.HorizontalScope())
-                        for (int column = 0; column < 3; column++)
+                        for (int column = 0; column < 2; column++)
                         {
-                            string company = companies[row * 3 + column];
+                            string company = companies[row * 2 + column];
                             float value = EditorGUILayout.FloatField(company + " ± (%)", authoringLibrary.volatility.DailyLimitBps(company) / 100f);
                             if (!float.IsNaN(value) && !float.IsInfinity(value))
                                 authoringLibrary.volatility.SetDailyLimitBps(company, Mathf.RoundToInt(Mathf.Clamp(value, .01f, 100) * 100));
@@ -101,7 +101,7 @@ namespace BlackWhale.UI.EditorTools
             { Rebuild(); Repaint(); volatilityMessage = "변경한 한도로 미리보기 중입니다. 저장하면 새 게임부터 적용됩니다."; GUIUtility.ExitGUI(); }
             using (new EditorGUILayout.HorizontalScope())
             {
-                EditorGUILayout.LabelField("기본 패턴 급등락: 설정 배율 · hidden: FOOD/AUTO 1.5배, AI/BIO/SPACE 2배 · 전조 0.1배 · 저장 후 새 게임 적용", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField("기본 패턴 급등락: 설정 배율 · hidden: FOOD/AUTO 1.5배, AI/BIO 2배 · 전조 0.1배 · 저장 후 새 게임 적용", EditorStyles.miniLabel);
                 if (GUILayout.Button("변동폭·배율 저장", GUILayout.Width(125)))
                 {
                     volatilityMessage = WriteLibrary() ? "변동 한도 저장 완료 · 새 게임부터 적용됩니다." : authorMessage;
@@ -396,7 +396,7 @@ namespace BlackWhale.UI.EditorTools
                 if (GUILayout.Button("새 시드", GUILayout.Width(70))) seed = RandomMarketGenerator.NewSeed();
                 if (GUILayout.Button("배율·위치 초기화", GUILayout.Width(125))) { marketZoom = 1; marketCenterBps = 0; }
             }
-            EditorGUILayout.LabelField("기업별 hidden: AI/BIO/SPACE는 Decline·Lightning·Crash, FOOD/AUTO는 UpDown·DownUp, BANK는 없음. 휠: 확대·축소 / 가운데 버튼 또는 Alt+왼쪽 드래그: 세로 이동", EditorStyles.wordWrappedMiniLabel);
+            EditorGUILayout.LabelField("기업별 hidden: AI/BIO는 Decline·Lightning·Crash, FOOD/AUTO는 UpDown·DownUp. 휠: 확대·축소 / 가운데 버튼 또는 Alt+왼쪽 드래그: 세로 이동", EditorStyles.wordWrappedMiniLabel);
             var sample = GenerateCombinationPreview(patterns[combinationPattern], HiddenChoices[combinationHidden]);
             marketExtentBps = 50;
             foreach (int value in sample.DailyChangesBps) marketExtentBps = Math.Max(marketExtentBps, Math.Abs((double)value));

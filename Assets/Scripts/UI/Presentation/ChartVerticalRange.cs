@@ -8,6 +8,7 @@ namespace BlackWhale.UI.Presentation
     {
         public double MinBps, MaxBps;
         public double Span => MaxBps - MinBps;
+        public static ChartVerticalRange BioFixed => new ChartVerticalRange { MinBps = -4000, MaxBps = 8000 };
         public double Fraction(int bps) => Math.Max(0, Math.Min(1, (bps - MinBps) / Span));
         public static ChartVerticalRange FromVisibleValues(IEnumerable<int> values)
         {
@@ -18,7 +19,7 @@ namespace BlackWhale.UI.Presentation
         }
 
         // 세로축 % 눈금용 '깔끔한' 간격(bps). 0.1%, 0.2%, 0.25%, 0.5%, 1%, 2%, 2.5%, 5%, 10% ...
-        private static readonly int[] NiceSteps = { 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 5000, 10000, 20000, 25000, 50000, 100000 };
+        private static readonly int[] NiceSteps = { 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 2500, 4000, 5000, 10000, 20000, 25000, 50000, 100000 };
 
         /// <summary>
         /// 세로축에 숫자로 표시할 눈금 값(bps, 오름차순). 항상 0(0일차 기준)을 포함하고,

@@ -44,7 +44,7 @@ namespace BlackWhale.Rules
             var random = new Random((int)(hash & 0x7fffffff));
             int limit = volatility.DailyLimitBps(company);
             int surge = (int)Math.Round(limit * settings.surgeMultiplier, MidpointRounding.AwayFromZero);
-            bool volatileHidden = company == "AI" || company == "BIO" || company == "SPACE";
+            bool volatileHidden = company == "AI" || company == "BIO";
             int hiddenSurge = volatileHidden ? limit * 2 : surge;
             int quiet = Math.Max(1, (int)Math.Round(limit * .1));
 
@@ -99,7 +99,7 @@ namespace BlackWhale.Rules
                 converging = random.Next(2) == 0;
                 direction = random.Next(-1, 2);
                 int count = random.Next(6, 11);
-                int reversalDays = direction != 0 && company != "BANK" && random.Next(100) <
+                int reversalDays = direction != 0 && random.Next(100) <
                     (company == "AUTO" || company == "FOOD" ? 20 : 50) ? random.Next(1, 3) : 0;
                 reversed = reversalDays > 0;
                 int body = duration - reversalDays;
@@ -173,7 +173,7 @@ namespace BlackWhale.Rules
                 for (int i = 0; i < moves.Length; i++) values[27 + i] = values[26 + i] + moves[i];
                 if (values[30] >= values[26]) values[30] = values[26] - 1;
             }
-            else for (int day = 26; day <= 30; day++) values[day] = values[25]; // BANK has no hidden event.
+            else for (int day = 26; day <= 30; day++) values[day] = values[25];
 
             if (sample != null)
             {

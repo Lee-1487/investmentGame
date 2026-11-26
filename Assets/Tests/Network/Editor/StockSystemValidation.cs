@@ -65,6 +65,32 @@ namespace BlackWhale.Tests
                 new CommandPayload { shareOrders = new[] { new ShareOrder { companyId = company, targetShares = shares } } });
             public void Deadline() { Clock.Seconds = Room.Snapshot().phase == Protocol.Selection ? Room.Snapshot().selectionDeadlineAtServerSeconds : Room.Snapshot().phaseEndsAtServerSeconds; Room.Tick(); }
         }
+        public static string[] RunFourStocksCash()
+        {
+            string[] ids={"AI","FOOD","AUTO","BIO"};
+            Check(InvestmentRules.CompanyIds.SequenceEqual(ids),"exactly four market companies");
+            Check(BlackWhale.UI.Presentation.UiRules.CompanyIds.SequenceEqual(ids),"same four UI companies");
+            Check(!StockRules.Augments.Contains("CASH_INTEREST") && !StockRules.Augments.Contains("SPACE_PIONEER"),"removed company augments unavailable");
+            foreach(bool live in new[]{false,true}) {
+                var m=MarketService.CreateStockSystem(42);
+                m.BeginTurn(new RequestContext("CASH",1,Protocol.Info),Players);
+                if(live) m.BeginLiveTrading();
+                m.LockPortfolios();
+                var board=m.SettleTurn(new RequestContext("CASH",1,Protocol.Reveal));
+                Check(board.rows.All(r=>r.totalAssets==10000 && r.turnReturnBps==0),"uninvested cash has no return with or without live trading");
+                Check(m.GetShareMarket().Length==4 && m.GetRevealedMarket(new RequestContext("CASH",1,Protocol.Reveal)).Length==4,"no extra market or revealed company");
+            }
+            var market=MarketService.CreateStockSystem(43);
+            market.BeginTurn(new RequestContext("EXIT",1,Protocol.Info),Players); market.BeginLiveTrading();
+            var c=new RequestContext("EXIT",1,Protocol.Investment,"P1");
+            Check(market.SetPosition(c,new ShareOrder{companyId="FOOD",targetShares=10}).Success,"buy active stock");
+            Check(market.SetPosition(c,new ShareOrder{companyId="FOOD",targetShares=0}).Success,"fully liquidate before first close");
+            Check(!market.SetPosition(c,new ShareOrder{companyId="BANK",targetShares=1}).Success && !market.SetPosition(c,new ShareOrder{companyId="SPACE",targetShares=1}).Success,"removed IDs rejected");
+            market.LockPortfolios();
+            Check(market.SettleTurn(new RequestContext("EXIT",1,Protocol.Reveal)).rows.All(r=>r.totalAssets==10000),"liquidated funds remain unchanged cash");
+            for(int turn=1;turn<=6;turn++) Check(PatternMarketGenerator.Generate(45,turn).companies.Select(v=>v.companyId).SequenceEqual(ids),"four generated companies every turn");
+            return new[]{"four-stocks/cash-idle-and-fully-liquidated-no-interest", "four-stocks/company-augment-and-generated-market-consistency"};
+        }
         public static string[] Run()
         {
             var names = new List<string>();
@@ -133,7 +159,7 @@ namespace BlackWhale.Tests
         {
             var library = new StockPatternLibrary { registeredVersion = 2 };
             var flag = CustomStockPattern.Preset("SPACE", 2); flag.isBasePattern = true; flag.id = "zero-crossing";
-            library.patterns.Add(flag); library.volatility.spaceBps = 10000; library.baseSettings.surgeMultiplier = 1;
+            library.patterns.Add(flag); library.volatility.bioBps = 10000; library.baseSettings.surgeMultiplier = 1;
             int seed = 0, zeroDay = -1;
             int[] values = null;
             for (; seed < 500; seed++)

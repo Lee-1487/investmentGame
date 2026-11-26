@@ -14,9 +14,11 @@ namespace BlackWhale.UI.View
     {
         private sealed class Card
         {
-            public Text Heading, Owners, Position;
-            public int Quantity = 1;
+            public Text Heading, Owners, History, Probability;
+            public Text[] SegmentLabels;
             public Button[] Actions;
+            public Image[] TokenSquares;
+            public RectTransform SegmentPointerRoot, SegmentStartArrow, SegmentEndArrow, SegmentSpanLine;
             public BarChartGraphic Chart;
             public RectTransform Inventory, SliderRoot;
             public Slider Slider;
@@ -24,8 +26,6 @@ namespace BlackWhale.UI.View
             public Text Count, Stamp;          // 손잡이 위 '내 n주', 매진 도장
             public Color[] LastColors;         // 직전 칸 색(새로 채워진 칸만 튀어 오르게)
             public bool WasSoldOut;
-            public Image[] BankUnits;          // BANK: 내 30칸 중 자동 예금 칸
-            public Text BankLabel;
             public Outline Frame;              // (사용 안 함) 예전 매매 가능 테두리
             public Image TradableDot;          // 실시간 매매: 매매 가능하면 카드 왼쪽 위 흰 점
             public RectTransform MineBadge;    // '내 n주 · 매매 가능'
@@ -48,11 +48,12 @@ namespace BlackWhale.UI.View
         private string builtKey, draggingCompany, focus = "AI";
         private Text summary;
         private Button finish;
+        private Button rumors;
         public Action<string> OpenPlan;
         public StockSystemPage(RectTransform parent, GameClientController controller) { root = parent; this.controller = controller; }
         private PublicState State => controller.Store.Public;
         private PortfolioState Portfolio => controller.Store.View?.portfolio;
-        private string BuildKey => State.turn + ":" + State.phase + ":" + State.selectionIndex + ":" + State.currentPlayerId + ":" + State.developerRevision;
+        private string BuildKey => State.turn + ":" + State.phase + ":" + State.stockSegmentIndex + ":" + State.stockSegmentRevealing + ":" + State.selectionIndex + ":" + State.currentPlayerId + ":" + State.developerRevision;
         private bool Editable => controller.CanDraftShares();
         private int Holding(string id) => State.shareMarket?.FirstOrDefault(c => c.companyId == id)?.owners?.Where(v => v.playerId == controller.LocalPlayerId)
             .Sum(v => v.shares + v.reserved)
@@ -70,12 +71,17 @@ namespace BlackWhale.UI.View
             foreach (string id in UiRules.CompanyIds) targets[id] = Holding(id);
             if (State.phase == Protocol.Selection) BuildOrderStrip();
             summary = Label(root, "", State.phase == Protocol.Investment ? 2 : 49, 29, 13); summary.name = "StockPurchaseSummary";
+            summary.rectTransform.offsetMax = new Vector2(-145, summary.rectTransform.offsetMax.y);
+            rumors = UiKit.Button(root, "", 11, Palette.AccentSoft, Palette.Text, controller.Store.ToggleRumors);
+            rumors.name = "ToggleInvestmentRumors";
+            UiKit.Place((RectTransform)rumors.transform, Vector2.one, Vector2.one,
+                new Vector2(-4, State.phase == Protocol.Investment ? -2 : -49), new Vector2(136, 27));
             var grid = UiKit.Rect(root, "ShareMarketGrid"); UiKit.Stretch(grid, 0, State.phase == Protocol.Investment ? 34 : 82, 0, State.phase == Protocol.Investment ? 2 : 44);
             for (int i = 0; i < UiRules.CompanyIds.Length; i++)
             {
                 string id = UiRules.CompanyIds[i];
                 var cell = UiKit.Rect(grid, "ShareCard_" + id);
-                UiKit.Anchor(cell, i % 3 / 3f, i < 3 ? .5f : 0, (i % 3 + 1) / 3f, i < 3 ? 1 : .5f, 4, 4);
+                UiKit.Anchor(cell, i % 2 / 2f, i < 2 ? .5f : 0, (i % 2 + 1) / 2f, i < 2 ? 1 : .5f, 4, 4);
                 BuildCompany(cell, id);
             }
             if (State.phase == Protocol.Selection)
@@ -200,13 +206,27 @@ namespace BlackWhale.UI.View
             card.Owners.rectTransform.offsetMin = new Vector2(10, card.Owners.rectTransform.offsetMin.y);
             card.Owners.horizontalOverflow = HorizontalWrapMode.Wrap; card.Owners.verticalOverflow = VerticalWrapMode.Truncate;
             card.Owners.resizeTextForBestFit = true; card.Owners.resizeTextMinSize = 8; card.Owners.resizeTextMaxSize = 12;
+            card.SegmentPointerRoot = UiKit.Rect(r, "NextSegmentPointer_" + id);
+            card.SegmentPointerRoot.anchorMin = new Vector2(0, 1); card.SegmentPointerRoot.anchorMax = Vector2.one;
+            card.SegmentPointerRoot.offsetMin = new Vector2(8, -51); card.SegmentPointerRoot.offsetMax = new Vector2(-8, -30);
+            var spanBar = UiKit.Panel(card.SegmentPointerRoot, "SpanLine", new Color32(0xFF, 0x3B, 0x30, 0xD8));
+            spanBar.raycastTarget = false;
+            card.SegmentSpanLine = spanBar.rectTransform;
+            var red = new Color32(0xFF, 0x3B, 0x30, 0xFF);
+            var startArrow = UiKit.Label(card.SegmentPointerRoot, "▼", 13, red, TextAnchor.LowerCenter, FontStyle.Bold);
+            startArrow.raycastTarget = false; startArrow.horizontalOverflow = HorizontalWrapMode.Overflow;
+            card.SegmentStartArrow = startArrow.rectTransform;
+            var endArrow = UiKit.Label(card.SegmentPointerRoot, "▼", 13, red, TextAnchor.LowerCenter, FontStyle.Bold);
+            endArrow.raycastTarget = false; endArrow.horizontalOverflow = HorizontalWrapMode.Overflow;
+            card.SegmentEndArrow = endArrow.rectTransform;
+            card.SegmentPointerRoot.gameObject.SetActive(false);
             card.Frame = panel.gameObject.AddComponent<Outline>();
             card.Frame.effectColor = Palette.Accent; card.Frame.effectDistance = new Vector2(3, -3); card.Frame.enabled = false;
             card.TradableDot = UiKit.Panel(r, "TradableDot_" + id, Color.white);
             card.TradableDot.sprite = UiKit.Pill; card.TradableDot.type = Image.Type.Simple; card.TradableDot.preserveAspect = true;
             UiKit.Place(card.TradableDot.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(8, -11), new Vector2(9, 9));
             card.TradableDot.gameObject.SetActive(false);
-            var chartRoot = UiKit.Rect(r, "TradeChart_" + id); UiKit.Stretch(chartRoot, 8, 53, 8, State.phase == Protocol.Investment ? (id == "BANK" ? 66 : 110) : State.phase != Protocol.Selection ? 8 : 54);
+            var chartRoot = UiKit.Rect(r, "TradeChart_" + id); UiKit.Stretch(chartRoot, 8, 53, 8, State.phase == Protocol.Investment ? 110 : State.phase != Protocol.Selection ? 8 : 54);
             card.Chart = chartRoot.gameObject.AddComponent<BarChartGraphic>(); card.Chart.SetInteractive(true);
             UiKit.Click(chartRoot.gameObject, () => OpenPlan?.Invoke(id));
             card.Shade = UiKit.Panel(r, "NotOwnedShade_" + id, new Color(0f, 0f, 0f, 0.66f), rounded: true);
@@ -215,8 +235,28 @@ namespace BlackWhale.UI.View
             UiKit.Stretch(shadeText.rectTransform);
             card.Shade.gameObject.SetActive(false);
             if (State.phase == Protocol.Investment) BuildLiveControls(r, card, id);
+            if (State.stockSystem) {
+                card.History = UiKit.Label(r, "", 10, Palette.SubText, TextAnchor.UpperLeft);
+                card.History.name = "SegmentHistory_" + id;
+                card.History.rectTransform.anchorMin = Vector2.zero; card.History.rectTransform.anchorMax = new Vector2(1, 0);
+                card.History.rectTransform.offsetMin = new Vector2(8, State.phase == Protocol.Investment ? 44 : 4);
+                card.History.rectTransform.offsetMax = new Vector2(-8, State.phase == Protocol.Investment ? 84 : 44);
+                card.SegmentLabels = new Text[6];
+                for (int segment = 0; segment < 6; segment++) {
+                    var label = UiKit.Label(card.History.transform, "", 9, Palette.SubText, TextAnchor.UpperLeft);
+                    label.name = "SegmentTokens_" + id + "_" + segment;
+                    UiKit.Anchor(label.rectTransform, segment / 6f, 0, (segment + 1) / 6f, 1, 1, 0);
+                    card.SegmentLabels[segment] = label;
+                }
+                card.Probability = UiKit.Label(r, "", 10, Palette.Text, TextAnchor.UpperLeft);
+                card.Probability.name = "ReactionProbability_" + id;
+                card.Probability.rectTransform.anchorMin = Vector2.zero; card.Probability.rectTransform.anchorMax = new Vector2(1, 0);
+                card.Probability.rectTransform.offsetMin = new Vector2(8, State.phase == Protocol.Investment ? 86 : 46);
+                card.Probability.rectTransform.offsetMax = new Vector2(-8, State.phase == Protocol.Investment ? 114 : 76);
+                UiKit.Stretch(chartRoot, 8, 53, 8, State.phase == Protocol.Investment ? 118 : 80);
+                return;
+            }
             if (State.phase != Protocol.Selection && State.phase != Protocol.Investment) return;
-            if (id == "BANK") { if (State.phase == Protocol.Selection) BuildBankSlots(r, card); return; }
             card.Inventory = UiKit.Rect(r, "ShareInventory_" + id);
             card.Inventory.anchorMin = Vector2.zero; card.Inventory.anchorMax = new Vector2(1, 0);
             float inventoryBottom = State.phase == Protocol.Investment ? 82 : 22;
@@ -273,72 +313,38 @@ namespace BlackWhale.UI.View
                 if (draggingCompany != id) Commit(id);
             });
         }
-        /// <summary>BANK는 직접 사지 않는다(자동 예금). 내 30칸 중 기업에 쓰지 않은 칸이 BANK로 들어가는 모습을 보여 준다.</summary>
-        private void BuildBankSlots(RectTransform r, Card card)
-        {
-            int total = Math.Max(1, (Portfolio?.usedSlots ?? 0) + (Portfolio?.CashSlots ?? StockRules.Slots));
-            var bar = UiKit.Rect(r, "BankSlots");
-            bar.anchorMin = Vector2.zero; bar.anchorMax = new Vector2(1, 0);
-            bar.offsetMin = new Vector2(8, 22); bar.offsetMax = new Vector2(-8, 40);
-            card.BankUnits = new Image[total];
-            for (int i = 0; i < total; i++)
-            {
-                card.BankUnits[i] = UiKit.Panel(bar, "BankUnit_" + i, Palette.Disabled);
-                UiKit.Anchor(card.BankUnits[i].rectTransform, i / (float)total, 0, (i + 1) / (float)total, 1, 1, 1);
-                card.BankUnits[i].raycastTarget = false;
-            }
-            card.BankLabel = UiKit.Label(r, "", 12, Palette.Text, TextAnchor.MiddleLeft);
-            card.BankLabel.name = "BankAutoDeposit";
-            card.BankLabel.rectTransform.anchorMin = Vector2.zero; card.BankLabel.rectTransform.anchorMax = new Vector2(1, 0);
-            card.BankLabel.rectTransform.offsetMin = new Vector2(10, 3); card.BankLabel.rectTransform.offsetMax = new Vector2(-8, 21);
-        }
-
-        private void RefreshBank(Card card)
-        {
-            if (card.BankUnits == null || Portfolio == null) return;
-            int total = card.BankUnits.Length;
-            // 드래그 중이면 고르는 수량을 바로 반영(서버 확정 전 미리보기)
-            int used = 0;
-            foreach (var pair in targets) if (pair.Key != "BANK") used += pair.Value;
-            used = Math.Max(0, Math.Min(total, used));
-            int cash = total - used;
-            Color gold = new Color32(0xBF, 0xBF, 0xBF, 0xFF);
-            Color invested = Palette.Player(controller.LocalPlayerId);
-            invested.a = 0.35f;
-            for (int i = 0; i < total; i++) card.BankUnits[i].color = i < used ? invested : gold;
-            card.BankLabel.text = "<color=#D0D0D0><b>자동 예금</b></color> · 내 BANK <b>" + cash + "</b>/" + total + "칸  <size=11><color=#8C8C8C>기업을 덜 살수록 늘어납니다</color></size>";
-        }
-
         private int OtherShares(string id) => State.shareMarket?.FirstOrDefault(c => c.companyId == id)?.owners?.Where(v => v.playerId != controller.LocalPlayerId)
             .Sum(v => v.shares + v.reserved) ?? 0;
         private void BuildLiveControls(RectTransform parent, Card card, string id)
         {
             var controls = UiKit.Rect(parent, "LiveOrders_" + id);
             controls.anchorMin = Vector2.zero; controls.anchorMax = new Vector2(1, 0);
-            controls.offsetMin = new Vector2(4, 2); controls.offsetMax = new Vector2(-4, 62);
-            card.Position = UiKit.Label(controls, "", 12, Palette.Text, TextAnchor.MiddleCenter);
-            UiKit.Anchor(card.Position.rectTransform, .12f, .5f, .88f, 1, 1, 1);
-            card.Actions = new Button[6];
-            string[] labels = { "모두 진입", "진입", "청산", "모두 청산", "−", "+" };
+            controls.offsetMin = new Vector2(4, 2); controls.offsetMax = new Vector2(-4, 42);
+            var tokenRow = UiKit.Rect(controls, "TokenSquares_" + id);
+            tokenRow.anchorMin = new Vector2(0, .65f); tokenRow.anchorMax = Vector2.one;
+            tokenRow.offsetMin = Vector2.zero; tokenRow.offsetMax = Vector2.zero;
+            card.TokenSquares = new Image[StockRules.Slots];
+            for (int t = 0; t < card.TokenSquares.Length; t++) {
+                var sq = UiKit.Panel(tokenRow, "TokenSquare_" + id + "_" + t, Color.white);
+                sq.raycastTarget = false;
+                float cx = (t - 1) * 18f;
+                UiKit.Place(sq.rectTransform, new Vector2(.5f, .5f), new Vector2(.5f, .5f), new Vector2(cx, 0), new Vector2(12, 12));
+                sq.gameObject.SetActive(false);
+                card.TokenSquares[t] = sq;
+            }
+            card.Actions = new Button[2];
+            string[] labels = { "Buy", "Sell" };
             for (int i = 0; i < labels.Length; i++)
             {
                 int action = i;
                 var button = UiKit.Button(controls, labels[i], 12, Palette.AccentSoft, Palette.Accent, () =>
                 {
                     var h = Portfolio.holdings.First(v => v.companyId == id);
-                    int max = h.activeShares + Portfolio.AvailableToBuy(State.shareMarket.First(c => c.companyId == id));
-                    if (action >= 4) {
-                        card.Quantity = Mathf.Clamp(card.Quantity + (action == 4 ? -1 : 1), 1, Math.Max(1, max));
-                        RefreshCards(); return;
-                    }
-                    int target = action == 0 ? max : action == 1 ? h.activeShares + card.Quantity :
-                        action == 2 ? h.activeShares - card.Quantity : 0;
-                    controller.SetStockPosition(id, target);
+                    controller.SetStockPosition(id, h.activeShares + (action == 0 ? 1 : -1));
                 });
                 button.name = "LiveOrder_" + id + "_" + i;
                 card.Actions[i] = button;
-                float x = i == 4 ? 0 : i == 5 ? .88f : i * .25f;
-                UiKit.Anchor((RectTransform)button.transform, x, i < 4 ? 0 : .5f, x + (i < 4 ? .25f : .12f), i < 4 ? .5f : 1, 1, 1);
+                UiKit.Anchor((RectTransform)button.transform, i / 2f, 0, (i + 1) / 2f, .62f, 2, 0);
             }
         }
 
@@ -349,35 +355,40 @@ namespace BlackWhale.UI.View
         }
         private void RefreshCards(bool synchronize = true)
         {
+            if (rumors != null) UiKit.SetButton(rumors, controller.Store.RumorsVisible ? "찌라시 숨기기" : "찌라시 보이기", true, Palette.AccentSoft, Palette.Text);
             bool pending = controller.Store.HasPending(StockRules.Trade);
             if (synchronize && !pending && draggingCompany == null)
                 foreach (var id in UiRules.CompanyIds) targets[id] = Holding(id);
             if (summary != null) summary.text = State.phase == Protocol.Selection
-                ? (Editable ? "내 차례 · 남은 매수 " + Portfolio.draftSharesRemaining + "/15주" : pending ? "매수 처리 중" : State.currentPlayerId + " 차례") + " · 보유 " + Portfolio.usedSlots + "/30주 · BANK " + Portfolio.CashSlots + "주"
-                : State.phase == Protocol.Info ? "정보 탐색 · 차트를 누르면 크게 볼 수 있습니다."
-                : State.phase == Protocol.Investment ? "" // '실시간 매매 · …' 안내 문구는 표시하지 않음
+                ? (Editable ? "내 차례 · 남은 매수 " + Portfolio.draftSharesRemaining + "/15주" : pending ? "매수 처리 중" : State.currentPlayerId + " 차례") + " · 보유 " + Portfolio.usedSlots + "/30주 · 현금 " + Portfolio.CashSlots + "주"
+                : State.phase == Protocol.Info ? "정보 공유 2분 · 왼쪽 플레이어에 마우스를 올려 카드 / 계획을 보내세요."
+                : State.phase == Protocol.Investment ? (State.stockSegmentIndex + 1) + "/6구간 · " + (State.stockSegmentRevealing ? "시장 공개 · 배치 변경은 다음 구간에" : "비공개 선택 10초 · 미사용 투자말 " + Portfolio.CashSlots + "/3 · 시간 종료 시 현재 배치 유지")
                 : "확정된 기업별 주식 현황 · 차트를 눌러 확인하세요.";
             foreach (var pair in cards)
             {
                 string id = pair.Key; var card = pair.Value;
                 var company = State.shareMarket?.FirstOrDefault(c => c.companyId == id);
                 var owners = company?.owners ?? Array.Empty<ShareOwner>();
-                int used = owners.Sum(o => o.shares + o.reserved), total = company?.totalShares ?? (id == "BANK" ? StockRules.BankSupply : StockRules.Supply);
-                string tag = id == "BANK" ? "" : used >= total ? "  <color=#FFFFFF><b>매진</b></color>" : total - used <= 4 ? "  <color=#FFFFFF>품절 임박</color>" : "";
-                card.Heading.text = "<b>" + id + "</b> · " + used + "/" + total + "주" + tag;
+                int used = owners.Sum(o => o.shares + o.reserved), total = company?.totalShares ?? StockRules.Supply;
+                string tag = used >= total ? "  <color=#FFFFFF><b>매진</b></color>" : total - used <= 4 ? "  <color=#FFFFFF>품절 임박</color>" : "";
+                card.Heading.text = "<b>" + id + "</b>" + (State.phase == Protocol.Info ? id == "FOOD" || id == "AUTO" ? " · 기본 흐름" : " · 시장 반응" : "");
                 // 진입·청산 단계: 내가 보유한(매매 가능한) 기업 강조, 미보유는 흐리게
-                bool investing = State.phase == Protocol.Investment && !controller.Store.OrderLocked;
+                bool investing = State.phase == Protocol.Investment && !State.stockSegmentRevealing && !controller.Store.OrderLocked;
                 int mine = Portfolio?.holdings?.Where(h => h.companyId == id).Sum(h => h.shares) ?? 0;
                 int availableToBuy = Portfolio.AvailableToBuy(company);
                 bool tradable = investing && (mine > 0 || availableToBuy > 0);
                 if (card.Actions != null) {
                     int active = Portfolio.holdings.First(h => h.companyId == id).activeShares;
                     int free = availableToBuy;
-                    int limit = active + free;
-                    card.Quantity = Mathf.Clamp(card.Quantity, 1, Math.Max(1, limit));
-                    card.Position.text = "보유 " + active + " · 매수 가능 " + free + " · 주문 " + card.Quantity + "주";
+                    if (card.TokenSquares != null) {
+                        var playerColor = Palette.Player(controller.LocalPlayerId);
+                        for (int t = 0; t < card.TokenSquares.Length; t++) {
+                            card.TokenSquares[t].color = playerColor;
+                            card.TokenSquares[t].gameObject.SetActive(t < active);
+                        }
+                    }
                     bool enabled = tradable && !State.paused && !controller.Store.HasPending(StockRules.Position);
-                    bool[] available = { free > 0, free >= card.Quantity, active >= card.Quantity, active > 0, card.Quantity > 1, card.Quantity < limit };
+                    bool[] available = { free > 0, active > 0 };
                     for (int i = 0; i < available.Length; i++) card.Actions[i].interactable = enabled && available[i];
                 }
                 // 매매 가능: 네모 테두리·보유 주 네모 배지 대신 카드 왼쪽 위 흰 점만(보유 수는 아래 '보유 N' 줄에 있음)
@@ -387,24 +398,51 @@ namespace BlackWhale.UI.View
                 card.Shade.gameObject.SetActive(false);
                 card.Heading.rectTransform.offsetMin = new Vector2(tradable ? 22 : 10, card.Heading.rectTransform.offsetMin.y);
                 card.Heading.rectTransform.offsetMax = new Vector2(-70, card.Heading.rectTransform.offsetMax.y);
-                card.Owners.text = string.Join("  ", owners.Select(o => "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(o.playerId)) + ">" + o.playerId + " ■" + (o.shares + o.reserved) + "</color>"));
-                if (State.phase == Protocol.Investment && id != "BANK")
-                    card.Owners.text = "잔여 " + Math.Max(0, total - used) + "/" + total + "주  ·  " + card.Owners.text;
+                bool showNextArrows = State.phase == Protocol.Investment && State.stockSegmentIndex >= 0 && State.stockSegmentIndex < 6;
+                card.Owners.text = State.phase == Protocol.Investment ? "" : string.Join("  ", owners.Select(o => "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(o.playerId)) + ">" + o.playerId + " ■" + (o.shares + o.reserved) + "</color>"));
+                if (card.SegmentPointerRoot != null) {
+                    card.SegmentPointerRoot.gameObject.SetActive(showNextArrows);
+                    if (showNextArrows) {
+                        int startDay = State.stockSegmentIndex * 5 + 1;
+                        int endDay = startDay + 4;
+                        float x0 = (startDay + 0.5f) / 31f;
+                        float x1 = (endDay + 0.5f) / 31f;
+                        card.SegmentSpanLine.anchorMin = new Vector2(x0, 0.68f);
+                        card.SegmentSpanLine.anchorMax = new Vector2(x1, 0.80f);
+                        card.SegmentSpanLine.offsetMin = Vector2.zero;
+                        card.SegmentSpanLine.offsetMax = Vector2.zero;
+                        UiKit.Place(card.SegmentStartArrow, new Vector2(x0, 0), new Vector2(.5f, 0), Vector2.zero, new Vector2(18, 16));
+                        UiKit.Place(card.SegmentEndArrow, new Vector2(x1, 0), new Vector2(.5f, 0), Vector2.zero, new Vector2(18, 16));
+                    }
+                }
+                if (card.History != null) {
+                    var history = State.stockSegmentHistory ?? Array.Empty<StockSegmentRecord>();
+                    for (int segment = 0; segment < 6; segment++) {
+                        var record = history.FirstOrDefault(s => s.segmentIndex == segment);
+                        var segmentOwners = record?.companies.FirstOrDefault(c => c.companyId == id)?.owners ?? Array.Empty<ShareOwner>();
+                        string tokens = string.Join(" ", segmentOwners.Where(o => o.shares > 0)
+                            .Select(o => "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(o.playerId)) + ">" + new string('■', o.shares) + "</color>"));
+                        card.SegmentLabels[segment].text = (segment + 1) + "구간\n" + (record == null ? "미공개" : tokens.Length == 0 ? "없음" : tokens);
+                    }
+                }
+                if (card.Probability != null) card.Probability.text = BoardChartAnnotations.ProbabilityLabel(State, Portfolio, id);
                 var visible = controller.Store.View?.companies?.FirstOrDefault(c => c.companyId == id);
                 var revealed = controller.Store.RevealedTurn == State.turn ? controller.Store.Revealed?.FirstOrDefault(c => c.companyId == id) : null;
+                card.Chart.SetCompany(id);
+                card.Chart.SetSegmentKnowledge(State.segmentKnowledge, id);
                 card.Chart.SetData(DailyBarModel.Build(visible, revealed));
                 card.Chart.SetTrendThroughDay(revealed != null ? 30 : State.phase == Protocol.Investment ? Portfolio?.processedDay : (int?)null);
                 card.Chart.SetCurrentDay(StockRules.CurrentDay(State, Portfolio));
                 // 체결 표시는 확대 차트에서만 보여 주어 작은 카드 차트가 복잡해지지 않게 합니다.
                 card.Chart.SetFills(null);
                 card.Chart.ShowTradeLabels = false; // 예약 구간은 띠만(시가·종가 글자 없음)
-                if (investing) {
+                if (State.phase == Protocol.Investment || revealed != null) {
                     int? close = InformationWindowRules.KnownDays(visible)[Portfolio.processedDay];
                     card.Heading.text = "<b>" + id + "</b>  " + (close.HasValue ? (10000 + close.Value).ToString("N0") : "—");
                 }
                 if (revealed != null) card.Chart.ClearTradeOverlays(); // 시장 공개·투자 결과: 진입·청산·수익률 표시 없이 주가만
-                else card.Chart.SetTradeIntervals(controller.Store.TradePlans.ChartIntervals(controller.Store.View, State.turn, id, controller.Store.OrderLocked), !controller.Store.OrderLocked);
-                if (card.BankUnits != null) RefreshBank(card);
+                else card.Chart.SetTradeIntervals(Array.Empty<Interval>());
+                card.Chart.SetPlanOverlays(BoardChartAnnotations.Build(controller.Store.TradePlans, controller.Store.View, id, controller.LocalPlayerId, controller.Store.RumorsVisible));
                 if (card.Units == null) continue;
                 var colors = owners.Where(o => o.playerId != controller.LocalPlayerId).OrderBy(o => o.playerId)
                     .SelectMany(o => Enumerable.Repeat(Palette.Player(o.playerId), Math.Max(0, o.shares + o.reserved))).ToList();

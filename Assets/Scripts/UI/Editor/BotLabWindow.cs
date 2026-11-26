@@ -76,9 +76,9 @@ namespace BlackWhale.UI.EditorTools
                 Rect bar = GUILayoutUtility.GetRect(1, 22, GUILayout.ExpandWidth(true));
                 EditorGUI.ProgressBar(bar, batch.Completed / (float)result.settings.repetitions,
                     batch.Completed + " / " + result.settings.repetitions + (running ? " · " + batch.CurrentTurn + "턴 " + batch.CurrentPhase : " · " + (batch.Completed == result.settings.repetitions ? "완료" : "중지")));
-                EditorGUILayout.LabelField("게임 시간: 1일 " + result.settings.lobby.daySeconds + "초 · 봇 기본 대기 " + result.thinkSeconds + "초 · 시간 간격 " + result.stepSeconds + "초", EditorStyles.miniLabel);
+                EditorGUILayout.LabelField("정보 공유 120초 · 구간 선택 10초 / 공개 2초 · 봇 기본 대기 " + result.thinkSeconds + "초", EditorStyles.miniLabel);
                 EditorGUILayout.HelpBox("턴 우승 = 해당 턴 수익률 최고 / 누적 자산 1위 = 턴 종료 자산 최고. 동률은 공동 1위로 각각 집계하므로 합계가 N을 넘을 수 있습니다. 최종 우승은 실제 게임의 동점 규칙을 따릅니다. 중지 시 완료된 회차만 집계합니다.", MessageType.Info);
-                if (batch.Completed > 0) { DrawWins(); DrawAugments(); DrawDetails(); }
+                if (batch.Completed > 0) { DrawWins(); DrawDetails(); }
             }
             EditorGUILayout.EndScrollView();
         }

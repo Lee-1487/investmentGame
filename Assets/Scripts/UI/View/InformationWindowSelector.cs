@@ -26,6 +26,16 @@ namespace BlackWhale.UI.View
         public Func<bool> CanCancel;
         /// <summary>고른 예약 구간 취소.</summary>
         public Action CancelReservation;
+        public bool InExchangeMode { get; set; }
+        public bool HasIncomingExchange { get; set; }
+        public string ExchangeStatus { get; set; } = "";
+        public Func<bool> CanStartExchange;
+        public Func<bool> CanRequestExchange;
+        public Action StartExchange;
+        public Action RequestExchange;
+        public Action CancelExchange;
+        public Action AcceptExchange;
+        public Action RejectExchange;
         public InformationWindowSelector(RectTransform parent, GameClientController controller, Func<string> companyId)
         {
             this.controller = controller; this.companyId = companyId;
@@ -33,7 +43,11 @@ namespace BlackWhale.UI.View
             status = UiKit.Label(Root, "", 10, Palette.SubText, TextAnchor.UpperLeft);
             status.name = "InformationRangeCost"; UiKit.Stretch(status.rectTransform, 0, 0, 0, 26);
             confirm = UiKit.Button(Root, "정보 사기", 11, Palette.Accent, Color.white, () => {
-                if (controller.Store.Public?.stockSystem == true) controller.BuyRandomInformation(companyId());
+                if (controller.Store.Public?.stockSystem == true) {
+                    if (HasIncomingExchange) AcceptExchange?.Invoke();
+                    else if (InExchangeMode) CancelExchange?.Invoke();
+                    else StartExchange?.Invoke();
+                }
                 else if (Selection.HasSelection && EndDay >= Math.Max(1, StartDay)) controller.SelectInformationWindow(companyId(), Math.Max(1, StartDay), EndDay);
             });
             confirm.name = "ConfirmInformationWindow";
@@ -41,7 +55,14 @@ namespace BlackWhale.UI.View
             rt.offsetMin = Vector2.zero; rt.offsetMax = new Vector2(-3, 24);
             reserve = UiKit.Button(Root, "예약하기", 11, Palette.AccentSoft, Palette.Accent, () =>
             {
-                if (Selection.SelectedIndex >= 0) CancelReservation?.Invoke(); else Reserve?.Invoke();
+                if (controller.Store.Public?.stockSystem == true) {
+                    if (HasIncomingExchange) RejectExchange?.Invoke();
+                    else if (InExchangeMode) RequestExchange?.Invoke();
+                    else if (Selection.SelectedIndex >= 0) CancelReservation?.Invoke();
+                    else Reserve?.Invoke();
+                } else {
+                    if (Selection.SelectedIndex >= 0) CancelReservation?.Invoke(); else Reserve?.Invoke();
+                }
             });
             reserve.name = "ReserveRange";
             rt = (RectTransform)reserve.transform; rt.anchorMin = new Vector2(.5f, 0); rt.anchorMax = new Vector2(1, 0);
@@ -62,6 +83,48 @@ namespace BlackWhale.UI.View
             var state = controller.Store.Public;
             Root.gameObject.SetActive(state?.windowInformation == true && (state.phase == Protocol.Info || !state.stockSystem && state.phase == Protocol.Selection));
             if (state?.windowInformation != true) return;
+            if (state.stockSystem) {
+                Selection.MinimumDay = 1;
+                Selection.FixedPublicWindow = false;
+                Selection.SnapSegmentOnClick = true;
+                bool infoActive = state.phase == Protocol.Info && !state.paused && string.IsNullOrEmpty(controller.Store.EndReason);
+                if (HasIncomingExchange) {
+                    confirm.gameObject.SetActive(true);
+                    reserve.gameObject.SetActive(true);
+                    ((RectTransform)confirm.transform).anchorMin = Vector2.zero; ((RectTransform)confirm.transform).anchorMax = new Vector2(.5f, 0);
+                    ((RectTransform)reserve.transform).anchorMin = new Vector2(.5f, 0); ((RectTransform)reserve.transform).anchorMax = new Vector2(1, 0);
+                    status.text = ExchangeStatus;
+                    SetButtonStable(confirm, "수락", infoActive && !controller.Store.HasPending(StockRules.RespondExchange),
+                        infoActive ? Palette.Accent : Palette.Disabled, infoActive ? Color.white : Palette.DisabledText);
+                    SetButtonStable(reserve, "거절", infoActive && !controller.Store.HasPending(StockRules.RespondExchange),
+                        infoActive ? Palette.AccentSoft : Palette.Disabled, infoActive ? Palette.Text : Palette.DisabledText);
+                    return;
+                }
+                if (InExchangeMode) {
+                    confirm.gameObject.SetActive(true);
+                    reserve.gameObject.SetActive(true);
+                    ((RectTransform)confirm.transform).anchorMin = Vector2.zero; ((RectTransform)confirm.transform).anchorMax = new Vector2(.5f, 0);
+                    ((RectTransform)reserve.transform).anchorMin = new Vector2(.5f, 0); ((RectTransform)reserve.transform).anchorMax = new Vector2(1, 0);
+                    bool canReq = infoActive && CanRequestExchange?.Invoke() == true && !controller.Store.HasPending(StockRules.ShareInformation);
+                    status.text = ExchangeStatus;
+                    SetButtonStable(reserve, "교환 요청", canReq, canReq ? Palette.Accent : Palette.Disabled, canReq ? Color.white : Palette.DisabledText);
+                    SetButtonStable(confirm, "취소", infoActive, infoActive ? Palette.AccentSoft : Palette.Disabled, infoActive ? Palette.Text : Palette.DisabledText);
+                    return;
+                }
+                bool canExchange = infoActive && CanStartExchange?.Invoke() == true;
+                confirm.gameObject.SetActive(true);
+                reserve.gameObject.SetActive(true);
+                ((RectTransform)reserve.transform).anchorMin = Vector2.zero; ((RectTransform)reserve.transform).anchorMax = new Vector2(.5f, 0);
+                ((RectTransform)confirm.transform).anchorMin = new Vector2(.5f, 0); ((RectTransform)confirm.transform).anchorMax = new Vector2(1, 0);
+                bool selected = Selection.SelectedIndex >= 0;
+                bool canReserve = infoActive && Selection.HasSelection && (selected ? CanCancel?.Invoke() == true : CanReserve?.Invoke() == true);
+                status.text = Selection.HasSelection ? StartDay + "~" + EndDay + "일" : "";
+                SetButtonStable(reserve, selected ? "예약 취소" : "구간 예약", canReserve,
+                    canReserve ? Palette.AccentSoft : Palette.Disabled, canReserve ? Palette.Accent : Palette.DisabledText);
+                SetButtonStable(confirm, "정보 교환", canExchange,
+                    canExchange ? Palette.Accent : Palette.Disabled, canExchange ? Color.white : Palette.DisabledText);
+                return;
+            }
             bool planning = state.stockSystem && state.phase == Protocol.Investment;
             confirm.gameObject.SetActive(!planning);
             reserve.gameObject.SetActive(!state.stockSystem || !state.publicSelectionActive);
@@ -79,9 +142,9 @@ namespace BlackWhale.UI.View
                 bool activeRandom = !state.paused && string.IsNullOrEmpty(controller.Store.EndReason);
                 // 요청 중(pending)이라고 버튼을 회색 '요청 중…'으로 바꿨다가 응답이 오면 되돌리면, 서버 응답이 빨라
                 // 누를 때마다 파랑→회색→파랑으로 깜빡인다. 겉모습은 그대로 두고, 중복 요청은 BuyRandomInformation이 막는다.
-                bool canRandom = id != "BANK" && state.phase == Protocol.Info && activeRandom && remaining > 0 && (controller.Store.View?.coins ?? 0) > 0;
+                bool canRandom = state.phase == Protocol.Info && activeRandom && remaining > 0 && (controller.Store.View?.coins ?? 0) > 0;
                 status.text = ""; // '1~25일 중 미공개 N일 · 날짜는 무작위' 같은 안내는 표시하지 않음
-                SetButtonStable(confirm, id == "BANK" ? "전체 공개" : "랜덤 1일 · 1코인", canRandom,
+                SetButtonStable(confirm, "랜덤 1일 · 1코인", canRandom,
                     canRandom ? Palette.Accent : Palette.Disabled, canRandom ? Color.white : Palette.DisabledText);
                 bool existingRandom = Selection.SelectedIndex >= 0;
                 bool canReserveRandom = activeRandom && Selection.HasSelection && (existingRandom ? CanCancel?.Invoke() == true : CanReserve?.Invoke() == true);

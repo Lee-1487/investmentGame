@@ -79,7 +79,7 @@ namespace BlackWhale.UI.View
             _status.text = s.turn + "턴 · " + PhaseNames.Korean(s.phase) + "   ·   내 선택: " + mine;
             if (s.stockSystem && s.phase != Protocol.Lobby)
             {
-                _status.text = s.turn + "/" + s.totalTurns + "턴 · " + PhaseNames.ForState(s) + " · 보유 " + (_c.Store.View?.portfolio?.usedSlots ?? 0) + "/30칸";
+                _status.text = s.turn + "/" + s.totalTurns + "턴 · " + PhaseNames.ForState(s) + " · 투자말 " + (_c.Store.View?.portfolio?.usedSlots ?? 0) + "/3개";
                 _stockPage.Build(); return;
             }
 
@@ -294,6 +294,11 @@ namespace BlackWhale.UI.View
             panel.offsetMin = new Vector2(8, -382); panel.offsetMax = new Vector2(-20, -48);
             var title = UiKit.Label(panel, "게임 설정" + (_c.IsHost ? " · 방장" : " · 방장이 변경할 수 있습니다"), 15, Palette.Text, TextAnchor.UpperLeft, FontStyle.Bold);
             UiKit.Stretch(title.rectTransform, 0, 0, 0, 308);
+            if (state.stockSystem) {
+                var rules = UiKit.Label(panel, "4개 기업 · 1인당 투자말 3개\n\n정보 카드 공유 120초\n비공개 투자 선택 10초 → 5일 공개 2초\n6개 구간 / 30일을 6라운드 진행\n\nFOOD·AUTO 구간 카드 자동 배정\nAI·BIO는 투자말에 반응\n증강은 현재 비활성화", 14, Palette.SubText, TextAnchor.UpperLeft);
+                UiKit.Stretch(rules.rectTransform, 0, 34, 0, 0);
+                return;
+            }
             LobbyNumber(panel, "EarlyTurnCoins", "1~5턴 지급 코인 (0~999)", _lobbySettingsDraft.earlyTurnCoins, 30, editable, v => _lobbySettingsDraft.earlyTurnCoins = v);
             LobbyNumber(panel, "LateTurnCoins", "6턴 이후 지급 코인 (0~999)", _lobbySettingsDraft.lateTurnCoins, 68, editable, v => _lobbySettingsDraft.lateTurnCoins = v);
             LobbyNumber(panel, "PublicRevealDays", "기업마다 랜덤 공개 일수 (0~25)", _lobbySettingsDraft.publicRevealDays, 106, editable, v => _lobbySettingsDraft.publicRevealDays = v);
@@ -376,9 +381,9 @@ namespace BlackWhale.UI.View
             var ids = UiRules.CompanyIds;
             for (int i = 0; i < ids.Length; i++)
             {
-                int col = i % 3, row = i / 3;
+                int col = i % 2, row = i / 2;
                 var cell = UiKit.Rect(grid, "Pick_" + ids[i]);
-                UiKit.Anchor(cell, col / 3f, row == 0 ? 0.5f : 0f, (col + 1) / 3f, row == 0 ? 1f : 0.5f, 6, 6);
+                UiKit.Anchor(cell, col / 2f, row == 0 ? 0.5f : 0f, (col + 1) / 2f, row == 0 ? 1f : 0.5f, 6, 6);
                 BuildCompanyPickCard(cell, ids[i], myTurn);
             }
 
@@ -915,6 +920,7 @@ namespace BlackWhale.UI.View
         {
             if (chart == null || _draft == null) return;
             var company = _c.Store.View?.companies?.FirstOrDefault(c => c.companyId == companyId);
+            chart.SetCompany(companyId);
             chart.SetData(DailyBarModel.Build(company));
             chart.SetTradeIntervals(_draft.IntervalsOf(companyId));
             if (_c.Store.Public?.windowInformation == true) { UpdateMouseOrderRange(companyId); return; }
@@ -992,7 +998,9 @@ namespace BlackWhale.UI.View
 
     public static class PhaseNames
     {
-        public static string ForState(PublicState state) => state?.stockSystem == true && state.phase == Protocol.Selection ? "주식 경쟁" : Korean(state?.phase);
+        public static string ForState(PublicState state) => state?.stockSystem == true && state.phase == Protocol.Investment
+            ? (state.stockSegmentIndex + 1) + "/6구간 · " + (state.stockSegmentRevealing ? "시장 공개" : "투자 선택")
+            : state?.stockSystem == true && state.phase == Protocol.Info ? "정보 공유" : Korean(state?.phase);
         public static string Korean(string phase)
         {
             switch (phase)

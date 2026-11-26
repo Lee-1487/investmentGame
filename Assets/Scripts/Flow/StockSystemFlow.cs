@@ -12,6 +12,8 @@ namespace BlackWhale.Flow
             public double Duration;
             public bool Settled, Locked;
             public Scoreboard Board;
+            public int Segment;
+            public bool Revealing;
             public Action RestoreMarket, RestoreInformation;
         }
         private readonly List<DeveloperPhase> developerCheckpoints = new List<DeveloperPhase>();
@@ -23,7 +25,7 @@ namespace BlackWhale.Flow
             if (!(market is IDeveloperCheckpoint marketState) || !(information is IDeveloperCheckpoint informationState))
                 throw new InvalidOperationException("Developer mode requires restorable stock/information services.");
             developerCheckpoints.Add(new DeveloperPhase { Phase = phase, Duration = duration, Settled = settled.Contains(turn),
-                Locked = ordersLocked, Board = latestBoard, RestoreMarket = marketState.CaptureDeveloperCheckpoint(roomId),
+                Locked = ordersLocked, Board = latestBoard, Segment = stockSegmentIndex, Revealing = stockSegmentRevealing, RestoreMarket = marketState.CaptureDeveloperCheckpoint(roomId),
                 RestoreInformation = informationState.CaptureDeveloperCheckpoint(roomId) });
         }
         private CommandResult ExecuteDeveloperCommand(string player, Command command, double now)
@@ -33,21 +35,14 @@ namespace BlackWhale.Flow
             if (phase == Protocol.Lobby || phase == Protocol.Ended) return CommandResult.Fail(command, "WRONG_PHASE");
             if (command.type == "DEV_NEXT")
             {
-                if (phase == Protocol.Investment)
-                {
-                    Stock.SimulateDay();
-                    // A resumed timer starts its next full day at the newly confirmed close.
-                    if (developerTimerRunning) phaseEnd = now + (30 - Stock.ProcessedDay) * lobbySettings.daySeconds;
-                    if (Stock.ProcessedDay >= 30) NextPhase(now); else { PublishState(); SendAllViews(); }
-                }
-                else NextPhase(now);
+                NextPhase(now);
                 return Success(command);
             }
             if (command.type == "DEV_TIMER")
             {
                 if (phase != Protocol.Investment) return CommandResult.Fail(command, "WRONG_PHASE");
                 developerTimerRunning = !developerTimerRunning;
-                phaseEnd = now + (30 - Stock.ProcessedDay) * lobbySettings.daySeconds;
+                phaseEnd = now + (stockSegmentRevealing ? StockRules.SegmentRevealSeconds : StockRules.DecisionSeconds);
                 PublishState(); SendAllViews(); return Success(command);
             }
             if (command.type != "DEV_PREVIOUS" && command.type != "DEV_RESET") return CommandResult.Fail(command, "INVALID_REQUEST");
@@ -57,6 +52,7 @@ namespace BlackWhale.Flow
             checkpoint.RestoreMarket(); checkpoint.RestoreInformation();
             if (checkpoint.Settled) settled.Add(turn); else settled.Remove(turn);
             ordersLocked = checkpoint.Locked; latestBoard = checkpoint.Board;
+            stockSegmentIndex = checkpoint.Segment; stockSegmentRevealing = checkpoint.Revealing;
             developerCheckpoints.RemoveRange(index + 1, developerCheckpoints.Count - index - 1);
             developerRevision++; cache.Clear(); counts.Clear();
             restoringDeveloperPhase = true;
@@ -83,11 +79,12 @@ namespace BlackWhale.Flow
             if (command.type == StockRules.Position)
             {
                 if (phase != Protocol.Investment) return CommandResult.Fail(command, "WRONG_PHASE");
+                if (command.payload?.startDay != stockSegmentIndex * 5 + 1) return CommandResult.Fail(command, "STALE_SEGMENT");
                 var orders = command.payload?.shareOrders;
                 if (orders?.Length != 1) return CommandResult.Fail(command, "INVALID_SHARE_ORDER");
                 var adjusted = Stock.SetPosition(Context(player, command.requestId), orders[0]);
                 if (!adjusted.Success) return CommandResult.Fail(command, adjusted.ErrorCode);
-                PublishState(); SendAllViews(); return Success(command);
+                SendView(player); return Success(command);
             }
             if (command.type == StockRules.Choose)
             {

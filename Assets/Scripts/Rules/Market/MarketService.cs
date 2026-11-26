@@ -172,7 +172,7 @@ namespace BlackWhale.Rules
             if (input == null || input.Length > InvestmentRules.CompanyIds.Length || input.Any(i => i == null || !market.HasCompany(i.companyId)))
                 return new RuleResult(ErrorCodes.InvalidCompany);
             if (input.Select(i => i.companyId).Distinct().Count() != input.Length) return new RuleResult(ErrorCodes.DuplicateCompany);
-            if (StockEnabled && input.Any(i => i.companyId != "BANK" && context.Phase == Protocol.Investment && StockHoldings(context.PlayerId)[i.companyId] == 0))
+            if (StockEnabled && input.Any(i => context.Phase == Protocol.Investment && StockHoldings(context.PlayerId)[i.companyId] == 0))
                 return new RuleResult(ErrorCodes.InvalidCompany);
             foreach (var i in input)
             {
@@ -264,7 +264,7 @@ namespace BlackWhale.Rules
                         playerId = p.player, returnBps = StockEnabled ? StockHistoryRate(p.player, id, context.Turn) : Settlement.CompanyReturnBps(book, i, rules),
                         shares = StockEnabled ? StockSharesForHistory(p.player, id, context.Turn) : 0,
                         intervals = i.intervals.Select(v => new RevealedTrade { entryDay = v.entryDay, exitDay = v.exitDay,
-                            returnBps = StockEnabled ? Settlement.ReturnBps(10000 + book.ChangeBps(id, Math.Max(0, v.entryDay - 1)), 10000 + book.ChangeBps(id, v.exitDay)) : book.ChangeBps(id, v.exitDay) - book.ChangeBps(id, rules.entryAtOpen ? Math.Max(0, v.entryDay - 1) : v.entryDay) }).ToArray()
+                            returnBps = book.ChangeBps(id, v.exitDay) - book.ChangeBps(id, StockEnabled || rules.entryAtOpen ? Math.Max(0, v.entryDay - 1) : v.entryDay) }).ToArray()
                     })).ToArray() }).ToArray();
         }
 

@@ -1,6 +1,6 @@
 // NEXT-D03 기업 표시용 카탈로그(Unity 의존 없음).
-// 통신·규칙의 기업 ID(AI/SPACE/FOOD/BANK/BIO/AUTO)는 그대로 쓰고, 화면에만 이름·분야·이미지 경로를 붙인다.
-// [임시 표시] 원문에 정식 회사명·이미지가 없어 AI·우주·식품·은행·바이오·자동차 계열의 임시 이름이다.
+// 통신·규칙의 기업 ID(AI/FOOD/AUTO/BIO)는 그대로 쓰고, 화면에만 이름·분야·이미지 경로를 붙인다.
+// [임시 표시] 원문에 정식 회사명·이미지가 없어 AI·식품·바이오·자동차 계열의 임시 이름이다.
 // 팀이 정식 이름/에셋을 정하면 이 표만 바꾼다. 이미지가 없으면 화면은 텍스트 배지로 대체한다.
 // 표시용 에셋에는 시장 원본 값을 넣지 않는다.
 using System.Collections.Generic;
@@ -27,9 +27,7 @@ namespace BlackWhale.UI.Presentation
         private static readonly Dictionary<string, CompanyEntry> Entries = new Dictionary<string, CompanyEntry>
         {
             ["AI"] = new CompanyEntry { Id = "AI", DisplayName = "뉴럴코어", Sector = "인공지능", Volatility = "변동성 높음", Badge = "AI", LogoResource = LogoFolder + "AI", ColorHex = "7C3AED" },
-            ["SPACE"] = new CompanyEntry { Id = "SPACE", DisplayName = "스텔라오빗", Sector = "우주항공", Volatility = "변동성 높음", Badge = "SP", LogoResource = LogoFolder + "SPACE", ColorHex = "0EA5E9" },
             ["FOOD"] = new CompanyEntry { Id = "FOOD", DisplayName = "그린테이블", Sector = "식품", Volatility = "변동성 낮음", Badge = "FD", LogoResource = LogoFolder + "FOOD", ColorHex = "F59E0B" },
-            ["BANK"] = new CompanyEntry { Id = "BANK", DisplayName = "새벽은행", Sector = "은행", Volatility = "변동성 낮음", Badge = "BK", LogoResource = LogoFolder + "BANK", ColorHex = "2563EB" },
             ["BIO"] = new CompanyEntry { Id = "BIO", DisplayName = "헬릭스바이오", Sector = "바이오", Volatility = "변동성 극단적", Badge = "BI", LogoResource = LogoFolder + "BIO", ColorHex = "10B981" },
             ["AUTO"] = new CompanyEntry { Id = "AUTO", DisplayName = "모빌로드", Sector = "자동차", Volatility = "변동성 중간", Badge = "AU", LogoResource = LogoFolder + "AUTO", ColorHex = "EF4444" },
         };

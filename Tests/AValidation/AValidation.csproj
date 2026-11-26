@@ -19,6 +19,7 @@
     <Compile Include="../../Assets/Scripts/UI/Presentation/ScreenModels.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/DisplayFormat.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/InvestmentDraft.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Presentation/BoardChartAnnotations.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/ChartRangeSelection.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/ChartVerticalRange.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/OrderInputValidator.cs" />
@@ -37,5 +38,7 @@
     <Compile Include="../../Assets/Tests/Network/Editor/NextAValidation.cs" />
     <Compile Include="../../Assets/Tests/Network/Editor/StockPatternValidation.cs" />
     <Compile Include="../../Assets/Tests/Network/Editor/StockSystemValidation.cs" />
+    <Compile Include="../../Assets/Tests/Network/Editor/BoardGameValidation.cs" />
+    <Compile Include="../../Assets/Tests/Network/Editor/BoardGameNetworkValidation.cs" />
   </ItemGroup>
 </Project>

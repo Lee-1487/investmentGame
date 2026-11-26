@@ -40,6 +40,8 @@ namespace BlackWhale.UI.State
     {
         public BlackWhale.UI.Presentation.TradePlanBook TradePlans { get; } = new BlackWhale.UI.Presentation.TradePlanBook();
         public ClientStateStore() { TradePlans.Changed += Raise; }
+        public bool RumorsVisible { get; private set; } = true;
+        public void ToggleRumors() { RumorsVisible = !RumorsVisible; Raise(); }
         private sealed class PendingRequest
         {
             public string Type;
@@ -191,6 +193,7 @@ namespace BlackWhale.UI.State
 
             BeginTurnIfNewer(view.turn);
             View = DtoCopy.Copy(view);
+            if (view.informationExchanges?.Any(e => e.status == "PENDING") == true) _completedPhases.Remove(view.turn + "|" + Protocol.Info);
             TradePlans.EntryAtOpen = view.entryAtOpen;
             TradePlans.RestoreReservations(view.reservedInvestments);
             if (string.IsNullOrEmpty(LocalPlayerId)) LocalPlayerId = view.recipientPlayerId ?? "";

@@ -17,7 +17,7 @@ using UnityEngine.UI;
 
 namespace BlackWhale.UI.View
 {
-    public sealed class TabletView : MonoBehaviour
+    public sealed partial class TabletView : MonoBehaviour
     {
         private const float EdgeSize = 34f;
         private const float BannerSeconds = 5f;
@@ -115,6 +115,7 @@ namespace BlackWhale.UI.View
             Store.Changed += Refresh;
             Store.ErrorReceived += OnError;
             Store.AutomaticActionReceived += OnAutomatic;
+            _c.CommandSucceeded += OnSocialCommandSucceeded;
             Refresh();
         }
 
@@ -124,6 +125,7 @@ namespace BlackWhale.UI.View
             Store.Changed -= Refresh;
             Store.ErrorReceived -= OnError;
             Store.AutomaticActionReceived -= OnAutomatic;
+            _c.CommandSucceeded -= OnSocialCommandSucceeded;
         }
 
         // ------------------------------------------------------------------
@@ -352,6 +354,7 @@ namespace BlackWhale.UI.View
             // 암전 + 팝업
             _dim = UiKit.Panel(ScreenRect, "Dim", Palette.Dim);
             UiKit.Stretch(_dim.rectTransform);
+            UiKit.Click(_dim.gameObject, CloseSocialPopup);
             _dim.gameObject.SetActive(false);
 
             _popup = UiKit.Rect(ScreenRect, "Popup");
@@ -405,6 +408,7 @@ namespace BlackWhale.UI.View
         public void Refresh()
         {
             var s = Store.Public;
+            if (_socialPinned && (s?.phase != Protocol.Info || s.turn != _socialTurn)) CloseSocialPopup();
             bool stock = s?.stockSystem == true && s.phase != Protocol.Lobby;
             bool stockDraft = stock && s.phase == Protocol.Selection;
             UiKit.Stretch(_pageViewport, 116, stock ? 70 : 76, stockDraft ? 12 : stock ? 136 : 168, 10);
@@ -426,6 +430,7 @@ namespace BlackWhale.UI.View
                 }
             }
             DetectNotifications();
+            RefreshSocialInbox();
             bool paused = s?.paused == true && string.IsNullOrEmpty(Store.EndReason) && s.phase != Protocol.Ended;
             _pauseOverlay.gameObject.SetActive(paused);
             if (_pauseButton != null)
@@ -440,10 +445,10 @@ namespace BlackWhale.UI.View
             _infoPage.Refresh();
             RefreshTurnIndicator();
             var ability = LiveScreenModels.AbilityId(Store.View?.ability?.selectedId);
-            _abilityTitle.text = s?.stockSystem == true ? "내 증강" : "내 고유능력";
+            _abilityTitle.text = s?.stockSystem == true ? "투자 규칙" : "내 고유능력";
             _abilityLabel.text = (AbilityCatalog.Get(ability)?.Name ?? "선택 대기") + "\n<size=11>클릭하여 상태 보기</size>";
             // 새로 얻은 증강이 맨 아래에 붙고, 기존 증강은 위로 밀려 올라간다. 왼쪽 정렬 + 앞에 '-'.
-            if (s?.stockSystem == true) { _abilityLabel.text = ""; RefreshAugmentList(Store.View?.portfolio?.augments ?? new string[0]); }
+            if (s?.stockSystem == true) { _abilityLabel.text = "투자말 3개\n<size=11>선택 10초 · 공개 2초\n증강 비활성화</size>"; RefreshAugmentList(new string[0]); }
             else if (_augmentList != null && _augmentList.childCount > 0) { UiKit.Clear(_augmentList); _augmentKey = null; }
             UpdateTimer();
             _renderedPublic = Store.Public; _renderedView = Store.View;
@@ -454,7 +459,7 @@ namespace BlackWhale.UI.View
             var s = Store.Public;
             if (s != null)
             {
-                string phaseKey = s.turn + "|" + s.phase + "|" + s.developerRevision;
+                string phaseKey = s.turn + "|" + s.phase + "|" + s.stockSegmentIndex + "|" + s.stockSegmentRevealing + "|" + s.developerRevision;
                 var day = _c.HasCurrentPlayerView ? StockRules.CurrentDay(s, Store.View?.portfolio) : null;
                 bool contextChanged = phaseKey != _lastPhaseKey || day != _lastDay;
                 if (contextChanged) ClearBanners();
@@ -666,7 +671,7 @@ namespace BlackWhale.UI.View
             bool developer = s?.developerMode == true && s.stockSystem && _c.IsHost && s.turn > 0 && s.phase != Protocol.Ended;
             _developerTimer.gameObject.SetActive(developer && s.phase == Protocol.Investment);
             _developerPrevious.gameObject.SetActive(developer); _developerReset.gameObject.SetActive(developer);
-            UiKit.SetButton(_developerTimer, s?.developerTimerRunning == true ? "타이머 중지 · 수동 전환" : "현재 일차부터 타이머 적용",
+            UiKit.SetButton(_developerTimer, s?.developerTimerRunning == true ? "타이머 중지 · 수동 전환" : "현재 구간부터 타이머 적용",
                 developer && !s.paused, Palette.AccentSoft, Palette.Accent);
             _developerPrevious.interactable = developer && !s.paused && s.developerCanGoBack;
             _developerReset.interactable = developer && !s.paused;
@@ -699,7 +704,7 @@ namespace BlackWhale.UI.View
             string what = s.publicSelectionActive ? "공용 공개 " + (s.publicSelectionIndex + 1) + "/4 · " + s.publicSelectionPlayerId
                 : s.phase == Protocol.Selection
                 ? (string.IsNullOrEmpty(s.currentPlayerId) ? "선택" : s.currentPlayerId + " 차례")
-                : PhaseNames.Korean(s.phase);
+                : PhaseNames.ForState(s);
             _timerText.text = "<size=11>" + (remain == 0 ? "서버 진행 대기" : what) + "</size>\n<size=28><b>" + DisplayFormat.Clock(remain) + "</b></size>";
             if (s.developerMode && !PhaseClock.HasDeadline(s)) _timerText.text = "<size=11>개발자 모드 · " + what + "</size>\n<size=22><b>수동 진행</b></size>";
             _timerText.color = remain <= 10 && remain > 0 ? Palette.Bad : Palette.Text; // 마감 10초 전부터 빨간 글자
@@ -707,10 +712,10 @@ namespace BlackWhale.UI.View
             bool can = _c.CanCompleteStep();
             bool done = _c.IsDoneForCurrentPhase;
             string label = done ? "완료함 · 대기 중"
-                : s.phase == Protocol.Investment ? (Store.OrderLocked ? "다른 참가자 대기" : s.stockSystem ? "실시간 매매 중" : "주문 확정 시 진행")
+                : s.phase == Protocol.Investment ? (Store.OrderLocked ? "다른 참가자 대기" : s.stockSystem ? s.stockSegmentRevealing ? "시장 공개 중" : "시간 종료 시 확정" : "주문 확정 시 진행")
                 : s.phase == Protocol.Selection ? (s.stockSystem ? "매수 완료 시 진행" : "선택 시 자동 진행")
                 : "완료";
-            if (s.developerMode && can) label = s.stockSystem && s.phase == Protocol.Investment ? "확인 · 다음 일차" : "확인 · 다음 단계";
+            if (s.developerMode && can) label = "확인 · 다음 단계";
             _doneButton.name = developer ? "DeveloperNext" : s.stockSystem && s.phase == Protocol.Investment ? "LiveTradingStatus" : "Button";
             UiKit.SetButton(_doneButton, label, can, can ? Palette.Accent : Palette.Disabled, can ? Color.white : Palette.DisabledText);
         }
@@ -792,6 +797,10 @@ namespace BlackWhale.UI.View
         internal void ShowPlayerPopup(RankRow row, RectTransform slot)
         {
             if (row == null) return;
+            if (_socialPinned) return;
+            if (Store.Public?.stockSystem == true && Store.Public.phase == Protocol.Info && row.PlayerId != _c.LocalPlayerId) {
+                ShowSocialPopup(row.PlayerId, slot); return;
+            }
             bool stock = Store.Public?.stockSystem == true;
             var popup = OpenPopup(stock ? new Vector2(460, 540) : new Vector2(320, 230));
             PositionNextTo(popup, slot, rightSide: true);
@@ -845,6 +854,17 @@ namespace BlackWhale.UI.View
             // 총자산 아래에 바로 증강 영역이 이어지도록 요약 영역의 하단 여백을 줄입니다.
             UiKit.Stretch(summaryText.rectTransform, 14, 10, 14, 130);
 
+            if (Store.Public.stockSystem) {
+                var records = Store.Public.stockSegmentHistory ?? System.Array.Empty<StockSegmentRecord>();
+                var history = UiKit.Label(popup, "<b>공개된 투자말 배치</b>\n\n" + (records.Length == 0 ? "공개된 구간이 없습니다."
+                    : string.Join("\n\n", records.Select(s => (s.segmentIndex + 1) + "구간 · " + string.Join(" / ", s.companies.Select(c =>
+                        c.companyId + " " + (c.owners.FirstOrDefault(o => o.playerId == row.PlayerId)?.shares ?? 0) + "개"))))), 13, Palette.SubText, TextAnchor.UpperLeft);
+                UiKit.Stretch(history.rectTransform, 14, 146, 14, 108);
+                if (score?.returnHistory != null && score.returnHistory.Length > 0)
+                    AddTrendChart(popup, new[] { score }, new Vector2(14, 12), 84);
+                return;
+            }
+
             var augmentIds = Store.Public.players?.FirstOrDefault(p => p.playerId == row.PlayerId)?.augments ?? System.Array.Empty<string>();
             var heading = UiKit.Label(popup, "<b>보유 증강 (" + augmentIds.Length + "/2)</b>", 14, Palette.Text, TextAnchor.UpperLeft);
             UiKit.Place(heading.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(14, -134), new Vector2(300, 24));
@@ -885,7 +905,7 @@ namespace BlackWhale.UI.View
             PositionNextTo(popup, anchor, rightSide: false);
             var board = Store.Scoreboard;
 
-            var title = UiKit.Label(popup, "<b>플레이어별 수익률 추이</b>   <size=12>클릭: 내 고유능력 상태 보기</size>", 14, Palette.Text, TextAnchor.UpperLeft);
+            var title = UiKit.Label(popup, "<b>플레이어별 수익률 추이</b>   <size=12>클릭: " + (Store.Public?.stockSystem == true ? "게임 규칙" : "내 고유능력 상태 보기") + "</size>", 14, Palette.Text, TextAnchor.UpperLeft);
             UiKit.Stretch(title.rectTransform, 14, 10, 14, 10);
 
             if (board?.rows == null || board.rows.Length == 0)
@@ -973,6 +993,7 @@ namespace BlackWhale.UI.View
 
         internal void HidePopup()
         {
+            if (_socialPinned) return;
             _dim.gameObject.SetActive(false);
             _popup.gameObject.SetActive(false);
         }

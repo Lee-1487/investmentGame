@@ -44,10 +44,13 @@ namespace BlackWhale.Rules.Information
                 WindowTurn CopyWindows(WindowTurn original)
                 {
                     var copy = new WindowTurn { RoomId = original.RoomId, RandomPrepared = original.RandomPrepared };
+                    copy.Intents.AddRange(original.Intents.Select(CopyIntent));
+                    copy.Exchanges.AddRange(original.Exchanges.Select(e => e.Copy()));
                     copy.UsedCategories.UnionWith(original.UsedCategories);
                     foreach (var item in original.Requests) copy.Requests.Add(item.Key, item.Value);
                     foreach (var r in original.Records) copy.Records.Add(new WindowRecord { Id = r.Id, Player = r.Player, Company = r.Company,
-                        Source = r.Source, Start = r.Start, Paid = r.Paid, Length = r.Length, Automatic = r.Automatic, HiddenUntil = r.HiddenUntil });
+                        Source = r.Source, Start = r.Start, Paid = r.Paid, Length = r.Length, Automatic = r.Automatic, HiddenUntil = r.HiddenUntil,
+                        Closes = (int[])r.Closes?.Clone(), Opens = (int[])r.Opens?.Clone() });
                     return copy;
                 }
                 var snapshot = windowTurns.Where(item => item.Value.RoomId == roomId).ToDictionary(item => item.Key, item => CopyWindows(item.Value));
@@ -92,6 +95,7 @@ namespace BlackWhale.Rules.Information
                 // 실제 코인 지급의 규칙과 턴 멱등성은 InformationService가 담당한다.
                 int? grant = roomSettings.TryGetValue(context.RoomId, out var options)
                     ? (context.Turn >= InformationConstants.LateGrantStartsAtTurn ? options.lateTurnCoins : options.earlyTurnCoins) : (int?)null;
+                if (RandomInformation) grant = 0;
                 room.Service.GrantTurnCoins(context.Turn, playerIds, UsesWindowInformation, grant);
                 room.CurrentTurn = context.Turn;
                 if (RandomInformation) foreach (string id in playerIds) GrantAnalystCoins(context, id);
