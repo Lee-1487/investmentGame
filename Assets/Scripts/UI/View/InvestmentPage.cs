@@ -122,7 +122,7 @@ namespace BlackWhale.UI.View
 
         private void BuildLobby(PublicState s)
         {
-            _status.text = "대기실 · 4명이 모두 준비하면 방장이 시작합니다";
+            _status.text = ""; // 대기실 안내 문구는 표시하지 않음
             var card = UiKit.Panel(_body, "Lobby", Color.clear); // 큰 네모 바탕 없이
             UiKit.Stretch(card.rectTransform, 28, 12, 28, 12);
             var root = card.rectTransform;
@@ -149,12 +149,18 @@ namespace BlackWhale.UI.View
                     ? "<color=#A3A3A3>빈 자리 · 접속 대기</color>"
                     : "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(p.playerId)) + ">■</color>  <b>" + p.playerId + "</b>  "
                       + (p.displayName ?? "").Replace("<", "‹").Replace(">", "›") + (p.isBot ? "  <size=11>BOT</size>" : "") + (p.playerId == _c.LocalPlayerId ? " (나)" : "") + (p.playerId == "P1" ? "  <size=11>방장</size>" : "")
-                      + "      " + (!p.connected ? "<color=#FFFFFF>연결 끊김</color>" : p.ready ? "<color=#34D399><b>준비 완료</b></color>" : "<color=#8C8C8C>준비 전</color>");
+                      + "      " + (!p.connected ? Palette.BadText("연결 끊김") : p.ready ? "<color=#34D399><b>준비 완료</b></color>" : "<color=#8C8C8C>준비 전</color>");
                 var label = UiKit.Label(row.transform, text, 15, Palette.Text, TextAnchor.MiddleLeft);
                 label.resizeTextForBestFit = true;
                 label.resizeTextMinSize = 10;
                 label.resizeTextMaxSize = 15;
                 UiKit.Stretch(label.rectTransform, 16, 0, 16, 0);
+                if (p?.isBot == true) {
+                    UiKit.Stretch(label.rectTransform, 16, 0, 16, 24);
+                    bool editable = _c.IsHost && p.connected && _lobby?.Busy == false && _lobby.SetBotProfile != null;
+                    BotProfileDropdown(row.rectTransform, p, true, editable);
+                    BotProfileDropdown(row.rectTransform, p, false, editable);
+                }
             }
             if (configurable) BuildLobbySettings(root, s);
 
@@ -199,6 +205,70 @@ namespace BlackWhale.UI.View
             }
         }
 
+        private void BotProfileDropdown(RectTransform row, Player bot, bool personality, bool editable)
+        {
+            string[] values = personality ? new[] { "Adventurous", "Stable", "Strategic" } : new[] { "Easy", "Normal", "Hard" };
+            string[] names = personality ? new[] { "성향: 모험", "성향: 안정", "성향: 전략" } : new[] { "난이도: 쉬움", "난이도: 보통", "난이도: 어려움" };
+            var go = DefaultControls.CreateDropdown(new DefaultControls.Resources());
+            go.name = (personality ? "BotPersonality_" : "BotDifficulty_") + bot.playerId;
+            go.transform.SetParent(row, false);
+            var rect = (RectTransform)go.transform;
+            rect.anchorMin = new Vector2(personality ? 0 : .5f, 0);
+            rect.anchorMax = new Vector2(personality ? .5f : 1, 0);
+            rect.pivot = new Vector2(.5f, 0);
+            rect.offsetMin = new Vector2(personality ? 16 : 4, 3);
+            rect.offsetMax = new Vector2(personality ? -4 : -16, 25);
+            var dropdown = go.GetComponent<Dropdown>();
+            dropdown.ClearOptions(); dropdown.AddOptions(names.ToList());
+            dropdown.SetValueWithoutNotify(System.Math.Max(0, System.Array.IndexOf(values, personality ? bot.botPersonality : bot.botDifficulty)));
+            dropdown.interactable = editable;
+            var colors = dropdown.colors;
+            colors.normalColor = Palette.AccentSoft; colors.highlightedColor = Palette.CardBorder;
+            colors.pressedColor = Palette.CardBorder; colors.selectedColor = Palette.AccentSoft;
+            colors.disabledColor = Palette.Disabled; dropdown.colors = colors;
+            foreach (var text in go.GetComponentsInChildren<Text>(true)) {
+                text.font = UiKit.Font; text.fontSize = 12; text.color = Palette.Text;
+            }
+            // DefaultControls assumes a taller field; its 6/7px vertical insets clip
+            // Korean glyphs in this compact 22px ready-row selector.
+            UiKit.Stretch(dropdown.captionText.rectTransform, 8, 1, 24, 1);
+            dropdown.captionText.alignment = TextAnchor.MiddleLeft;
+            dropdown.captionText.verticalOverflow = VerticalWrapMode.Overflow;
+            dropdown.captionText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            dropdown.captionText.raycastTarget = false;
+            foreach (var image in go.GetComponentsInChildren<Image>(true)) image.color = Palette.AccentSoft;
+            dropdown.targetGraphic.color = Color.white;
+            var arrow = go.transform.Find("Arrow");
+            if (arrow != null) {
+                arrow.GetComponent<Image>().enabled = false;
+                var glyph = UiKit.Label(arrow, "▾", 12, Palette.SubText, TextAnchor.MiddleCenter);
+                UiKit.Stretch(glyph.rectTransform);
+            }
+            var template = dropdown.template;
+            template.sizeDelta = new Vector2(template.sizeDelta.x, 90);
+            // DefaultControls leaves the template inactive until the list is opened.
+            var item = dropdown.itemText.GetComponentInParent<Toggle>(includeInactive: true);
+            item.targetGraphic.color = Color.white;
+            var itemColors = item.colors;
+            itemColors.normalColor = Palette.AccentSoft; itemColors.highlightedColor = Palette.CardBorder;
+            itemColors.pressedColor = Palette.CardBorder; itemColors.selectedColor = Palette.CardBorder;
+            item.colors = itemColors;
+            var checkmark = item.graphic as Image;
+            if (checkmark != null) {
+                checkmark.color = Palette.Text;
+                checkmark.rectTransform.sizeDelta = new Vector2(6, 6);
+            }
+            dropdown.onValueChanged.AddListener(index => {
+                if (_c.Store.Public?.phase != Protocol.Lobby || !_c.IsHost || _lobby?.Busy != false) return;
+                var current = _c.Store.Public.players?.FirstOrDefault(p => p.playerId == bot.playerId && p.isBot);
+                if (current == null) return;
+                bool accepted = _lobby.SetBotProfile?.Invoke(bot.playerId,
+                    personality ? current.botDifficulty : values[index], personality ? values[index] : current.botPersonality) == true;
+                if (!accepted) dropdown.SetValueWithoutNotify(System.Math.Max(0, System.Array.IndexOf(values,
+                    personality ? current.botPersonality : current.botDifficulty)));
+            });
+        }
+
         private bool LobbySettingsDirty => _c.Store.Public?.stockSystem == true && _c.Store.Public.windowInformation
             && _lobbySettingsDraft != null && !_lobbySettingsDraft.SameAs(_c.Store.Public.lobbySettings ?? new LobbySettings());
 
@@ -230,7 +300,7 @@ namespace BlackWhale.UI.View
             LobbyNumber(panel, "DaySeconds", "일차당 시간 (1~60초)", _lobbySettingsDraft.daySeconds, 144, editable, v => _lobbySettingsDraft.daySeconds = v);
             LobbyNumber(panel, "InformationStartDay", "정보 추첨 시작일 (0~25)", _lobbySettingsDraft.informationStartDay, 182, editable, v => _lobbySettingsDraft.informationStartDay = v);
             LobbyNumber(panel, "InformationEndDay", "정보 추첨 종료일 (0~25)", _lobbySettingsDraft.informationEndDay, 220, editable, v => _lobbySettingsDraft.informationEndDay = v);
-            var hint = UiKit.Label(panel, "BANK·0일차는 항상 공개 · 랜덤 날짜는 전원 동일 · 변경 시 준비 해제", 10, Palette.SubText, TextAnchor.UpperLeft);
+            var hint = UiKit.Label(panel, "", 10, Palette.SubText, TextAnchor.UpperLeft); // 설정 안내 문구는 표시하지 않음
             hint.rectTransform.anchorMin = new Vector2(0, 1); hint.rectTransform.anchorMax = Vector2.one;
             hint.rectTransform.offsetMin = new Vector2(0, -280); hint.rectTransform.offsetMax = new Vector2(0, -258);
             if (_c.IsHost) {

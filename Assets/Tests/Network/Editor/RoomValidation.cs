@@ -69,7 +69,7 @@ namespace BlackWhale.Tests
         public RoomHarness NewRoom(TimerMode mode = TimerMode.ManualForFixture, bool start = true)
         { return new RoomHarness(market, scoreboard, mode, start); }
         public BlackWhale.Rules.MarketService NewRealMarket()
-        { return new BlackWhale.Rules.MarketService(Read<BlackWhale.Rules.MarketData>("임시 데이터 및 검증용/B_market_server.json")); }
+        { return new BlackWhale.Rules.MarketService(Read<BlackWhale.Rules.MarketData>("임시 데이터 및 검증용/B_market_server.json"), new BlackWhale.Rules.InvestmentRules { initialAssets = 10000 }); }
         public Investment[] FixtureInvestments(string playerId)
         { return Read<InvestmentOrders>("임시 데이터 및 검증용/B_investment_orders.json").orders.Single(o => o.playerId == playerId).investments; }
         public Scoreboard ExpectedScoreboard() { return scoreboard; }

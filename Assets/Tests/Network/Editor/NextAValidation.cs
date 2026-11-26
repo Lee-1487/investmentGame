@@ -52,6 +52,11 @@ namespace BlackWhale.Tests
                 }
             }
         }
+        public static string[] RunBots()
+        {
+            Strategies(); Difficulty(); BotFailures(); HiddenValues();
+            return new[] { "bot-personalities-noise-reaction-and-seeded-orders", "individual-bot-profiles-defaults-validation-and-isolation", "bot-pending-failure-replay-and-order-races", "hidden-server-values-never-affect-private-decisions" };
+        }
         public static async Task<string[]> Run(IWireCodec codec)
         {
             BotCommandEvidence.Clear();
@@ -246,7 +251,7 @@ namespace BlackWhale.Tests
             foreach (BotDifficulty difficulty in Enum.GetValues(typeof(BotDifficulty)))
             {
                 var policy = new BotPolicy(difficulty);
-                Check(policy.PurchaseBudget == (int)difficulty + 1 && policy.MaxIntervals == (difficulty == BotDifficulty.Hard ? 2 : 1), "difficulty policy");
+                Check(policy.PurchaseBudget == 3 && policy.MaxIntervals == 2, "difficulty policy");
                 a.selectedCompanies = new[] { "AI", "BANK" };
                 var first = new InformationBotStrategy(99, policy).BuildOrder(a);
                 var second = new InformationBotStrategy(99, policy).BuildOrder(DtoCopy.Copy(a));
@@ -254,6 +259,41 @@ namespace BlackWhale.Tests
                     x.intervals.Zip(y.intervals, (u, v) => u.entryDay == v.entryDay && u.exitDay == v.exitDay).All(v => v)).All(v => v), "seed deterministic");
                 Check(OrderValidator.Validate(first, a.selectedCompanies, new InvestmentRules()) == "", "B accepts generated order");
             }
+            Check(new BotPolicy(BotDifficulty.Easy).PredictionNoise > new BotPolicy(BotDifficulty.Normal).PredictionNoise &&
+                new BotPolicy(BotDifficulty.Normal).PredictionNoise > new BotPolicy(BotDifficulty.Hard).PredictionNoise, "prediction noise decreases with difficulty");
+            Check(new BotPolicy(BotDifficulty.Easy).ReactionNoiseSeconds > new BotPolicy(BotDifficulty.Hard).ReactionNoiseSeconds &&
+                new BotPolicy(BotDifficulty.Easy).TimingNoiseDays > new BotPolicy(BotDifficulty.Hard).TimingNoiseDays &&
+                new BotPolicy(BotDifficulty.Easy).CompetitionNoise > new BotPolicy(BotDifficulty.Hard).CompetitionNoise, "skill noise decreases with difficulty");
+            var stockView = new PlayerView { turn = 1, recipientPlayerId = "P2", companies = new[] { "AI", "BIO", "SPACE", "FOOD", "AUTO", "BANK" }
+                .Select(id => new VisibleCompany { companyId = id }).ToArray(), portfolio = new PortfolioState {
+                    candidates = new[] { "CASH_INTEREST", "BIO_RESEARCH", "ANALYST" }, holdings = new[] { "AI", "BIO", "SPACE", "FOOD", "AUTO", "BANK" }
+                        .Select(id => new PortfolioHolding { companyId = id }).ToArray() } };
+            var stockState = new PublicState { shareMarket = stockView.companies.Select(c => new CompanyShareState {
+                companyId = c.companyId, owners = Array.Empty<ShareOwner>() }).ToArray() };
+            var adventure = new InformationBotStrategy(31, new BotPolicy(BotDifficulty.Hard, BotPersonality.Adventurous));
+            var stable = new InformationBotStrategy(31, new BotPolicy(BotDifficulty.Hard, BotPersonality.Stable));
+            var strategic = new InformationBotStrategy(31, new BotPolicy(BotDifficulty.Hard, BotPersonality.Strategic));
+            Check(new[] { "AI", "BIO", "SPACE" }.Contains(adventure.RankStockCompanies(stockView, stockState)[0]), "adventurous sector preference");
+            Check(new[] { "FOOD", "AUTO" }.Contains(stable.RankStockCompanies(stockView, stockState)[0]), "stable sector preference");
+            Check(adventure.SelectAugment(stockView) == "BIO_RESEARCH" && stable.SelectAugment(stockView) == "CASH_INTEREST" &&
+                strategic.SelectAugment(stockView) == "ANALYST", "personality aligned augments");
+            int waiting = adventure.StockTarget(stockView, stockState, "AI", 0);
+            Check(waiting == 0 && adventure.StockTarget(stockView, stockState, "AI", 0) == waiting, "reaction delay is sampled once per day");
+            Check(adventure.StockTarget(stockView, stockState, "AI", 1) == 10, "adventurous bot enters after delay");
+            stockView.portfolio.processedDay = 26;
+            var hiddenAdventure = new InformationBotStrategy(31, new BotPolicy(BotDifficulty.Hard, BotPersonality.Adventurous));
+            var hiddenStable = new InformationBotStrategy(31, new BotPolicy(BotDifficulty.Hard, BotPersonality.Stable));
+            hiddenAdventure.StockTarget(stockView, stockState, "AI", 0); hiddenStable.StockTarget(stockView, stockState, "AI", 0);
+            Check(hiddenAdventure.StockTarget(stockView, stockState, "AI", 1) == 10 &&
+                hiddenStable.StockTarget(stockView, stockState, "AI", 1) == 0, "hidden risk follows personality without hidden prices");
+            var decliningView = DtoCopy.Copy(stockView); decliningView.portfolio.processedDay = 0;
+            decliningView.companies.Single(c => c.companyId == "AI").visibleBundles = new[] { new VisibleBundle {
+                startDay = 1, dailyChangesBps = new[] { -1000, -2000, -3000, -4000, -5000 } } };
+            decliningView.portfolio.holdings.Single(h => h.companyId == "AI").activeShares = 10;
+            var decline = new InformationBotStrategy(31, new BotPolicy(BotDifficulty.Hard));
+            Check(decline.StockTarget(decliningView, stockState, "AI", 0) == 10 &&
+                decline.StockTarget(decliningView, stockState, "AI", 1) == 0, "decline exits after reaction delay");
+            Check(!new Harness().Room.SetBotProfile("P2", "Easy", "Stable"), "individual profiles frozen after start");
             var empty = new PlayerView { selectedCompanies = new[] { "AI", "BANK" }, companies = Array.Empty<VisibleCompany>() };
             var fallback = new InformationBotStrategy(2, new BotPolicy(BotDifficulty.Hard)).BuildOrder(empty);
             Check(fallback.All(i => i.weightBps == 5000 && i.intervals[0].entryDay == 0 && i.intervals[0].exitDay == 5), "unknown endpoints fallback");
@@ -267,6 +307,16 @@ namespace BlackWhale.Tests
             var room = new GameRoom("difficulty", market, new SharedInformationService(market), new TestClock());
             Check(room.SetBotDifficulty("Hard") && room.Snapshot().botDifficulty == "Hard", "lobby setting");
             Check(!room.SetBotDifficulty("Impossible"), "invalid difficulty");
+            for (int i = 1; i <= 4; i++) Check(room.Join("profile" + i, "Player " + i) == "", "profile join");
+            foreach (string id in new[] { "P2", "P3", "P4" }) Check(room.RegisterLocalBot(id), "register profile bot");
+            var copiedState = DtoCopy.Copy(room.Snapshot());
+            var profiles = copiedState.players.Where(p => p.isBot).ToArray();
+            Check(profiles.All(p => p.botDifficulty == "Hard"), "client snapshots retain individual bot difficulty");
+            Check(profiles.Select(p => p.botPersonality).SequenceEqual(new[] { "Adventurous", "Stable", "Strategic" }), "three distinct default personalities");
+            Check(room.SetBotProfile("P2", "Easy", "Stable"), "individual profile accepted");
+            Check(room.Snapshot().players.Single(p => p.playerId == "P3").botDifficulty == "Hard", "other bot difficulty unchanged");
+            Check(!room.SetBotProfile("P1", "Easy", "Stable") && !room.SetBotProfile("P2", "Impossible", "Stable") &&
+                !room.SetBotProfile("P2", "Easy", "Unknown"), "profile target and enums validated");
             var h = new Harness(); Check(!h.Room.SetBotDifficulty("Easy"), "frozen after start");
         }
         private sealed class BotClient : IGameClient
@@ -429,8 +479,9 @@ namespace BlackWhale.Tests
         private static void FinalRanking()
         {
             // Flat market means all assets and best returns tie, exposing coins and initial order.
+            var fixtureRules = new InvestmentRules { initialAssets = 10000 };
             var provider = new SeededMarketProvider(1);
-            var market = new MarketService(t => { var data = provider.Get(t); foreach (var c in data.companies) Array.Clear(c.dailyChangesBps, 0, 31); return data; });
+            var market = new MarketService(t => { var data = provider.Get(t); foreach (var c in data.companies) Array.Clear(c.dailyChangesBps, 0, 31); return data; }, fixtureRules);
             var info = new SharedInformationService(market); var clock = new TestClock();
             var room = new GameRoom("final", market, info, clock, fixedOrderForFixture: true, settings: new GameSettings(turns: 1, enableProgressionFeatures: false));
             for (int p = 1; p <= 4; p++) { room.Join("c" + p, "P" + p); room.ProcessCommand("c" + p, RoomValidation.Command("SET_READY", "r", 0, new CommandPayload { ready = true })); }
@@ -447,7 +498,7 @@ namespace BlackWhale.Tests
                     if (c.companyId == "AI" || c.companyId == "SPACE") c.dailyChangesBps[5] = t == 1 ? 10000 : -5000;
                 }
                 return data;
-            });
+            }, fixtureRules);
             var ids = new[] { "P1", "P2", "P3", "P4" };
             for (int t = 1; t <= 2; t++)
             {

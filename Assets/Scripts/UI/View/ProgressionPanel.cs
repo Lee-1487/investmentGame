@@ -11,7 +11,7 @@ namespace BlackWhale.UI.View
     // Uses real public/private snapshots; only unsubmitted drafts belong to this screen.
     public sealed class ProgressionPanel : MonoBehaviour
     {
-        private enum Page { None, Board, Ability, Auction, Shop, Inventory, Difficulty }
+        private enum Page { None, Board, Ability, Auction, Shop, Inventory }
         private GameClientController controller;
         private LobbyActions lobby;
         private RectTransform modal, content;
@@ -43,10 +43,10 @@ namespace BlackWhale.UI.View
             nav.anchorMin = new Vector2(0, 1); nav.anchorMax = Vector2.one;
             nav.offsetMin = new Vector2(148, -33); nav.offsetMax = new Vector2(-48, -2);
             // 아이템이 기획에서 빠져 '상점'·'보유 아이템' 탭은 두지 않는다.
-            string[] labels = { "전광판", "입찰 결과", "내 능력", "BOT 난이도" };
-            Page[] pages = { Page.Board, Page.Auction, Page.Ability, Page.Difficulty };
+            string[] labels = { "전광판", "입찰 결과", "내 능력" };
+            Page[] pages = { Page.Board, Page.Auction, Page.Ability };
             if (controller.Store.Public?.stockSystem == true)
-            { labels = new[] { "전광판", "주식 현황", "내 증강", "BOT 난이도" }; pages = new[] { Page.Board, Page.Auction, Page.Ability, Page.Difficulty }; }
+            { labels = new[] { "전광판", "주식 현황", "내 증강" }; pages = new[] { Page.Board, Page.Auction, Page.Ability }; }
             for (int i = 0; i < labels.Length; i++)
             {
                 Page target = pages[i];
@@ -103,7 +103,7 @@ namespace BlackWhale.UI.View
             if (store.EndReason != endReason)
             { endReason = store.EndReason; if (!string.IsNullOrEmpty(endReason)) page = Page.Board; }
             string nextSignature = nextPhase + "|" + page + "|" + view?.turn + "|" + view?.ability?.selectedId + "|" + view?.ability?.freeInformationCredits
-                + "|" + view?.auction?.confirmed + "|" + state.botDifficulty + "|" + string.Join(",", view?.inventory ?? new string[0])
+                + "|" + view?.auction?.confirmed + "|" + string.Join(",", (state.players ?? Array.Empty<Player>()).Where(p => p.isBot).Select(p => p.playerId + ":" + p.botDifficulty + ":" + p.botPersonality)) + "|" + string.Join(",", view?.inventory ?? new string[0])
                 + "|" + store.HasPending(CommandTypes.SelectAbility) + "|" + store.HasPending(CommandTypes.SubmitBid)
                 + "|" + controller.IsDoneForCurrentPhase + "|" + store.LastError?.RequestId + "|" + state.events?.Length
                 + "|" + lobby?.Busy + "|" + state.paused
@@ -125,7 +125,7 @@ namespace BlackWhale.UI.View
                 controller.CanFinishPhase(), Palette.Accent, Color.white);
             feedback.text = endReason == "GAME_COMPLETE" ? (state.totalTurns > 0 ? state.totalTurns : 10) + "턴 게임이 종료되었습니다. 서버가 확정한 최종 결과입니다."
                 : !connected ? ErrorMessages.ToKorean(endReason) : store.LastError != null ? ErrorMessages.ToKorean(store.LastError.ErrorCode)
-                : mandatory ? "선택과 확정은 서버가 처리합니다. 다른 참가자의 개인 정보는 표시하지 않습니다." : "실제 게임 상태 · 화면을 닫아도 게임은 계속 진행됩니다.";
+                : ""; // '실제 게임 상태 · …' 같은 안내 문구는 표시하지 않음
             UiKit.Clear(content); abilityScreen = null; auctionScreen = null;
             if (((page == Page.Ability && state.phase == Protocol.AbilitySelection) || (page == Page.Auction && state.phase == Protocol.Auction))
                 && (view == null || view.turn != state.turn)) { Message("내 게임 정보를 받아오는 중입니다."); return; }
@@ -179,12 +179,6 @@ namespace BlackWhale.UI.View
                     feedback.text = state.windowInformation
                         ? "정보 아이템은 공용 공개 후 정보 구매 창의 확대 화면에서 사용합니다. 프리패스는 9턴 입찰에서 사용합니다."
                         : "서버가 지급한 보유 아이템입니다. 프리패스는 9턴 입찰 화면에서 사용합니다.";
-                    break;
-                case Page.Difficulty:
-                    Enum.TryParse(state.botDifficulty, out BotDifficulty difficulty);
-                    var panel = new BotDifficultyPanel(content);
-                    panel.Changed = value => { if (lobby?.Busy != true && lobby?.SetDifficulty != null) lobby.SetDifficulty(value); };
-                    panel.Show(difficulty, connected && controller.IsHost && lobby?.SetDifficulty != null && lobby.Busy == false, state.phase == Protocol.Lobby);
                     break;
             }
         }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -30,6 +30,7 @@ namespace BlackWhale.Flow
         {
             public string Id, Name, Connection, Token;
             public bool Ready, IsBot;
+            public string BotDifficulty, BotPersonality;
             public double DisconnectedAt;
         }
         private sealed class Cached
@@ -59,7 +60,8 @@ namespace BlackWhale.Flow
         private readonly string roomId;
         private string phase = Protocol.Lobby;
         private int turn, selectionIndex;
-        private readonly Random publicRandom = new Random();
+        private readonly Random publicRandom;
+        private readonly int? randomSeed;
         private bool TimedPhase => mode != TimerMode.Developer || StockMode && phase == Protocol.Investment && developerTimerRunning;
         private double origin, phaseEnd, pickEnd;
         private double lastPublishedAt;
@@ -76,10 +78,11 @@ namespace BlackWhale.Flow
 
         public GameRoom(string roomId, IMarketService market, IInformationService information,
             IServerClock clock, TimerMode mode = TimerMode.Realtime, bool fixedOrderForFixture = false,
-            GameSettings settings = null)
+            GameSettings settings = null, int? randomSeed = null)
         {
             if (string.IsNullOrWhiteSpace(roomId)) throw new ArgumentException("Room ID is required.");
             this.roomId = roomId;
+            this.randomSeed = randomSeed; publicRandom = randomSeed.HasValue ? new Random(randomSeed.Value) : new Random();
             this.market = market ?? throw new ArgumentNullException(nameof(market));
             this.information = information ?? throw new ArgumentNullException(nameof(information));
             this.clock = clock ?? throw new ArgumentNullException(nameof(clock));
@@ -157,12 +160,29 @@ namespace BlackWhale.Flow
         }
 
         // Host-process administration only. These methods are never exposed as wire commands.
+        public bool SetBotProfile(string playerId, string difficulty, string personality)
+        {
+            lock (gate)
+            {
+                var member = members.Find(m => m.Id == playerId && m.IsBot && m.Connection != null);
+                if (phase != Protocol.Lobby || member == null ||
+                    (difficulty != "Easy" && difficulty != "Normal" && difficulty != "Hard") ||
+                    (personality != "Adventurous" && personality != "Stable" && personality != "Strategic")) return false;
+                member.BotDifficulty = difficulty; member.BotPersonality = personality;
+                PublishState(); return true;
+            }
+        }
         public bool RegisterLocalBot(string playerId)
         {
             lock (gate)
             {
                 var member = members.Find(m => m.Id == playerId && m.Id != "P1" && m.Connection != null);
                 if (phase != Protocol.Lobby || member == null) return false;
+                if (!member.IsBot) {
+                    member.BotDifficulty = botDifficulty;
+                    member.BotPersonality = new[] { "Adventurous", "Stable", "Strategic" }
+                        .OrderBy(style => members.Count(m => m.IsBot && m.BotPersonality == style)).First();
+                }
                 member.IsBot = true;
                 PublishState();
                 return true;
@@ -332,7 +352,7 @@ namespace BlackWhale.Flow
                 initialOrder = members.OrderBy(m => m.Id, StringComparer.Ordinal).Select(m => m.Id).ToArray();
                 if (!fixedOrder)
                 {
-                    var random = new Random(BitConverter.ToInt32(Guid.NewGuid().ToByteArray(), 0));
+                    var random = randomSeed.HasValue ? publicRandom : new Random(BitConverter.ToInt32(Guid.NewGuid().ToByteArray(), 0));
                     for (int i = initialOrder.Length - 1; i > 0; i--)
                     { int j = random.Next(i + 1); string temp = initialOrder[i]; initialOrder[i] = initialOrder[j]; initialOrder[j] = temp; }
                 }
@@ -718,7 +738,7 @@ namespace BlackWhale.Flow
                 publicSelectionDeadlineAtServerSeconds = PublicPicking && TimedPhase ? publicPickEnd : 0,
                 publicInformation = WindowMode && turn > 0 ? WindowInfo.GetPublicInformation(Context()) : new PublicInformationChoice[0],
                 players = members.OrderBy(m => m.Id, StringComparer.Ordinal).Select(m => new Player { playerId = m.Id, displayName = m.Name,
-                    connected = m.Connection != null, ready = m.Ready, isBot = m.IsBot,
+                    connected = m.Connection != null, ready = m.Ready, isBot = m.IsBot, botDifficulty = m.BotDifficulty, botPersonality = m.BotPersonality,
                     augments = StockMode && turn > 0 ? Stock.GetPortfolio(m.Id).augments : Array.Empty<string>() }).ToArray(),
                 companySeats = turn > 0 ? market.GetCompanySeats() : new CompanySeat[0] };
         }

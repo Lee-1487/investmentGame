@@ -12,18 +12,18 @@ namespace BlackWhale.UI.View
     {
         // 테마: 검정·흰색(무채색)만 사용. 초록(Success)만 예외로 유지.
         // 주가 등락도 무채색: 상승 = 흰색, 하락 = 회색.
-        public static readonly Color Background = new Color32(0x00, 0x00, 0x00, 0xFF);
-        public static readonly Color Bezel = new Color32(0x05, 0x05, 0x05, 0xFF);
-        public static readonly Color Screen = new Color32(0x00, 0x00, 0x00, 0xFF);
-        public static readonly Color Card = new Color32(0x07, 0x07, 0x07, 0xFF);       // 카드(그래프 칸) 바탕: 검정에 가깝게
-        public static readonly Color ChartFrame = new Color32(0x14, 0x14, 0x14, 0xFF); // 그래프 카드 테두리: 거의 안 보이게
+        public static readonly Color Background = new Color32(0x12, 0x12, 0x12, 0xFF); // 완전 검정보다 살짝 밝게
+        public static readonly Color Bezel = new Color32(0x16, 0x16, 0x16, 0xFF);
+        public static readonly Color Screen = new Color32(0x12, 0x12, 0x12, 0xFF);
+        public static readonly Color Card = new Color32(0x18, 0x18, 0x18, 0xFF);       // 카드(그래프 칸) 바탕: 바탕보다 아주 살짝 밝게
+        public static readonly Color ChartFrame = new Color32(0x1F, 0x1F, 0x1F, 0xFF); // 그래프 카드 테두리: 거의 안 보이게
         public static readonly Color CardBorder = new Color32(0x2A, 0x2A, 0x2A, 0xFF);
         public static readonly Color Text = new Color32(0xF5, 0xF5, 0xF5, 0xFF);
         public static readonly Color SubText = new Color32(0x8C, 0x8C, 0x8C, 0xFF);
         public static readonly Color Accent = new Color32(0xFF, 0xFF, 0xFF, 0xFF);     // 강조 = 흰색(버튼 글자는 자동으로 검정)
         public static readonly Color OnAccent = new Color32(0x00, 0x00, 0x00, 0xFF);   // 흰 강조 위 글자
-        public static readonly Color AccentSoft = new Color32(0x1E, 0x1E, 0x1E, 0xFF);
-        public static readonly Color Disabled = new Color32(0x1A, 0x1A, 0x1A, 0xFF);
+        public static readonly Color AccentSoft = new Color32(0x26, 0x26, 0x26, 0xFF);
+        public static readonly Color Disabled = new Color32(0x22, 0x22, 0x22, 0xFF);
         public static readonly Color DisabledText = new Color32(0x55, 0x55, 0x55, 0xFF);
         public static readonly Color Up = new Color32(0xFF, 0xFF, 0xFF, 0xFF);    // 상승: 흰색
         public static readonly Color Down = new Color32(0x8A, 0x8A, 0x8A, 0xFF);  // 하락: 회색
@@ -34,6 +34,12 @@ namespace BlackWhale.UI.View
         public static readonly Color Dim = new Color32(0x00, 0x00, 0x00, 0xB0);
         public static readonly Color Warning = new Color32(0xC8, 0xC8, 0xC8, 0xFF);
         public static readonly Color Success = new Color32(0x22, 0xC5, 0x5E, 0xFF); // 초록은 유지
+        // 중요 표시 글자색: 초록 = 잘 됨(준비 완료·확정·내 차례), 빨강 = 주의(오류·연결 끊김·마감 임박)
+        public const string GoodHex = "#34D399", BadHex = "#FF5A5A";
+        public static readonly Color Good = new Color32(0x34, 0xD3, 0x99, 0xFF);
+        public static readonly Color Bad = new Color32(0xFF, 0x5A, 0x5A, 0xFF);
+        public static string GoodText(string s) => "<color=" + GoodHex + ">" + s + "</color>";
+        public static string BadText(string s) => "<color=" + BadHex + ">" + s + "</color>";
 
         /// <summary>REQ-007 개인별 색상. 플레이어 ID 순서대로.</summary>
         public static Color Player(string playerId)
@@ -322,7 +328,7 @@ namespace BlackWhale.UI.View
             var img = Panel(parent, "Button", background, rounded, raycast: true);
             var button = img.gameObject.AddComponent<Button>();
             button.targetGraphic = img;
-            button.transition = Selectable.Transition.None; // 도형·색 변화 없이 글자 + 마우스 올림 밑줄로만 표시
+            button.transition = Selectable.Transition.None; // 색 변화는 HoverUnderline이 직접 처리(회색 둥근 네모)
             var text = Label(img.transform, label, fontSize, textColor);
             Stretch(text.rectTransform, 4, 2, 4, 2);
             var look = img.gameObject.AddComponent<HoverUnderline>();
@@ -457,8 +463,8 @@ namespace BlackWhale.UI.View
     }
 
     /// <summary>
-    /// 버튼 모양: 도형(바탕) 없이 글자만 보이고, 마우스를 올리면 글자 아래 흰 밑줄이 나타난다.
-    /// 바탕이 밝은(주 버튼·선택됨) 경우는 글자를 굵게 해 구분한다.
+    /// 버튼 모양: 둥근 모서리 네모에 회색 채우기. 마우스를 올리면 조금 밝아진다.
+    /// 주 버튼·선택됨은 더 밝은 회색 + 굵은 글자, 비활성은 어두운 회색 + 회색 글자.
     /// 로고·그림 등 자식 요소가 있는 카드형 버튼은 원래 바탕을 유지한다.
     /// </summary>
     [DisallowMultipleComponent]
@@ -498,14 +504,25 @@ namespace BlackWhale.UI.View
             _background = background; _text = text;
             if (_image == null || _label == null) return;
             if (IsCard) { _image.color = background; _label.color = UiKit.Readable(background, text); return; }
-            _image.color = Color.clear; // 클릭 판정은 그대로(투명 바탕)
+            // 투명 바탕·글자 없는 버튼은 위에 겹친 클릭 판정 영역이므로 투명하게 둔다
+            _hitArea = background.a < 0.01f || string.IsNullOrEmpty(_label.text);
+            if (_hitArea) { _image.color = Color.clear; return; }
+            // 둥근 모서리 네모 + 회색 채우기
+            _image.sprite = UiKit.Rounded; _image.type = Image.Type.Sliced; _image.pixelsPerUnitMultiplier = 2f;
             float lum = background.r * 0.299f + background.g * 0.587f + background.b * 0.114f;
-            bool primary = background.a > 0.5f && lum > 0.7f; // 흰 강조 바탕 = 주 버튼/선택됨
+            _primary = background.a > 0.5f && lum > 0.7f; // 흰 강조 바탕 = 주 버튼/선택됨 → 밝은 회색 + 굵게
             bool disabled = _button != null && !_button.interactable;
-            _label.color = disabled ? Palette.DisabledText : primary ? Palette.Text : text;
-            _label.fontStyle = primary ? FontStyle.Bold : FontStyle.Normal;
+            _label.color = disabled ? Palette.DisabledText : _primary ? Palette.Text : text;
+            _label.fontStyle = _primary ? FontStyle.Bold : FontStyle.Normal;
             Refresh();
         }
+
+        public static readonly Color Fill = new Color32(0x3A, 0x3A, 0x3A, 0xFF);        // 기본 회색
+        public static readonly Color FillHover = new Color32(0x4C, 0x4C, 0x4C, 0xFF);   // 마우스 올림
+        public static readonly Color FillPrimary = new Color32(0x5E, 0x5E, 0x5E, 0xFF); // 주 버튼·선택됨
+        public static readonly Color FillPrimaryHover = new Color32(0x6E, 0x6E, 0x6E, 0xFF);
+        public static readonly Color FillDisabled = new Color32(0x26, 0x26, 0x26, 0xFF);
+        private bool _primary, _hitArea;
 
         private bool _lastInteractable = true;
         private void Start() { Apply(_background, _text); _lastInteractable = _button == null || _button.interactable; } // 자식(로고 등)이 다 붙은 뒤 카드형 여부 다시 판단
@@ -522,16 +539,10 @@ namespace BlackWhale.UI.View
 
         private void Refresh()
         {
-            if (_line == null || _label == null) return;
-            bool show = _hover && (_button == null || _button.interactable) && !string.IsNullOrEmpty(_label.text) && !IsCard;
-            _line.gameObject.SetActive(show);
-            if (!show) return;
-            var rect = ((RectTransform)transform).rect;
-            float w = Mathf.Min(_label.preferredWidth, rect.width - 8f);
-            // 글자 아래로 살짝 띄운다(글자 크기의 약 0.8 + 4px). 버튼 칸 밖으로는 조금(최대 6px)까지만.
-            float y = -Mathf.Min(rect.height * 0.5f + 6f, _label.fontSize * 0.8f + 4f);
-            _line.rectTransform.anchoredPosition = new Vector2(0, y);
-            _line.rectTransform.sizeDelta = new Vector2(Mathf.Max(8f, w), 1.5f);
+            if (_image == null || _label == null || IsCard || _hitArea) return;
+            if (_line != null) _line.gameObject.SetActive(false); // 밑줄은 쓰지 않음
+            bool disabled = _button != null && !_button.interactable;
+            _image.color = disabled ? FillDisabled : _primary ? (_hover ? FillPrimaryHover : FillPrimary) : _hover ? FillHover : Fill;
         }
     }
     /// <summary>코인을 글자뿐 아니라 금화 그림으로도 보여 주는 작은 묶음(아이콘 + "N개").</summary>

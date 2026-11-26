@@ -545,10 +545,10 @@ namespace BlackWhale.UI.View
             if (Store.EndReason != _lastEndReason)
             {
                 _lastEndReason = Store.EndReason;
-                if (!string.IsNullOrEmpty(_lastEndReason)) { ClearBanners(); ShowBanner(ErrorMessages.ToKorean(_lastEndReason)); }
+                if (!string.IsNullOrEmpty(_lastEndReason)) { ClearBanners(); ShowBanner(Palette.BadText(ErrorMessages.ToKorean(_lastEndReason))); }
             }
 
-            if (Store.OrderLocked && !_lastLocked && (s?.phase == Protocol.Investment || s?.phase == Protocol.Reveal)) ShowBanner("주문이 확정되었습니다.");
+            if (Store.OrderLocked && !_lastLocked && (s?.phase == Protocol.Investment || s?.phase == Protocol.Reveal)) ShowBanner(Palette.GoodText("주문이 확정되었습니다."));
             _lastLocked = Store.OrderLocked;
 
             var board = Store.Scoreboard;
@@ -724,7 +724,7 @@ namespace BlackWhale.UI.View
 
             if (!PhaseClock.HasDeadline(s) && !s.developerMode)
             {
-                _timerText.text = "<size=11>" + PhaseNames.Korean(s.phase) + " · 시간 제한 없음</size>\n<size=28><b>-</b></size>";
+                _timerText.text = ""; // '시간 제한 없음' 문구는 표시하지 않음
                 _timerText.color = Palette.Text;
                 UiKit.SetButton(_doneButton, "완료", false, Palette.Disabled, Palette.DisabledText);
                 return;
@@ -745,7 +745,7 @@ namespace BlackWhale.UI.View
                 : PhaseNames.Korean(s.phase);
             _timerText.text = "<size=11>" + (remain == 0 ? "서버 진행 대기" : what) + "</size>\n<size=28><b>" + DisplayFormat.Clock(remain) + "</b></size>";
             if (s.developerMode && !PhaseClock.HasDeadline(s)) _timerText.text = "<size=11>개발자 모드 · " + what + "</size>\n<size=22><b>수동 진행</b></size>";
-            _timerText.color = remain <= 5 && remain > 0 ? Palette.Up : Palette.Text;
+            _timerText.color = remain <= 10 && remain > 0 ? Palette.Bad : Palette.Text; // 마감 10초 전부터 빨간 글자
 
             bool can = _c.CanCompleteStep();
             bool done = _c.IsDoneForCurrentPhase;
@@ -830,7 +830,7 @@ namespace BlackWhale.UI.View
         {
             var status = _c.CompleteStep();
             if (status == CommandStatus.Sent && Store.Public?.developerMode != true)
-                ShowBanner(Store.Public?.phase == Protocol.Investment ? "주문을 확정했습니다." : "완료했습니다. 다른 참가자를 기다립니다.");
+                ShowBanner(Store.Public?.phase == Protocol.Investment ? Palette.GoodText("주문을 확정했습니다.") : Palette.GoodText("완료했습니다.") + " 다른 참가자를 기다립니다.");
         }
 
         // ------------------------------------------------------------------
@@ -1098,7 +1098,7 @@ namespace BlackWhale.UI.View
             string rank = row.Rank > 0 ? row.Rank + "등" : "-";
             string me = row.PlayerId == localPlayerId ? " (나)" : "";
             string dot = "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(row.PlayerId)) + ">●</color> ";
-            string conn = row.Connected ? "" : "\n<color=#FFFFFF>연결 끊김</color>";
+            string conn = row.Connected ? "" : "\n" + Palette.BadText("연결 끊김");
             _text.text = "<b>" + rank + "</b>" + _delta + "\n" + dot + row.PlayerId + me + conn;
 
             if (row.Score == null) { _assets.text = ""; return; }

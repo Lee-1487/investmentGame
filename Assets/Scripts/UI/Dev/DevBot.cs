@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using BlackWhale.Bots;
@@ -17,6 +17,8 @@ namespace BlackWhale.UI.Dev
         private readonly int seed;
         private InformationBotStrategy strategy;
         private BotDifficulty difficulty;
+        private BotPersonality personality;
+        private float actionDelay;
         private readonly PhaseClock clock = new PhaseClock();
         private PublicState syncedState;
         private string stateKey = "";
@@ -25,11 +27,11 @@ namespace BlackWhale.UI.Dev
         private readonly HashSet<string> attempted = new HashSet<string>();
         public IGameClient Client { get; }
         public GameClientController Controller => controller;
-        public DevBot(IGameClient client, float thinkSeconds, int seed = 1, BotDifficulty difficulty = BotDifficulty.Normal)
+        public DevBot(IGameClient client, float thinkSeconds, int seed = 1, BotDifficulty difficulty = BotDifficulty.Normal, BotPersonality personality = BotPersonality.Strategic)
         {
             Client = client; controller = new GameClientController(client); this.thinkSeconds = thinkSeconds;
-            this.seed = seed; this.difficulty = difficulty;
-            strategy = new InformationBotStrategy(seed, new BotPolicy(difficulty));
+            this.seed = seed; this.difficulty = difficulty; this.personality = personality;
+            strategy = new InformationBotStrategy(seed, new BotPolicy(difficulty, personality));
             Client.MessageReceived += OnResult;
         }
         public void Dispose() { Client.MessageReceived -= OnResult; controller.Dispose(); Client.Dispose(); }
@@ -42,7 +44,7 @@ namespace BlackWhale.UI.Dev
         public bool SetDifficulty(BotDifficulty value)
         {
             if (controller.Store.Public?.phase != Protocol.Lobby) return false;
-            difficulty = value; strategy = new InformationBotStrategy(seed, new BotPolicy(value)); return true;
+            difficulty = value; strategy = new InformationBotStrategy(seed, new BotPolicy(value, personality)); return true;
         }
         public void Update(float now)
         {
@@ -50,28 +52,32 @@ namespace BlackWhale.UI.Dev
             if (s == null || !string.IsNullOrEmpty(controller.Store.EndReason)) return;
             if (s.paused) { since = now; return; }
             if (!ReferenceEquals(syncedState, s)) { syncedState = s; clock.Sync(s.serverElapsedSeconds, now); }
-            if (s.phase == Protocol.Lobby && Enum.TryParse(s.botDifficulty, out BotDifficulty selected) && selected != difficulty) SetDifficulty(selected);
+            {
+                // The server freezes profiles at game start; also consume the first in-game snapshot.
+                var profile = s.players?.FirstOrDefault(p => p.playerId == controller.LocalPlayerId && p.isBot);
+                if (profile != null && Enum.TryParse(profile.botDifficulty, out BotDifficulty selected) &&
+                    Enum.TryParse(profile.botPersonality, out BotPersonality style) && (selected != difficulty || style != personality)) {
+                    personality = style; difficulty = selected; strategy = new InformationBotStrategy(seed, new BotPolicy(selected, style));
+                }
+            }
             if (currentTurn != s.turn || currentRevision != s.developerRevision) { currentTurn = s.turn; currentRevision = s.developerRevision; purchases = failures = orderAttempts = 0; attempted.Clear(); }
             string key = s.turn + "|" + s.phase + "|" + s.selectionIndex + "|" + s.currentPlayerId + "|" + s.developerRevision;
-            if (key != stateKey) { stateKey = key; since = now; }
-            if (now - since < thinkSeconds) return;
+            if (key != stateKey) { stateKey = key; since = now; actionDelay = s.stockSystem ? strategy.NextReactionSeconds() : 0; }
+            if (now - since < thinkSeconds + (s.stockSystem && s.phase == Protocol.Investment ? 0 : actionDelay)) return;
             var view = controller.Store.View;
             if (s.phase != Protocol.Lobby && (view == null || view.turn != s.turn)) return;
             if (s.stockSystem && s.phase == StockRules.AugmentPhase)
             {
                 if (view?.portfolio?.augmentChosen == false && view.portfolio.candidates?.Length > 0)
-                    controller.ChooseAugment(view.portfolio.candidates[0], "AI");
+                    controller.ChooseAugment(strategy.SelectAugment(view), strategy.RankStockCompanies(view, s).FirstOrDefault() ?? "AI");
                 return;
             }
             if (s.stockSystem && s.phase == Protocol.Selection)
             {
                 if (!controller.CanDraftShares()) return;
                 var p = view.portfolio;
-                var ranked = (s.shareMarket ?? new CompanyShareState[0]).OrderByDescending(c => {
-                    var visible = view.companies?.FirstOrDefault(v => v.companyId == c.companyId);
-                    var known = InformationWindowRules.KnownDays(visible).Where(v => v.HasValue).Select(v => v.Value).ToArray();
-                    return known.Length > 1 ? known[known.Length - 1] - known[0] : 0;
-                });
+                var ranks = strategy.RankStockCompanies(view, s);
+                var ranked = ranks.Select(id => s.shareMarket.First(c => c.companyId == id));
                 int budget = Math.Min(p.CashSlots, p.draftSharesRemaining);
                 var shareOrders = new System.Collections.Generic.List<ShareOrder>();
                 foreach (var c in ranked.Where(company => company.companyId != "BANK"))
@@ -87,7 +93,8 @@ namespace BlackWhale.UI.Dev
             }
             if (s.stockSystem && s.phase == Protocol.Investment)
             {
-                foreach (var holding in view.portfolio?.holdings ?? Array.Empty<PortfolioHolding>())
+                if (controller.Store.HasPending(StockRules.Position)) return;
+                foreach (var id in strategy.RankStockCompanies(view, s))
                 {
                     var supply = s.shareMarket.First(c => c.companyId == holding.companyId);
                     var company = view.companies.First(c => c.companyId == holding.companyId);
@@ -103,7 +110,7 @@ namespace BlackWhale.UI.Dev
                         target = holding.companyId != "BANK" && falling ? max : 0;
                     }
                     if (holding.activeShares == target) continue;
-                    controller.SetStockPosition(holding.companyId, target); break;
+                    controller.SetStockPosition(id, target); break;
                 }
                 since = now; return;
             }

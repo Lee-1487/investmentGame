@@ -53,6 +53,7 @@ public class ReadmeEditor : Editor
 
     static void SelectReadmeAutomatically()
     {
+        if (Application.isBatchMode) return;
         if (!SessionState.GetBool(s_ShowedReadmeSessionStateName, false))
         {
             var readme = SelectReadme();

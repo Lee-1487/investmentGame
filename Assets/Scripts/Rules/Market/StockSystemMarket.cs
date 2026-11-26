@@ -77,7 +77,7 @@ namespace BlackWhale.Rules
         public bool StockEnabled { get; private set; }
         public static MarketService CreateStockSystem(int seed, StockPatternLibrary library = null)
         {
-            var rules = new InvestmentRules { entryAtOpen = true, minHoldingDays = 1, maxHoldingDays = 30, maxIntervalsPerCompany = 0 };
+            var rules = new InvestmentRules { initialAssets = 10000, entryAtOpen = true, minHoldingDays = 1, maxHoldingDays = 30, maxIntervalsPerCompany = 0 };
             var frozenLibrary = (library ?? StockPatternLibrary.CreateDefault()).Copy();
             return new MarketService(t => GenerateStockMarket(seed, t, frozenLibrary), rules) { StockEnabled = true, stockSeed = seed, UsesWindowInformation = true };
         }

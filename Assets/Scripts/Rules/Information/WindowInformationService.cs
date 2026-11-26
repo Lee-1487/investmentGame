@@ -24,7 +24,7 @@ namespace BlackWhale.Rules.Information
         }
         private readonly Dictionary<string, WindowTurn> windowTurns = new Dictionary<string, WindowTurn>();
         private readonly Dictionary<string, LobbySettings> roomSettings = new Dictionary<string, LobbySettings>();
-        private readonly Random informationRandom = new Random();
+        private readonly Random informationRandom;
         private bool RandomInformation => source is IStockMarketSystem stock && stock.StockEnabled;
         public void ConfigureRoom(string roomId, LobbySettings settings)
         {
