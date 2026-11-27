@@ -64,8 +64,9 @@ namespace BlackWhale.UI.View
         {
             var current = _c.Store.Public;
             bool stock = current?.stockSystem == true && current.phase != Protocol.Lobby;
-            _title.gameObject.SetActive(!stock); _status.gameObject.SetActive(!stock);
-            UiKit.Stretch(_body, 0, stock ? 0 : 34, 0, 0);
+            bool lobby = current?.phase == Protocol.Lobby; // 대기실: '매수 창' 제목 없이 상자 하나로
+            _title.gameObject.SetActive(!stock && !lobby); _status.gameObject.SetActive(!stock && !lobby);
+            UiKit.Stretch(_body, 0, stock || lobby ? 0 : 34, 0, 0);
             if (stock && _stockPage.TryRefresh()) return;
             UiKit.Clear(_body);
             var s = _c.Store.Public;
@@ -123,8 +124,11 @@ namespace BlackWhale.UI.View
         private void BuildLobby(PublicState s)
         {
             _status.text = ""; // 대기실 안내 문구는 표시하지 않음
-            var card = UiKit.Panel(_body, "Lobby", Color.clear); // 큰 네모 바탕 없이
-            UiKit.Stretch(card.rectTransform, 28, 12, 28, 12);
+            // 도트 테마: 참가자·게임 설정·아래 버튼을 모두 한 상자(황토 테두리 + 갈색 바탕) 안에
+            var card = UiKit.Panel(_body, "Lobby", Palette.CardBorder, rounded: true);
+            UiKit.Stretch(card.rectTransform, 8, 4, 8, 6);
+            var cardFill = UiKit.Panel(card.transform, "Fill", Palette.Card, rounded: true);
+            UiKit.Stretch(cardFill.rectTransform, 2, 2, 2, 2);
             var root = card.rectTransform;
 
             var title = UiKit.Label(root, "<b>참가자</b>  <size=12>" + (s.players?.Length ?? 0) + " / 4명</size>", 18, Palette.Text, TextAnchor.UpperLeft);
