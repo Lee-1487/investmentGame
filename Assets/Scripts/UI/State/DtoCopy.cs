@@ -87,7 +87,9 @@ namespace BlackWhale.UI.State
                     companyId = c.companyId, startDay = c.startDay, automatic = c.automatic, days = (int[])c.days?.Clone() }).ToArray(),
                 stockSystem = s.stockSystem, totalTurns = s.totalTurns, draftOrder = (string[])s.draftOrder?.Clone(),
                 shareMarket = s.shareMarket?.Select(c => new CompanyShareState { companyId = c.companyId, totalShares = c.totalShares, fills = c.fills?.ToArray(),
-                    owners = c.owners?.Select(p => new ShareOwner { playerId = p.playerId, shares = p.shares, reserved = p.reserved }).ToArray() }).ToArray()
+                    owners = c.owners?.Select(p => new ShareOwner { playerId = p.playerId, shares = p.shares, reserved = p.reserved }).ToArray() }).ToArray(),
+                swapTurn = s.swapTurn, swapControllerIds = (string[])s.swapControllerIds?.Clone(), swapAccountIds = (string[])s.swapAccountIds?.Clone(),
+                swapTurns = (int[])s.swapTurns?.Clone(), swapBonusPercent = s.swapBonusPercent
             };
 
         public static ReturnPoint Copy(ReturnPoint s)
@@ -102,7 +104,8 @@ namespace BlackWhale.UI.State
                 playerId = s.playerId,
                 totalAssets = s.totalAssets,
                 cumulativeProfit = s.cumulativeProfit,
-                returnHistory = s.returnHistory?.Select(Copy).ToArray()
+                returnHistory = s.returnHistory?.Select(Copy).ToArray(),
+                swapAccountId = s.swapAccountId, swapAccountProfit = s.swapAccountProfit, swapBonus = s.swapBonus, swapAccountReturnBps = s.swapAccountReturnBps
             };
 
         public static Scoreboard Copy(Scoreboard s)

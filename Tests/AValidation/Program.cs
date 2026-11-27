@@ -27,14 +27,9 @@ internal static class Program
     {
         try
         {
-            if (args.Contains("--bot-lab"))
+            if (args.Contains("--swap-only"))
             {
-                foreach (string check in BotExperimentValidation.RunAll(new TestJson())) Console.WriteLine("PASS " + check);
-                return 0;
-            }
-            if (args.Contains("--bots-only"))
-            {
-                foreach (string check in NextAValidation.RunBots()) Console.WriteLine("PASS " + check);
+                foreach (string check in SwapValidation.Run()) Console.WriteLine("PASS " + check);
                 return 0;
             }
             if (args.Contains("--patterns-only"))
@@ -50,7 +45,7 @@ internal static class Program
             string[] realBC = await RealInformationValidation.Run(suite, codec);
             string[] nextA = await NextAValidation.Run(codec);
             string[] stock = StockPatternValidation.Run();
-            stock = stock.Concat(StockSystemValidation.Run()).ToArray();
+            stock = stock.Concat(StockSystemValidation.Run()).Concat(SwapValidation.Run()).ToArray();
             foreach (string check in core.Concat(network).Concat(realBC)) Console.WriteLine("PASS " + check);
             foreach (string check in nextA) Console.WriteLine("PASS " + check);
             foreach (string check in stock) Console.WriteLine("PASS " + check);

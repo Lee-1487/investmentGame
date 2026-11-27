@@ -58,6 +58,11 @@ namespace BlackWhale.UI.View
             rt.anchoredPosition = new Vector2(0, 2f);
         }
         private readonly Queue<string> _bannerQueue = new Queue<string>();
+        // [실험] 교환 턴 안내 띠: 일반 전광판이 비어 있을 때 같은 자리에 항상 보인다.
+        private CanvasGroup _swapGroup;
+        private Text _swapText;
+        private Image _swapLine;
+        private const string SwapColor = "#FF6B6B";
         private float _bannerLeft;
 
         // 순위
@@ -148,6 +153,7 @@ namespace BlackWhale.UI.View
             BuildRightColumn();
             BuildTimer();
             BuildBanner();
+            BuildSwapRibbon();
             _urgency = null; // 주변 테두리 효과(마감 10초 전 붉은 가장자리)는 쓰지 않음
             BuildOverlays();
             BuildTurnIndicator();
@@ -347,6 +353,32 @@ namespace BlackWhale.UI.View
             _bannerGroup.blocksRaycasts = false;
         }
 
+        private void BuildSwapRibbon()
+        {
+            var ribbon = UiKit.Panel(ScreenRect, "SwapRibbon", Color.clear);
+            var rt = ribbon.rectTransform;
+            rt.anchorMin = new Vector2(0, 1); rt.anchorMax = new Vector2(1, 1); rt.pivot = new Vector2(0.5f, 1);
+            rt.offsetMin = new Vector2(116, -66); rt.offsetMax = new Vector2(-168, -8);
+            _swapText = UiKit.Label(rt, "", 20, Palette.Text, TextAnchor.MiddleCenter);
+            _swapText.name = "SwapRibbonText";
+            UiKit.Stretch(_swapText.rectTransform, 12, 4, 12, 8);
+            _swapLine = UiKit.Panel(rt, "Underline", new Color32(0xFF, 0x6B, 0x6B, 0xFF));
+            _swapGroup = ribbon.gameObject.AddComponent<CanvasGroup>();
+            _swapGroup.alpha = 0f; _swapGroup.blocksRaycasts = false;
+        }
+
+        /// <summary>[실험] 교환 턴이면 누구 계좌를 조종 중인지, 내 계좌는 누가 조종 중인지 보여 준다.</summary>
+        private void RefreshSwapRibbon()
+        {
+            var s = Store.Public;
+            bool show = s?.swapTurn == true && (s.phase == Protocol.Info || s.phase == Protocol.Investment || s.phase == Protocol.Reveal);
+            if (!show) { _swapText.text = ""; return; }
+            string me = _c.LocalPlayerId, target = SwapRules.ActingAccount(s, me), hunter = SwapRules.ControllerOf(s, me);
+            string text = "<color=" + SwapColor + "><b>교환 턴</b></color>  지금 <color=" + SwapColor + "><b>" + target + "</b></color>의 계좌를 운용 중 · 목표: <b>" + target + "를 최대한 떨어뜨리기</b>"
+                + "\n<size=14><color=#BBBBBB>견제왕(가장 많이 떨어뜨린 1명)은 그 하락률의 " + s.swapBonusPercent + "%를 수익률로 받음 · 내 계좌는 " + hunter + "가 운용 중</color></size>";
+            if (_swapText.text != text) { _swapText.text = text; FitUnderline(_swapLine, _swapText); }
+        }
+
         private void BuildOverlays()
         {
             // 암전 + 팝업
@@ -439,8 +471,9 @@ namespace BlackWhale.UI.View
             _investmentPage.Refresh();
             _infoPage.Refresh();
             RefreshTurnIndicator();
+            RefreshSwapRibbon();
             var ability = LiveScreenModels.AbilityId(Store.View?.ability?.selectedId);
-            _abilityTitle.text = s?.stockSystem == true ? "내 증강" : "내 고유능력";
+            _abilityTitle.text = s?.stockSystem == true ? (s.swapTurn ? SwapRules.ActingAccount(s, _c.LocalPlayerId) + " 증강" : "내 증강") : "내 고유능력";
             _abilityLabel.text = (AbilityCatalog.Get(ability)?.Name ?? "선택 대기") + "\n<size=11>클릭하여 상태 보기</size>";
             // 새로 얻은 증강이 맨 아래에 붙고, 기존 증강은 위로 밀려 올라간다. 왼쪽 정렬 + 앞에 '-'.
             if (s?.stockSystem == true) { _abilityLabel.text = ""; RefreshAugmentList(Store.View?.portfolio?.augments ?? new string[0]); }
@@ -465,9 +498,12 @@ namespace BlackWhale.UI.View
                     _lastSelector = "";
                     _lastPhaseKey = phaseKey;
                     if (s.phase == Protocol.Lobby) ShowBanner("대기실에 입장했습니다. 준비를 누르세요.");
-                    else if (s.phase == Protocol.Ended && !string.IsNullOrEmpty(Store.EndReason)) ShowBanner(Palette.BadText(ErrorMessages.ToKorean(Store.EndReason)));
-                    else if (s.phase != Protocol.Ended && !day.HasValue) ShowBanner("<b>" + s.turn + "턴 · " + PhaseNames.ForState(s) + "</b> 단계가 시작되었습니다.");
+                    else if (s.phase == Protocol.Ended && !string.IsNullOrEmpty(Store.EndReason)) ShowBanner(ErrorMessages.ToKorean(Store.EndReason));
+                    else if (s.phase != Protocol.Ended && !day.HasValue && !(s.swapTurn && s.phase == Protocol.Info)) ShowBanner("<b>" + s.turn + "턴 · " + PhaseNames.ForState(s) + "</b> 단계가 시작되었습니다.");
                     if (s.phase != Protocol.Lobby && s.phase != Protocol.Ended) UiSound.Play(UiSound.Kind.Turn); // 새 단계 시작음
+                    // [실험] 교환 턴 시작: 화면 전체 안내 카드(누르거나 7초 뒤 닫힘)
+                    if (s.swapTurn && s.phase == Protocol.Info)
+                        SwapFx.Intro(FxLayer, SwapRules.ActingAccount(s, _c.LocalPlayerId), SwapRules.ControllerOf(s, _c.LocalPlayerId), s.swapBonusPercent);
                     if (s.phase == Protocol.Info || s.phase == Protocol.Reveal) ShowPage(1);
                     if (s.phase == Protocol.Lobby || s.phase == Protocol.Selection || s.phase == StockRules.AugmentPhase || s.phase == Protocol.Investment || s.phase == Protocol.Result) ShowPage(0);
                 }
@@ -488,7 +524,7 @@ namespace BlackWhale.UI.View
                         if (s.publicSelectionPlayerId == _c.LocalPlayerId) ShowPage(1);
                     }
                 }
-                if (contextChanged && day.HasValue)
+                if (contextChanged && day.HasValue && !s.swapTurn) // 교환 턴에는 일차 알림 대신 교환 턴 안내 띠를 계속 보여 준다
                     ShowBanner("<b>" + s.turn + "턴 · 현재 " + day.Value + "일차</b> 주가 공개");
                 _lastDay = day;
             }
@@ -524,8 +560,13 @@ namespace BlackWhale.UI.View
                 var mine = board.rows.FirstOrDefault(r => r.playerId == _c.LocalPlayerId);
                 // 차트(시장 공개)를 다 본 뒤 최종 결과가 나오는 순간: 매 턴 크게 '결과 발표' → 이어서 내 정산 카드·역전 표시
                 var fx = FxLayer;
-                ResultAnnouncement.Play(fx, board.turn, board.gameComplete);
-                const float afterAnnouncement = 1.8f;
+                // [실험] 교환 턴: 먼저 '견제왕 발표'를 보여 주고, 끝난 뒤 평소 결과 연출을 이어서 보여 준다.
+                bool swapBoard = board.rows.Any(r => r != null && !string.IsNullOrEmpty(r.swapAccountId));
+                float lead = swapBoard ? SwapCeremonySeconds(board) : 0f;
+                if (swapBoard) SwapFx.Ceremony(fx, board.rows, _c.LocalPlayerId);
+                int announceTurn = board.turn; bool announceFinal = board.gameComplete;
+                DelayedAction.Run(fx, lead, () => ResultAnnouncement.Play(FxLayer, announceTurn, announceFinal));
+                float afterAnnouncement = lead + 1.8f;
                 if (mine != null)
                 {
                     long before = _fxAssets.TryGetValue(mine.playerId, out var b) ? b : mine.totalAssets - mine.cumulativeProfit;
@@ -554,7 +595,7 @@ namespace BlackWhale.UI.View
 
         private void OnError(ClientError error)
         {
-            ShowBanner(Palette.BadText(ErrorMessages.ToKorean(error.ErrorCode)));
+            ShowBannerAlways("<color=#FFFFFF>" + ErrorMessages.ToKorean(error.ErrorCode) + "</color>");
         }
 
         // 순위 칸 애니메이션용: 직전에 보여 준 순서와 총자산
@@ -615,6 +656,8 @@ namespace BlackWhale.UI.View
             ClearDraftsOnOutsideClick();
             if (Store.Public?.phase == Protocol.Selection) _investmentPage.Tick();
             UpdateBanner();
+            if (_swapGroup != null) // 교환 턴 안내 띠: 전광판 알림·공용 정보 차례 안내가 없을 때만 보인다
+                _swapGroup.alpha = string.IsNullOrEmpty(_swapText.text) || _turnNotice.gameObject.activeSelf ? 0f : 1f - _bannerGroup.alpha;
 
             _pageT = Mathf.MoveTowards(_pageT, _pageTarget, Time.unscaledDeltaTime * 4f);
             float e = Mathf.SmoothStep(0, 1, _pageT);
@@ -757,7 +800,12 @@ namespace BlackWhale.UI.View
         // 동작
         // ------------------------------------------------------------------
 
-        public void ShowBanner(string message)
+        /// <summary>교환 턴 동안은 위쪽 안내 띠가 가려지지 않게 일반 알림을 띄우지 않는다(오류 알림은 띄움).</summary>
+        private bool SwapQuiet => Store.Public?.swapTurn == true && (Store.Public.phase == Protocol.Info || Store.Public.phase == Protocol.Investment || Store.Public.phase == Protocol.Reveal);
+        private static float SwapCeremonySeconds(Scoreboard board) => 1.2f + board.rows.Count(r => r != null && !string.IsNullOrEmpty(r.swapAccountId)) * 1.3f + 4.5f;
+
+        public void ShowBanner(string message) { if (!SwapQuiet) ShowBannerAlways(message); }
+        public void ShowBannerAlways(string message)
         {
             if (string.IsNullOrEmpty(message)) return;
             _bannerQueue.Enqueue(message);
