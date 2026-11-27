@@ -57,6 +57,28 @@ namespace BlackWhale.UI.View
             rt.sizeDelta = new Vector2(Mathf.Clamp(w, 8f, max > 8f ? max : w), 1.5f);
             rt.anchoredPosition = new Vector2(0, 2f);
         }
+        /// <summary>도트 테마: 알림 글자 크기에 맞춰 자주색 상자(테두리 포함)를 가운데에 맞춘다.</summary>
+        private static void FitBox(RectTransform box, Text text, float minWidth = 120f)
+        {
+            if (box == null || text == null) return;
+            float max = ((RectTransform)box.parent).rect.width;
+            float w = Mathf.Clamp(text.preferredWidth + 48f, minWidth, max > minWidth ? max : minWidth);
+            box.anchorMin = box.anchorMax = new Vector2(0.5f, 0.5f); box.pivot = new Vector2(0.5f, 0.5f);
+            box.anchoredPosition = Vector2.zero;
+            box.sizeDelta = new Vector2(w, Mathf.Max(40f, text.preferredHeight + 18f));
+        }
+
+        /// <summary>도트 테마 패널: 황토 테두리 + 갈색 바탕(테두리 두께 2px). 반환 = 안쪽.</summary>
+        internal static RectTransform PixelPanel(Transform parent, string name, Color border, Color fill, out Image frame, bool raycast = false)
+        {
+            frame = UiKit.Panel(parent, name, border, rounded: true, raycast: raycast);
+            var body = UiKit.Panel(frame.transform, "Fill", fill, rounded: true);
+            UiKit.Stretch(body.rectTransform, 2, 2, 2, 2);
+            return body.rectTransform;
+        }
+        private RectTransform _bannerBox, _turnNoticeBox;
+        private Image _timerBar;
+        private float _timerMax; private string _timerKey;
         private readonly Queue<string> _bannerQueue = new Queue<string>();
         private float _bannerLeft;
 
@@ -134,12 +156,13 @@ namespace BlackWhale.UI.View
         {
             var bg = UiKit.Panel(Root, "Background", Palette.Background);
             UiKit.Stretch(bg.rectTransform);
+            PixelBackdrop.Create(bg.transform); // 도트 글리치 배경 효과
 
             BuildEdges();
 
-            var bezel = UiKit.Panel(Root, "Bezel", Palette.Bezel, rounded: true);
+            var bezel = UiKit.Panel(Root, "Bezel", Color.clear, rounded: true); // 도트 테마: 바탕 효과가 보이게 투명
             UiKit.Stretch(bezel.rectTransform, EdgeSize + 8, EdgeSize + 4, EdgeSize + 8, EdgeSize + 4);
-            var screen = UiKit.Panel(bezel.transform, "Screen", Palette.Screen, rounded: true);
+            var screen = UiKit.Panel(bezel.transform, "Screen", Color.clear, rounded: true);
             UiKit.Stretch(screen.rectTransform, 12, 12, 12, 12);
             ScreenRect = screen.rectTransform;
 
@@ -187,8 +210,9 @@ namespace BlackWhale.UI.View
         {
             _pauseOverlay = UiKit.Panel(Root, "GamePausedOverlay", new Color(0f, 0f, 0f, .85f), raycast: true).rectTransform;
             UiKit.Stretch(_pauseOverlay, 42, 40, 42, 40);
-            var box = UiKit.Panel(_pauseOverlay, "PauseMessage", Palette.Card, rounded: true).rectTransform;
-            UiKit.Place(box, new Vector2(.5f, .5f), new Vector2(.5f, .5f), Vector2.zero, new Vector2(480, 180));
+            var boxFrame = UiKit.Panel(_pauseOverlay, "PauseMessage", Palette.CardBorder, rounded: true).rectTransform;
+            UiKit.Place(boxFrame, new Vector2(.5f, .5f), new Vector2(.5f, .5f), Vector2.zero, new Vector2(480, 180));
+            var box = UiKit.Panel(boxFrame, "Fill", Palette.Card, rounded: true).rectTransform; UiKit.Stretch(box, 2, 2, 2, 2);
             var message = UiKit.Label(box, "<b>게임 일시정지</b>\n\n모든 참가자의 타이머와 게임 진행이 멈췄습니다.\n방장이 재개하면 이어서 진행합니다.", 17, Palette.Text);
             UiKit.Stretch(message.rectTransform, 16, 12, 16, 60);
             if (_c.IsHost && _lobby?.SetPaused != null)
@@ -225,8 +249,12 @@ namespace BlackWhale.UI.View
             col.offsetMin = new Vector2(12, 12);
             col.offsetMax = new Vector2(100, -12);
 
-            _turnLabel = UiKit.Label(col, "", 13, Palette.Text, TextAnchor.UpperCenter, FontStyle.Bold);
-            UiKit.Place(_turnLabel.rectTransform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, -6), new Vector2(88, 50));
+            // 턴 표시: 베이지 상자 + 진한 갈색 굵은 글자(도트 테마)
+            var turnInner = PixelPanel(col, "TurnBox", new Color32(0x5A, 0x43, 0x26, 0xFF), Palette.Accent, out var turnFrame);
+            UiKit.Place(turnFrame.rectTransform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, -2), new Vector2(88, 54));
+            turnInner.GetComponent<Image>().sprite = UiKit.PixelBevel;
+            _turnLabel = UiKit.Label(turnInner, "", 13, Palette.OnAccent, TextAnchor.MiddleCenter, FontStyle.Bold);
+            UiKit.Stretch(_turnLabel.rectTransform, 2, 2, 2, 4);
 
             for (int i = 0; i < 4; i++)
             {
@@ -234,7 +262,7 @@ namespace BlackWhale.UI.View
                 _slots.Add(slot);
             }
 
-            var sep = UiKit.Panel(ScreenRect, "Separator", Palette.CardBorder);
+            var sep = UiKit.Panel(ScreenRect, "Separator", Color.clear); // 도트 테마: 구분선 없음(칸마다 테두리)
             sep.rectTransform.anchorMin = new Vector2(0, 0);
             sep.rectTransform.anchorMax = new Vector2(0, 1);
             sep.rectTransform.offsetMin = new Vector2(106, 16);
@@ -297,20 +325,14 @@ namespace BlackWhale.UI.View
 
             // 본인 직업 카드
             // 네모 칸 대신 흰 밑줄만(방송 화면 스타일). 투명 바탕은 클릭·마우스 판정용.
-            var job = UiKit.Panel(col, "OwnJob", Color.clear, raycast: true);
-            UiKit.Place(job.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 0), new Vector2(120, 120));
-            var underline = UiKit.Panel(job.transform, "Underline", Color.white);
-            underline.rectTransform.anchorMin = Vector2.zero; underline.rectTransform.anchorMax = new Vector2(1, 0);
-            underline.rectTransform.offsetMin = new Vector2(6, 0); underline.rectTransform.offsetMax = new Vector2(-6, 2);
-            // 왼쪽 세로줄을 더해 'ㄴ'자로 감싼다
-            var leftLine = UiKit.Panel(job.transform, "LeftLine", Color.white);
-            leftLine.rectTransform.anchorMin = Vector2.zero; leftLine.rectTransform.anchorMax = new Vector2(0, 0.5f); // 세로줄은 아래 절반만
-            leftLine.rectTransform.offsetMin = new Vector2(6, 0); leftLine.rectTransform.offsetMax = new Vector2(8, 0);
+            // 도트 테마: 황토 테두리 카드
+            var jobFill = PixelPanel(col, "OwnJob", Palette.CardBorder, Palette.Card, out var job, raycast: true);
+            UiKit.Place(job.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 0), new Vector2(140, 124));
             var inner = UiKit.Rect(job.transform, "Inner");
-            UiKit.Stretch(inner, 0, 0, 0, 6);
+            UiKit.Stretch(inner, 2, 2, 2, 4);
             // 제목은 위에 고정, 목록은 아래부터 쌓인다(새 증강이 생기면 기존 것 위에 하나씩 추가).
-            _abilityTitle = UiKit.Label(inner, "", 14, Palette.Text, TextAnchor.UpperCenter, FontStyle.Bold);
-            UiKit.Stretch(_abilityTitle.rectTransform, 4, 4, 4, 4);
+            _abilityTitle = UiKit.Label(inner, "", 14, Palette.Text, TextAnchor.UpperLeft, FontStyle.Bold);
+            UiKit.Stretch(_abilityTitle.rectTransform, 10, 6, 4, 4);
             _abilityLabel = UiKit.Label(inner, "", 13, Palette.Text, TextAnchor.LowerLeft);
             UiKit.Stretch(_abilityLabel.rectTransform, 10, 26, 6, 4);
             // 주식 모드 증강 목록: 새 증강이 맨 아래, 기존은 위로 밀림.
@@ -322,26 +344,35 @@ namespace BlackWhale.UI.View
 
         private void BuildTimer()
         {
-            var timerBox = UiKit.Panel(ScreenRect, "Timer", Palette.Card, rounded: true);
+            var timerInner = PixelPanel(ScreenRect, "Timer", Palette.CardBorder, Palette.Card, out var timerBox);
             _timerBox = timerBox.rectTransform;
+            // 남은 시간 막대(빨강)
+            var track = UiKit.Panel(timerInner, "TimerTrack", new Color32(0x1A, 0x12, 0x0C, 0xFF));
+            track.rectTransform.anchorMin = new Vector2(0, 0); track.rectTransform.anchorMax = new Vector2(1, 0);
+            track.rectTransform.offsetMin = new Vector2(10, 6); track.rectTransform.offsetMax = new Vector2(-10, 11);
+            _timerBar = UiKit.Panel(track.transform, "TimerBar", Palette.TimerRed);
+            _timerBar.rectTransform.anchorMin = Vector2.zero; _timerBar.rectTransform.anchorMax = new Vector2(1, 1);
+            _timerBar.rectTransform.offsetMin = new Vector2(1, 1); _timerBar.rectTransform.offsetMax = new Vector2(-1, -1);
             // 가운데를 오른쪽 열(완료 버튼)의 가운데에 맞춘다(오른쪽 열 폭은 모드마다 달라서 갱신 때 다시 맞춤)
-            UiKit.Place(_timerBox, Vector2.one, new Vector2(0.5f, 1f), new Vector2(-86, -8), new Vector2(148, 60));
-            _timerText = UiKit.Label(timerBox.transform, "", 14, Palette.Text);
-            UiKit.Stretch(_timerText.rectTransform, 6, 4, 6, 4);
+            UiKit.Place(_timerBox, Vector2.one, new Vector2(0.5f, 1f), new Vector2(-86, -6), new Vector2(148, 64));
+            _timerText = UiKit.Label(timerInner, "", 14, Palette.Text);
+            UiKit.Stretch(_timerText.rectTransform, 6, 2, 6, 12);
         }
 
         private void BuildBanner()
         {
-            var banner = UiKit.Panel(ScreenRect, "Banner", Color.clear); // 네모 없이 글자 + 밑줄
+            var banner = UiKit.Panel(ScreenRect, "Banner", Color.clear); // 도트 테마: 글자 크기에 맞춘 자주색 상자
             var rt = banner.rectTransform;
             rt.anchorMin = new Vector2(0, 1);
             rt.anchorMax = new Vector2(1, 1);
             rt.pivot = new Vector2(0.5f, 1);
             rt.offsetMin = new Vector2(116, -64);
             rt.offsetMax = new Vector2(-168, -12);
-            _bannerText = UiKit.Label(rt, "", 16, Palette.Text);
-            UiKit.Stretch(_bannerText.rectTransform, 12, 4, 12, 8);
-            _bannerLine = UiKit.Panel(rt, "Underline", Palette.Text);
+            var boxFill = PixelPanel(rt, "BannerBox", Palette.MaroonBorder, Palette.Maroon, out var boxFrame);
+            _bannerBox = boxFrame.rectTransform;
+            _bannerText = UiKit.Label(rt, "", 16, Palette.MaroonText);
+            UiKit.Stretch(_bannerText.rectTransform, 12, 4, 12, 4);
+            _bannerLine = UiKit.Panel(rt, "Underline", Color.clear);
             _bannerGroup = banner.gameObject.AddComponent<CanvasGroup>();
             _bannerGroup.alpha = 0f;
             _bannerGroup.blocksRaycasts = false;
@@ -375,10 +406,12 @@ namespace BlackWhale.UI.View
             _turnNotice = _turnNoticeBackground.rectTransform;
             _turnNotice.anchorMin = new Vector2(0, 1); _turnNotice.anchorMax = Vector2.one;
             _turnNotice.offsetMin = new Vector2(116, -68); _turnNotice.offsetMax = new Vector2(-168, -8);
-            _turnNoticeText = UiKit.Label(_turnNotice, "", 20, Palette.Text, TextAnchor.MiddleCenter, FontStyle.Bold);
+            PixelPanel(_turnNotice, "NoticeBox", Palette.MaroonBorder, Palette.Maroon, out var noticeFrame);
+            _turnNoticeBox = noticeFrame.rectTransform;
+            _turnNoticeText = UiKit.Label(_turnNotice, "", 20, Palette.MaroonText, TextAnchor.MiddleCenter, FontStyle.Bold);
             _turnNoticeText.name = "PublicTurnNoticeText";
             UiKit.Stretch(_turnNoticeText.rectTransform, 12, 4, 12, 8);
-            _turnNoticeLine = UiKit.Panel(_turnNotice, "Underline", Palette.Text);
+            _turnNoticeLine = UiKit.Panel(_turnNotice, "Underline", Color.clear);
             _turnHighlight.gameObject.SetActive(false); _turnNotice.gameObject.SetActive(false);
         }
 
@@ -390,11 +423,11 @@ namespace BlackWhale.UI.View
             _turnHighlight.gameObject.SetActive(false); _turnNotice.gameObject.SetActive(active); // 화면 테두리 강조는 쓰지 않음
             if (!active) return;
             _turnNoticeBackground.color = Color.clear;
-            _turnNoticeText.color = mine ? Palette.Text : Palette.SubText;
+            _turnNoticeText.color = mine ? Palette.MaroonText : Palette.Text;
             _turnNoticeText.text = mine
                 ? "<size=23>지금 내 차례입니다!</size>  공용 정보 선택\n<size=13>공개할 기업을 선택하세요.</size>"
                 : "<size=20>" + state.publicSelectionPlayerId + " 님의 공용 정보 선택 차례</size>\n<size=13>다음 차례까지 공개되는 정보를 확인하세요.</size>";
-            FitUnderline(_turnNoticeLine, _turnNoticeText);
+            FitBox(_turnNoticeBox, _turnNoticeText);
             _turnHighlight.SetAsLastSibling(); _turnNotice.SetAsLastSibling();
         }
 
@@ -434,7 +467,7 @@ namespace BlackWhale.UI.View
                 UiKit.SetButton(_pauseButton, paused ? "게임 재개" : "일시정지", can, paused ? Palette.AccentSoft : Palette.Card, Palette.Text);
             }
 
-            _turnLabel.text = s == null ? "" : s.turn + (s.stockSystem ? "/" + s.totalTurns : "") + "턴\n<size=11>" + PhaseNames.ForState(s) + "</size>";
+            _turnLabel.text = s == null ? "" : "<size=15>TURN " + s.turn + (s.stockSystem ? "/" + s.totalTurns : "") + "</size>\n<size=11>" + PhaseNames.ForState(s) + "</size>";
             RefreshRanks();
             _investmentPage.Refresh();
             _infoPage.Refresh();
@@ -476,7 +509,7 @@ namespace BlackWhale.UI.View
                     ClearBanners();
                     _lastSelector = s.currentPlayerId;
                     if (s.currentPlayerId == _c.LocalPlayerId) UiSound.Play(UiSound.Kind.Turn); // 내 차례 알림음
-                    if (s.currentPlayerId == _c.LocalPlayerId) ShowBanner("<color=#FFFFFF><b>내 차례입니다.</b></color> " + (s.stockSystem ? "주식 보유량을 정하세요." : "기업을 선택하세요."));
+                    if (s.currentPlayerId == _c.LocalPlayerId) ShowBanner(Palette.GoodText("<b>내 차례입니다.</b>") + " " + (s.stockSystem ? "주식 보유량을 정하세요." : "기업을 선택하세요."));
                 }
                 string publicSelector = s.publicSelectionActive ? s.turn + "|" + s.publicSelectionIndex + "|" + s.publicSelectionPlayerId : "";
                 if (publicSelector != _lastPublicSelector)
@@ -547,9 +580,9 @@ namespace BlackWhale.UI.View
         private void OnAutomatic(string resultType)
         {
             if (resultType == CommandTypes.ResultOf(CommandTypes.SelectCompany) && Store.Public?.phase == Protocol.Selection)
-                ShowBanner("<color=#D0D0D0>시간이 초과되어 기업이 자동 선택되었습니다.</color>");
+                ShowBanner("<color=#E0D2B4>시간이 초과되어 기업이 자동 선택되었습니다.</color>");
             else if (resultType == CommandTypes.ResultOf(CommandTypes.SubmitInvestment) && (Store.Public?.phase == Protocol.Investment || Store.Public?.phase == Protocol.Reveal))
-                ShowBanner("<color=#D0D0D0>투자 시간이 끝나 주문이 자동 확정되었습니다. 적용된 구간과 비중은 확정 주문에서 확인하세요.</color>");
+                ShowBanner("<color=#E0D2B4>투자 시간이 끝나 주문이 자동 확정되었습니다. 적용된 구간과 비중은 확정 주문에서 확인하세요.</color>");
         }
 
         private void OnError(ClientError error)
@@ -700,9 +733,10 @@ namespace BlackWhale.UI.View
                 : s.phase == Protocol.Selection
                 ? (string.IsNullOrEmpty(s.currentPlayerId) ? "선택" : s.currentPlayerId + " 차례")
                 : PhaseNames.Korean(s.phase);
-            _timerText.text = "<size=11>" + (remain == 0 ? "서버 진행 대기" : what) + "</size>\n<size=28><b>" + DisplayFormat.Clock(remain) + "</b></size>";
+            _timerText.text = "<size=11>" + (remain == 0 ? "서버 진행 대기" : what) + "</size>\n<size=26><color=#" + ColorUtility.ToHtmlStringRGB(Palette.TimerRed) + ">" + DisplayFormat.Clock(remain) + "</color></size>";
+            UpdateTimerBar(s);
             if (s.developerMode && !PhaseClock.HasDeadline(s)) _timerText.text = "<size=11>개발자 모드 · " + what + "</size>\n<size=22><b>수동 진행</b></size>";
-            _timerText.color = remain <= 10 && remain > 0 ? Palette.Bad : Palette.Text; // 마감 10초 전부터 빨간 글자
+            _timerText.color = Palette.Text; // 숫자는 도트 테마의 빨간 숫자
 
             bool can = _c.CanCompleteStep();
             bool done = _c.IsDoneForCurrentPhase;
@@ -713,6 +747,18 @@ namespace BlackWhale.UI.View
             if (s.developerMode && can) label = s.stockSystem && s.phase == Protocol.Investment ? "확인 · 다음 일차" : "확인 · 다음 단계";
             _doneButton.name = developer ? "DeveloperNext" : s.stockSystem && s.phase == Protocol.Investment ? "LiveTradingStatus" : "Button";
             UiKit.SetButton(_doneButton, label, can, can ? Palette.Accent : Palette.Disabled, can ? Color.white : Palette.DisabledText);
+        }
+
+        /// <summary>남은 시간 막대: 이번 단계에서 본 가장 긴 남은 시간을 100%로 본다.</summary>
+        private void UpdateTimerBar(PublicState s)
+        {
+            if (_timerBar == null || s == null) return;
+            string key = s.turn + "|" + s.phase + "|" + s.selectionIndex + "|" + s.publicSelectionIndex + "|" + s.developerRevision;
+            float left = (float)_clock.RemainingExact(s, Time.realtimeSinceStartup);
+            if (key != _timerKey) { _timerKey = key; _timerMax = 0f; }
+            _timerMax = Mathf.Max(_timerMax, left);
+            float f = _timerMax > 0f ? Mathf.Clamp01(left / _timerMax) : 0f;
+            _timerBar.rectTransform.anchorMax = new Vector2(f, 1);
         }
 
         private void RefreshAugmentList(string[] augments)
@@ -739,7 +785,7 @@ namespace BlackWhale.UI.View
             if (_bannerLeft <= 0f && _bannerQueue.Count > 0)
             {
                 _bannerText.text = _bannerQueue.Dequeue();
-                FitUnderline(_bannerLine, _bannerText);
+                FitBox(_bannerBox, _bannerText);
                 _bannerLeft = _bannerQueue.Count > 2 ? 1.5f : BannerSeconds; // 밀려 있으면 빨리 넘김
             }
             if (_bannerLeft > 0f)
@@ -804,7 +850,7 @@ namespace BlackWhale.UI.View
             }
             string title = "<b>" + row.PlayerId + (row.PlayerId == _c.LocalPlayerId ? " (나)" : "") + "</b>";
             string body = r == null
-                ? "\n<color=#8C8C8C>아직 정산 결과가 없습니다.</color>"
+                ? "\n<color=#B39C74>아직 정산 결과가 없습니다.</color>"
                 : "\n이번 턴 수익률  <b><color=#" + ColorUtility.ToHtmlStringRGB(Palette.ForBps(r.turnReturnBps)) + ">" + DisplayFormat.Percent(r.turnReturnBps) + "</color></b>"
                   + "\n누적 손익  <b>" + DisplayFormat.SignedMoney(r.cumulativeProfit) + "</b>   ·   누적 수익률  <b>" + DisplayFormat.Percent(r.cumulativeReturnBps) + "</b>"
                   + "\n총자산  <b>" + DisplayFormat.Money(r.totalAssets) + "</b>";
@@ -837,7 +883,7 @@ namespace BlackWhale.UI.View
         {
             string title = "<b>" + row.PlayerId + (row.PlayerId == _c.LocalPlayerId ? " (나)" : "") + "</b>";
             string summary = score == null
-                ? "\n<color=#6B7280>아직 정산 결과가 없습니다.</color>"
+                ? "\n<color=#7A6748>아직 정산 결과가 없습니다.</color>"
                 : "\n이번 턴 수익률 <b><color=#" + ColorUtility.ToHtmlStringRGB(Palette.ForBps(score.turnReturnBps)) + ">" + DisplayFormat.Percent(score.turnReturnBps) + "</color></b>"
                   + "\n누적 손익 <b>" + DisplayFormat.SignedMoney(score.cumulativeProfit) + "</b> · 누적 수익률 <b>" + DisplayFormat.Percent(score.cumulativeReturnBps) + "</b>"
                   + "\n총자산 <b>" + DisplayFormat.Money(score.totalAssets) + "</b>";
@@ -1000,13 +1046,12 @@ namespace BlackWhale.UI.View
         public RankSlot(RectTransform column, int index, TabletView owner)
         {
             _index = index;
-            // 네모 칸 대신 흰 밑줄만(방송 화면 스타일). 투명 바탕은 클릭 판정용.
-            var bg = UiKit.Panel(column, "RankSlot" + (index + 1), Color.clear, raycast: true);
+            // 도트 테마: 황토 테두리 + 갈색 바탕 카드. 바탕 전체가 마우스 판정.
+            var bg = UiKit.Panel(column, "RankSlot" + (index + 1), Palette.CardBorder, rounded: true, raycast: true);
             _rt = bg.rectTransform;
-            UiKit.Place(_rt, new Vector2(0.5f, 1), new Vector2(0.5f, 1), PositionOf(index), new Vector2(84, 86));
-            _border = UiKit.Panel(_rt, "Underline", Color.white);
-            _border.rectTransform.anchorMin = Vector2.zero; _border.rectTransform.anchorMax = new Vector2(1, 0);
-            _border.rectTransform.offsetMin = new Vector2(4, 0); _border.rectTransform.offsetMax = new Vector2(-4, 2);
+            UiKit.Place(_rt, new Vector2(0.5f, 1), new Vector2(0.5f, 1), PositionOf(index), new Vector2(88, 86));
+            _border = UiKit.Panel(_rt, "Fill", Palette.Card, rounded: true);
+            UiKit.Stretch(_border.rectTransform, 2, 2, 2, 2);
             var inner = UiKit.Panel(_rt, "Inner", Color.clear);
             UiKit.Stretch(inner.rectTransform, 3, 3, 3, 5);
             _text = UiKit.Label(inner.transform, "", 13, Palette.Text, TextAnchor.UpperCenter);
@@ -1039,7 +1084,7 @@ namespace BlackWhale.UI.View
             if (fromIndex >= 0 && fromIndex != _index)
             {
                 bool up = fromIndex > _index;
-                _delta = up ? " <color=#FFFFFF>▲" + (fromIndex - _index) + "</color>" : " <color=#9A9A9A>▼" + (_index - fromIndex) + "</color>";
+                _delta = up ? " <color=#FF4D4F>▲" + (fromIndex - _index) + "</color>" : " <color=#3D8BFF>▼" + (_index - fromIndex) + "</color>";
                 if (up) _rt.SetAsLastSibling(); // 올라오는 칸이 위에 보이게
                 UiAnim.Slide(_rt, PositionOf(fromIndex), PositionOf(_index), UiAnim.SlideSeconds, delay);
                 if (up) UiAnim.Pulse(_rt, delay + UiAnim.SlideSeconds * 0.8f, 1.1f);

@@ -7,13 +7,13 @@ namespace BlackWhale.UI.View
 {
     public static class ScreenKit
     {
-        public static readonly Color Amber = new Color32(0xD9, 0xD9, 0xD9, 0xFF); // 무채색 강조
-        public static readonly Color AmberSoft = new Color32(0x1E, 0x1E, 0x1E, 0xFF);
-        public static readonly Color Gold = new Color32(0xBF, 0xBF, 0xBF, 0xFF);
-        public static readonly Color Ink = new Color32(0x16, 0x17, 0x1A, 0xFF);
+        public static readonly Color Amber = new Color32(0xD9, 0xC7, 0xA0, 0xFF); // 베이지 강조(도트 테마)
+        public static readonly Color AmberSoft = new Color32(0x33, 0x24, 0x16, 0xFF);
+        public static readonly Color Gold = new Color32(0xE0, 0xB4, 0x5A, 0xFF);
+        public static readonly Color Ink = new Color32(0x1A, 0x12, 0x0C, 0xFF);
 
         /// <summary>테두리 카드. 반환값은 바깥(배치용), inner는 내용을 넣을 안쪽.</summary>
-        public static RectTransform Card(Transform parent, string name, Color border, Color fill, out RectTransform inner, float borderWidth = 1f)
+        public static RectTransform Card(Transform parent, string name, Color border, Color fill, out RectTransform inner, float borderWidth = 2f)
         {
             var frame = UiKit.Panel(parent, name, border, rounded: true);
             var body = UiKit.Panel(frame.transform, "Inner", fill, rounded: true);
@@ -60,9 +60,9 @@ namespace BlackWhale.UI.View
         {
             switch (c)
             {
-                case ItemCategory.Finance: return new Color32(0xBF, 0xBF, 0xBF, 0xFF);
+                case ItemCategory.Finance: return new Color32(0xD9, 0xC7, 0xA0, 0xFF);
                 case ItemCategory.Info: return new Color32(0x05, 0x96, 0x69, 0xFF);
-                case ItemCategory.Attack: return new Color32(0xFF, 0xFF, 0xFF, 0xFF);
+                case ItemCategory.Attack: return new Color32(0xFF, 0x5A, 0x5A, 0xFF);
                 default: return Gold;
             }
         }
@@ -72,8 +72,8 @@ namespace BlackWhale.UI.View
             switch (k)
             {
                 case BoardEventKind.Auction: return Gold;
-                case BoardEventKind.Ability: return new Color32(0xBF, 0xBF, 0xBF, 0xFF);
-                case BoardEventKind.Attack: return new Color32(0xFF, 0xFF, 0xFF, 0xFF);
+                case BoardEventKind.Ability: return new Color32(0xD9, 0xC7, 0xA0, 0xFF);
+                case BoardEventKind.Attack: return new Color32(0xFF, 0x5A, 0x5A, 0xFF);
                 case BoardEventKind.Bonus: return new Color32(0x05, 0x96, 0x69, 0xFF);
                 default: return Palette.SubText;
             }

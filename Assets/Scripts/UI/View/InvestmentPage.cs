@@ -135,21 +135,20 @@ namespace BlackWhale.UI.View
             for (int i = 0; i < 4; i++)
             {
                 var p = i < players.Length ? players[i] : null;
-                // 네모 칸 대신 밑줄(빈 자리는 회색 밑줄)
-                var row = UiKit.Panel(root, "Player" + (i + 1), Color.clear);
-                var rowLine = UiKit.Panel(row.transform, "Underline", p == null ? Palette.DisabledText : Palette.Text);
-                rowLine.rectTransform.anchorMin = Vector2.zero; rowLine.rectTransform.anchorMax = new Vector2(1, 0);
-                rowLine.rectTransform.offsetMin = Vector2.zero; rowLine.rectTransform.offsetMax = new Vector2(0, 1.5f);
+                // 도트 테마: 자리마다 테두리 상자(빈 자리는 어둡게)
+                var row = UiKit.Panel(root, "Player" + (i + 1), p == null ? Palette.ChartFrame : Palette.CardBorder, rounded: true);
+                var rowFill = UiKit.Panel(row.transform, "Fill", p == null ? Palette.Disabled : Palette.Card, rounded: true);
+                UiKit.Stretch(rowFill.rectTransform, 2, 2, 2, 2);
                 UiKit.Place(row.rectTransform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, -60 - i * 54), new Vector2(520, 46));
                 if (configurable) {
                     row.rectTransform.anchorMin = new Vector2(0, 1); row.rectTransform.anchorMax = new Vector2(.49f, 1);
                     row.rectTransform.offsetMin = new Vector2(20, -106 - i * 54); row.rectTransform.offsetMax = new Vector2(-8, -60 - i * 54);
                 }
                 string text = p == null
-                    ? "<color=#A3A3A3>빈 자리 · 접속 대기</color>"
+                    ? "<color=#B39C74>빈 자리 · 접속 대기</color>"
                     : "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(p.playerId)) + ">■</color>  <b>" + p.playerId + "</b>  "
                       + (p.displayName ?? "").Replace("<", "‹").Replace(">", "›") + (p.isBot ? "  <size=11>BOT</size>" : "") + (p.playerId == _c.LocalPlayerId ? " (나)" : "") + (p.playerId == "P1" ? "  <size=11>방장</size>" : "")
-                      + "      " + (!p.connected ? Palette.BadText("연결 끊김") : p.ready ? "<color=#34D399><b>준비 완료</b></color>" : "<color=#8C8C8C>준비 전</color>");
+                      + "      " + (!p.connected ? Palette.BadText("연결 끊김") : p.ready ? "<color=#5CD17A><b>준비 완료</b></color>" : "<color=#B39C74>준비 전</color>");
                 var label = UiKit.Label(row.transform, text, 15, Palette.Text, TextAnchor.MiddleLeft);
                 label.resizeTextForBestFit = true;
                 label.resizeTextMinSize = 10;
@@ -339,7 +338,7 @@ namespace BlackWhale.UI.View
         private string SelectionHint(PublicState s)
         {
             if (_c.IsMyTurnToSelect())
-                return "<color=#FFFFFF><b>내 차례입니다.</b></color> <b>기업 카드를 누르면 바로 선택됩니다.</b> ("
+                return "<color=#F2E6CC><b>내 차례입니다.</b></color> <b>기업 카드를 누르면 바로 선택됩니다.</b> ("
                        + (_c.Store.OwnSelections.Count + 1) + "번째 / 2개)";
             if (string.IsNullOrEmpty(s.currentPlayerId)) return "기업 선택 진행 중";
             return s.currentPlayerId + " 님이 고르는 중입니다. 차례 순서: A→B→C→D→D→C→B→A";
@@ -491,7 +490,7 @@ namespace BlackWhale.UI.View
             UiKit.Place(logo, new Vector2(0, 1), new Vector2(0, 1), new Vector2(12, -12), new Vector2(52, 52));
 
             var name = UiKit.Label(root, "<b>" + entry.DisplayName + "</b>\n<size=10>" + entry.Id + " · " + entry.Volatility + "</size>"
-                + "\n<size=11><color=#9A9A9A>" + _c.Store.TradePlans.Summary(id) + "</color></size>",
+                + "\n<size=11><color=#A08A66>" + _c.Store.TradePlans.Summary(id) + "</color></size>",
                 16, slots.Empty == 0 && !own ? Palette.DisabledText : Palette.Text, TextAnchor.UpperLeft);
             name.name = "SelectionPlan_" + id;
             UiKit.Place(name.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(72, -12), new Vector2(200, 52));
@@ -504,12 +503,12 @@ namespace BlackWhale.UI.View
             UiKit.Place(seatRow, new Vector2(0, 0), new Vector2(0, 0), new Vector2(12, 34), new Vector2(170, 30));
             int k = 0;
             for (int m = 0; m < slots.Mine; m++) SeatBox(seatRow, k++, "나", Palette.Accent, Color.white);
-            for (int a = 0; a < slots.OccupiedAnonymous; a++) SeatBox(seatRow, k++, "선점", new Color32(0x6B, 0x6B, 0x6B, 0xFF), Color.white);
+            for (int a = 0; a < slots.OccupiedAnonymous; a++) SeatBox(seatRow, k++, "선점", new Color32(0x76, 0x62, 0x49, 0xFF), Color.white);
             for (int e = 0; e < slots.Empty; e++) SeatBox(seatRow, k++, "빈칸", Palette.Card, Palette.SubText, outline: true);
 
-            string state = own ? "<color=#9A9A9A><b>내 확정</b></color>"
+            string state = own ? "<color=#A08A66><b>내 확정</b></color>"
                 : slots.Empty == 0 ? "정원 마감"
-                : selectable ? "<color=#9A9A9A><b>클릭하여 바로 선택</b></color>" : "남은 자리 " + slots.Empty;
+                : selectable ? "<color=#A08A66><b>클릭하여 바로 선택</b></color>" : "남은 자리 " + slots.Empty;
             var stateText = UiKit.Label(root, state, 12, Palette.SubText, TextAnchor.LowerLeft);
             UiKit.Place(stateText.rectTransform, new Vector2(0, 0), new Vector2(0, 0), new Vector2(12, 8), new Vector2(240, 22));
         }
@@ -646,11 +645,12 @@ namespace BlackWhale.UI.View
             UiKit.Anchor(cell, index * 0.5f, 0, index * 0.5f + 0.5f, 1, 6, 0);
             var bg = UiKit.Panel(cell, "Bg", Palette.Card, rounded: true);
             UiKit.Stretch(bg.rectTransform);
+            UiKit.AddFrame(bg, Palette.CardBorder);
             var root = bg.rectTransform;
 
             var logo = CompanyBadge.Create(root, companyId, 26);
             UiKit.Place(logo, new Vector2(0, 1), new Vector2(0, 1), new Vector2(10, -6), new Vector2(26, 26));
-            var header = UiKit.Label(root, (index + 1) + ". <b>" + entry.DisplayName + "</b> <size=11>" + entry.Id + "</size>   <color=#9A9A9A><b>"
+            var header = UiKit.Label(root, (index + 1) + ". <b>" + entry.DisplayName + "</b> <size=11>" + entry.Id + "</size>   <color=#A08A66><b>"
                 + DisplayFormat.Weight(weightBps) + "</b></color>   <size=11>" + (_c.Store.TradePlans.Get(companyId).Favorite ? "★ 찜 · " : "")
                 + (_c.Store.TradePlans.Get(companyId).Rank > 0 ? _c.Store.TradePlans.Get(companyId).Rank + "순위" : entry.Volatility) + "</size>", 16, Palette.Text, TextAnchor.MiddleLeft);
             UiKit.Place(header.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(42, -4), new Vector2(380, 30));
@@ -721,9 +721,9 @@ namespace BlackWhale.UI.View
             if (_draft.EntryAtOpen || intervals.Count < UiRules.MaxIntervalsPerCompany)
             {
                 string guide = candidateDay.HasValue
-                    ? "<color=#D0D0D0>진입 " + candidateDay.Value + "일 선택됨 → 청산일을 클릭하세요</color>"
+                    ? "<color=#E0D2B4>진입 " + candidateDay.Value + "일 선택됨 → 청산일을 클릭하세요</color>"
                     : _c.Store.Public?.windowInformation == true ? "드래그 → 예약하기 · 양 끝을 끌어 조절 / 몸통을 끌어 이동 · 선택 후 Del / Backspace로 삭제"
-                    : "그래프에서 <b>진입일 → 청산일</b> 순서로 클릭 (보유 5~10일, 최대 2구간) · <color=#34D399>초록</color> = 지금 고를 수 있는 날짜, 회색(미열람)도 선택 가능";
+                    : "그래프에서 <b>진입일 → 청산일</b> 순서로 클릭 (보유 5~10일, 최대 2구간) · <color=#5CD17A>초록</color> = 지금 고를 수 있는 날짜, 회색(미열람)도 선택 가능";
                 var hint = UiKit.Label(rows, guide, 12, Palette.SubText, TextAnchor.MiddleLeft);
                 UiKit.Place(hint.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(14, y - 4), new Vector2(400, 26));
             }
@@ -747,14 +747,14 @@ namespace BlackWhale.UI.View
             var allowed = _picker.AllowedRange(companyId);
             bool inAllowed = allowed.HasValue && day.Value >= allowed.Value.x && day.Value <= allowed.Value.y;
             if (!entry.HasValue && OrderEditable)
-                text += inAllowed ? "  <color=#34D399>· 클릭 = 진입일</color>" : "  <color=#A3A3A3>· 진입 불가(30일까지 5일 보유 안 됨)</color>";
+                text += inAllowed ? "  <color=#5CD17A>· 클릭 = 진입일</color>" : "  <color=#B39C74>· 진입 불가(30일까지 5일 보유 안 됨)</color>";
             if (entry.HasValue && day.Value > entry.Value)
             {
                 bool ok = _picker.PreviewIsValid(companyId, day.Value);
                 var ret = DailyBarModel.IntervalReturnBps(bars, entry.Value, day.Value, _c.Store.View?.entryAtOpen == true);
                 text = entry.Value + "일 → " + day.Value + "일 · 보유 " + (day.Value - entry.Value) + "일"
                        + (ret.HasValue ? " · 알려진 값 기준 구간 " + DisplayFormat.Percent(ret.Value) + "p" : " · 끝점 미열람")
-                       + (ok ? "" : "  <color=#FFFFFF>(불가)</color>");
+                       + (ok ? "" : "  <color=#F2E6CC>(불가)</color>");
                 if (chart != null) chart.SetPreview(new Vector2Int(entry.Value, day.Value), ok);
             }
             else if (chart != null) chart.SetPreview(null, false);
@@ -778,7 +778,7 @@ namespace BlackWhale.UI.View
             }
             // 거절 이유를 그래프 바로 아래에도 보여 준다(클릭이 무시된 것처럼 보이지 않게)
             if (!string.IsNullOrEmpty(result.Message) && _chartTips.TryGetValue(companyId, out var tip) && tip != null)
-                tip.text = "<color=#FFFFFF>" + day + "일: " + result.Message + "</color>";
+                tip.text = "<color=#F2E6CC>" + day + "일: " + result.Message + "</color>";
         }
 
         private void BuildIntervalRow(RectTransform root, string companyId, int index, Interval iv, float y)
@@ -931,7 +931,7 @@ namespace BlackWhale.UI.View
             var text = UiKit.Label(_body, message, 15, Palette.Text, TextAnchor.UpperLeft);
             UiKit.Stretch(text.rectTransform, 10, 6, 10, 0);
 
-            var card = UiKit.Panel(_body, "Order", Palette.Card, rounded: true);
+            var card = UiKit.Panel(_body, "Order", Palette.Card, rounded: true); UiKit.AddFrame(card, Palette.CardBorder);
             UiKit.Stretch(card.rectTransform, 6, 44, 6, 20);
             var lines = OrderLines();
             var body = UiKit.Label(card.transform, lines, 17, Palette.Text, TextAnchor.UpperLeft);
@@ -962,10 +962,10 @@ namespace BlackWhale.UI.View
                 return;
             }
 
-            var card = UiKit.Panel(_body, "Result", Palette.Card, rounded: true);
+            var card = UiKit.Panel(_body, "Result", Palette.Card, rounded: true); UiKit.AddFrame(card, Palette.CardBorder);
             UiKit.Stretch(card.rectTransform, 6, 6, 6, 6);
             var sb = new System.Text.StringBuilder("<b>" + board.turn + "턴 결과</b>\n\n");
-            sb.Append("<size=13><color=#8C8C8C>순위      플레이어      총자산          이번 턴          누적 손익</color></size>\n");
+            sb.Append("<size=13><color=#B39C74>순위      플레이어      총자산          이번 턴          누적 손익</color></size>\n");
             foreach (var r in board.rows.OrderBy(r => r.rank).ThenBy(r => r.playerId))
             {
                 bool me = r.playerId == _c.LocalPlayerId;

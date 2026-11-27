@@ -33,7 +33,7 @@ namespace BlackWhale.UI.View
             card.rectTransform.anchoredPosition = Vector2.zero; card.rectTransform.sizeDelta = new Vector2(0, 200);
 
             string head = final ? "최종 정산" : turn + "턴 정산";
-            string rankText = rank > 0 ? (rank == 1 ? "<color=#FFFFFF><b>1위!</b></color>" : rank + "위") : "";
+            string rankText = rank > 0 ? (rank == 1 ? "<color=#F2E6CC><b>1위!</b></color>" : rank + "위") : "";
             var title = UiKit.Label(card.transform, "<b>" + head + "</b>   <size=16>" + rankText + "</size>", 20, Color.white, TextAnchor.UpperCenter);
             UiKit.Stretch(title.rectTransform, 10, 16, 10, 0);
 
@@ -111,7 +111,7 @@ namespace BlackWhale.UI.View
             if (screen == null || string.IsNullOrEmpty(text)) return;
             var root = UiKit.Rect(screen, "ReversalFx");
             UiKit.Stretch(root);
-            var band = UiKit.Panel(root, "Band", mine ? new Color32(0x24, 0x24, 0x24, 0xF0) : new Color32(0x16, 0x16, 0x16, 0xF0), rounded: true);
+            var band = UiKit.Panel(root, "Band", mine ? new Color32(0x28, 0x21, 0x18, 0xF0) : new Color32(0x18, 0x14, 0x0F, 0xF0), rounded: true);
             band.raycastTarget = false;
             UiKit.Place(band.rectTransform, new Vector2(.5f, 1), new Vector2(.5f, 1), new Vector2(0, -90), new Vector2(560, 70));
             var label = UiKit.Label(band.transform, "<size=30><b>역전!</b></size>   " + text, 18, Color.white, TextAnchor.MiddleCenter);

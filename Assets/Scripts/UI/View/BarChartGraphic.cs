@@ -20,23 +20,23 @@ namespace BlackWhale.UI.View
     {
         public static readonly Color32 UpColor = new Color32(0xFF, 0x4D, 0x4F, 0xFF); // 상승 봉: 빨강(무채색 테마 예외, 검정 바탕용 밝은 빨강)
         public static readonly Color32 DownColor = new Color32(0x3D, 0x8B, 0xFF, 0xFF); // 하락 봉: 파랑(무채색 테마 예외)
-        public static readonly Color32 ZeroColor = new Color32(0xA0, 0xA0, 0xA0, 0xFF);
-        public static readonly Color32 FlatColor = new Color32(0xA0, 0xA0, 0xA0, 0xFF);
-        public static readonly Color32 UnknownOpenColor = new Color32(0x6E, 0x6E, 0x6E, 0xFF);
-        public static readonly Color32 SubGridColor = new Color32(0x1C, 0x1C, 0x1C, 0xFF);
-        public static readonly Color32 HiddenColor = new Color32(0x8C, 0x8C, 0x8C, 0x1C);
-        public static readonly Color32 GridColor = new Color32(0x3A, 0x3A, 0x3A, 0xFF);
+        public static readonly Color32 ZeroColor = new Color32(0xB0, 0x93, 0x6D, 0xFF);
+        public static readonly Color32 FlatColor = new Color32(0xB0, 0x93, 0x6D, 0xFF);
+        public static readonly Color32 UnknownOpenColor = new Color32(0x79, 0x65, 0x4B, 0xFF);
+        public static readonly Color32 SubGridColor = new Color32(0x1F, 0x1A, 0x13, 0xFF);
+        public static readonly Color32 HiddenColor = new Color32(0x9A, 0x81, 0x5F, 0x1C);
+        public static readonly Color32 GridColor = new Color32(0x40, 0x35, 0x27, 0xFF);
         public static readonly Color32 BandColor = new Color32(0xFF, 0xFF, 0xFF, 0x30); // 선택 네모칸과 같은 색
         public static readonly Color32 BandEdgeColor = new Color32(0xFF, 0xFF, 0xFF, 0xCC);
         public static readonly Color32 CandidateColor = new Color32(0xFF, 0xFF, 0xFF, 0xFF); // 진입일 후보: 파란색
         public static readonly Color32 PreviewOkColor = new Color32(0xFF, 0xFF, 0xFF, 0x30);   // 구간 미리보기: 파란색
-        public static readonly Color32 PreviewBadColor = new Color32(0x8C, 0x8C, 0x8C, 0x22);  // 불가 구간: 회색(빨간색 대신)
+        public static readonly Color32 PreviewBadColor = new Color32(0x9A, 0x81, 0x5F, 0x22);  // 불가 구간: 회색(빨간색 대신)
         public static readonly Color32 AllowedColor = new Color32(0x22, 0xC5, 0x5E, 0x1A);
         public static readonly Color32 AllowedEdgeColor = new Color32(0x22, 0xC5, 0x5E, 0x8C);
         public static readonly Color32 HoverColor = new Color32(0xFF, 0xFF, 0xFF, 0x14);
         public static readonly Color32 CurrentDayColor = new Color32(0xFF, 0xFF, 0xFF, 0x18);
         public static readonly Color32 CurrentDayEdgeColor = new Color32(0xFF, 0xFF, 0xFF, 0xE0);
-        public static readonly Color32 TrendColor = new Color32(0xCF, 0xCF, 0xCF, 0xFF);
+        public static readonly Color32 TrendColor = new Color32(0xE4, 0xBE, 0x8D, 0xFF);
         private int? _trendThroughDay;
         public void SetTrendThroughDay(int? day)
         {
@@ -361,7 +361,7 @@ namespace BlackWhale.UI.View
             if (_hiddenTail)
             {
                 float left = DayAxis.LeftX(26, r.xMin, r.width);
-                Quad(vh, left, r.yMin, r.xMax, r.yMax, new Color32(0x14, 0x14, 0x14, 0xF0));
+                Quad(vh, left, r.yMin, r.xMax, r.yMax, new Color32(0x16, 0x12, 0x0E, 0xF0));
             }
             // 미열람 날짜: 칸 전체 음영(공개 연출 중 아직 선이 지나가지 않은 공개 날짜도 가려 둔다)
             for (int i = 0; i < _bars.Length; i++)

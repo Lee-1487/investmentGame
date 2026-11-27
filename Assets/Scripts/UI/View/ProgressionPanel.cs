@@ -50,12 +50,15 @@ namespace BlackWhale.UI.View
             for (int i = 0; i < labels.Length; i++)
             {
                 Page target = pages[i];
-                var button = UiKit.Button(nav, labels[i], 12, Palette.Card, Palette.Text, () => Open(target));
+                var button = UiKit.Button(nav, labels[i], 12, i == 0 ? Palette.Maroon : Palette.Card, Palette.Text, () => Open(target)); // 도트 테마: 전광판 탭은 자주색
                 button.name = "Open" + target;
                 UiKit.Anchor((RectTransform)button.transform, i / (float)labels.Length, 0, (i + 1) / (float)labels.Length, 1, 3, 1);
             }
             modal = UiKit.Panel(root, "LiveGameScreen", Palette.Screen, rounded: true, raycast: true).rectTransform;
             UiKit.Stretch(modal, 42, 40, 42, 40);
+            var modalFrame = UiKit.Panel(modal, "PixelFrame", Palette.CardBorder); // 도트 테마 테두리(속이 빈 틀)
+            modalFrame.sprite = UiKit.PixelFrame; modalFrame.type = Image.Type.Sliced; modalFrame.pixelsPerUnitMultiplier = UiKit.PixelScale;
+            UiKit.Stretch(modalFrame.rectTransform);
             content = UiKit.Rect(modal, "LiveFeatureContent"); UiKit.Stretch(content, 16, 12, 16, 68);
             feedback = UiKit.Label(modal, "", 12, Palette.SubText, TextAnchor.MiddleLeft);
             UiKit.Place(feedback.rectTransform, Vector2.zero, Vector2.zero, new Vector2(16, 12), new Vector2(710, 42));
