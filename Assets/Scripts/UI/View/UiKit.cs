@@ -156,6 +156,55 @@ namespace BlackWhale.UI.View
         /// <summary>아래쪽이 살짝 어두운 도트 버튼 바탕(입체감).</summary>
         public static Sprite PixelBevel => _bevel != null ? _bevel : (_bevel = PixelSprite(16, 2, 0, 1f, 3, 0.72f, false));
 
+        private static Sprite _face;
+        /// <summary>
+        /// 플레이어 얼굴 도트 아이콘(14x14). 흰 몸통은 Image 색(플레이어 색)으로 물들고,
+        /// 외곽선·눈·입은 어두워서 어떤 색에서도 보인다.
+        /// </summary>
+        public static Sprite PixelFace
+        {
+            get
+            {
+                if (_face != null) return _face;
+                string[] art =
+                {
+                    "..............",
+                    "....######....",
+                    "..##wwwwww##..",
+                    ".#wwhhwwwwww#.",
+                    ".#whhwwwwwww#.",
+                    "#wwwwwwwwwwww#",
+                    "#ww##wwww##ww#",
+                    "#ww#kwwww#kww#",
+                    "#wwwwwwwwwwww#",
+                    "#wwww####wwww#",
+                    ".#wwwwwwwwww#.",
+                    ".#ssssssssss#.",
+                    "..##########..",
+                    "..............",
+                };
+                const int size = 14;
+                var tex = new Texture2D(size, size, TextureFormat.RGBA32, false)
+                { wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Point, hideFlags = HideFlags.DontSave };
+                var px = new Color32[size * size];
+                for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    char ch = art[size - 1 - y][x];
+                    px[y * size + x] = ch == '#' ? new Color32(0x14, 0x0E, 0x09, 255)   // 외곽선·눈·입
+                        : ch == 'k' ? new Color32(0xF2, 0xE6, 0xCC, 255)               // 눈 반짝임
+                        : ch == 'h' ? new Color32(255, 255, 255, 255)                    // 하이라이트(색이 가장 밝게)
+                        : ch == 'w' ? new Color32(0xD8, 0xD8, 0xD8, 255)                 // 몸통(플레이어 색)
+                        : ch == 's' ? new Color32(0x8C, 0x8C, 0x8C, 255)                 // 아래 그림자
+                        : new Color32(0, 0, 0, 0);
+                }
+                tex.SetPixels32(px); tex.Apply();
+                _face = Sprite.Create(tex, new UnityEngine.Rect(0, 0, size, size), new Vector2(.5f, .5f), 100f);
+                _face.hideFlags = HideFlags.DontSave;
+                return _face;
+            }
+        }
+
         /// <summary>도트 모서리(계단식으로 깎인) 9-slice 스프라이트. 예전 '둥근 모서리' 자리에 그대로 쓰인다.</summary>
         public static Sprite Rounded => _rounded != null ? _rounded : (_rounded = PixelSprite(16, 2, 0, 1f, 0, 1f, false));
 
