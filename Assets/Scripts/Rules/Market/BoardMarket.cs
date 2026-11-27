@@ -64,12 +64,15 @@ namespace BlackWhale.Rules
             market.SetSegment("FOOD", start, food);
 
             int aiCount = Count("AI");
-            bool falling = aiCount > 3 || SegmentRandom(segment, 11).Next(10000) < aiFallChanceBps;
+            int aiInvestors = stockPlayers.Values.Count(p => p.Shares["AI"] > 0);
+            // An empty segment breaks the rising streak before this segment's draw.
+            if (aiCount == 0) aiFallChanceBps = 0;
+            bool falling = aiInvestors >= 3 || SegmentRandom(segment, 11).Next(10000) < aiFallChanceBps;
             int aiMove = falling ? -3000 : 1500;
             int aiStart = market.ChangeBps("AI", start - 1);
             // 15/30 percentage points are the total move of one five-day segment.
             market.SetSegment("AI", start, Enumerable.Range(1, 5).Select(i => aiStart + aiMove * i / 5).ToArray());
-            aiFallChanceBps = falling ? 0 : Math.Min(10000, aiFallChanceBps + aiCount * 1000);
+            aiFallChanceBps = falling || aiCount == 0 ? 0 : Math.Min(10000, aiFallChanceBps + aiCount * 500);
 
             var bioRandom = SegmentRandom(segment, 23);
             bool lightning = !bioOccurred && bioRandom.Next(10000) < 500 + bioExpectationBps;
@@ -77,8 +80,8 @@ namespace BlackWhale.Rules
             int bioValue = market.ChangeBps("BIO", start - 1);
             var bio = new int[5];
             for (int i = 0; i < 5; i++) {
-                // Keep the existing BIO lightning size (40 percentage points); ordinary days alternate by one point.
-                bioValue += i == eventDay ? 4000 : (start + i) % 2 == 1 ? 100 : -100;
+                // BIO lightning adds 200 percentage points; ordinary days alternate by one point.
+                bioValue += i == eventDay ? 20000 : (start + i) % 2 == 1 ? 100 : -100;
                 bio[i] = bioValue;
             }
             market.SetSegment("BIO", start, bio);
@@ -90,9 +93,9 @@ namespace BlackWhale.Rules
 
         private StockInsight[] BoardInsights() => new[] {
             new StockInsight { companyId = "AI", probabilityBps = aiFallChanceBps,
-                message = "하락 확률 " + (aiFallChanceBps / 100m).ToString("0.##") + "% · 투자말 4개 이상이면 무조건 하락 · 상승 +15%p / 하락 −30%p" },
+                message = "하락 확률 " + (aiFallChanceBps / 100m).ToString("0.##") + "% · 투자 플레이어 3명 이상이면 무조건 하락 · 상승 시 투자말당 5% 누적 · 미투자 구간 0% 초기화 · 상승 +15%p / 하락 −30%p" },
             new StockInsight { companyId = "BIO", probabilityBps = bioOccurred ? 0 : 500 + bioExpectationBps,
-                message = bioOccurred ? "Lightening 발생 완료 · 남은 구간 확률 0%" : "Lightening 확률 " + ((500 + bioExpectationBps) / 100m).ToString("0.##") + "% · 최대 40% · 발생 시 +40%p" }
+                message = bioOccurred ? "Lightening 발생 완료 · 남은 구간 확률 0%" : "Lightening 확률 " + ((500 + bioExpectationBps) / 100m).ToString("0.##") + "% · 최대 40% · 발생 시 +200%p" }
         };
 
         private Action CaptureBoardCheckpoint()

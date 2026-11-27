@@ -41,7 +41,7 @@ namespace BlackWhale.UI.Presentation
             string chance = (insight.probabilityBps / 100m).ToString("0.##") + "%";
             return segment + "구간 " + (company == "AI" ? "하락 " : "Lightening ") + chance + " · "
                 + (segment == 1 ? "초기 확률" : "직전 구간 투자 반영")
-                + (company == "AI" ? "\n이번 구간 투자말 4개 이상이면 하락 100%" : insight.probabilityBps == 0 ? "\n이미 발생 · 남은 구간 0%" : "\n기본 5% · 최대 40% · 30일당 1회");
+                + (company == "AI" ? "\n투자 플레이어 3명 이상이면 하락 100%" : insight.probabilityBps == 0 ? "\n이미 발생 · 남은 구간 0%" : "\n기본 5% · 최대 40% · +200%p · 30일당 1회");
         }
     }
 }

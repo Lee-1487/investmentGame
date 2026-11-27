@@ -45,7 +45,7 @@ namespace BlackWhale.Tests
         public static string[] Run()
         {
             var passed = new List<string>();
-            InformationAndPrivacy(); passed.Add("BOARD information allocation, forwarding, intents, privacy, defensive DTO copies");
+            InformationAndPrivacy(); passed.Add("BOARD initial card ownership, exchange restrictions, intents, privacy, defensive DTO copies");
             SegmentsAndSettlement(); passed.Add("BOARD 120/10/2 second timing, six segments, stale requests, settlement and rotation");
             Reactions(); passed.Add("BOARD FOOD cap, AUTO independence, AI accumulation/forced decline/reset, BIO one-shot probabilities across 300 seeds");
             DeveloperRewind(); passed.Add("BOARD developer rewind restores prices, allocations and probability state");
@@ -59,15 +59,15 @@ namespace BlackWhale.Tests
             }
             passed.Add("BOARD three four-bot games finish all six rounds without command errors or augments");
             BotPolicyAndChartBehavior();
-            passed.Add("BOARD bot affinity, probabilistic skill/personality, and BIO fixed axis (-40% to +80%p)");
+            passed.Add("BOARD bot affinity, probabilistic skill/personality, and BIO fixed axis (-40% to +240%p)");
             return passed.ToArray();
         }
 
         private static void BotPolicyAndChartBehavior()
         {
             var bio = ChartVerticalRange.BioFixed;
-            Check(bio.MinBps == -4000 && bio.MaxBps == 8000, "BIO fixed vertical axis -40%..+80%");
-            Check(bio.AxisTicks(5).SequenceEqual(new[] { -4000, 0, 4000, 8000 }), "BIO fixed axis ticks");
+            Check(bio.MinBps == -4000 && bio.MaxBps == 24000, "BIO fixed vertical axis -40%..+240%");
+            Check(bio.AxisTicks(5).SequenceEqual(new[] { 0, 10000, 20000 }), "BIO fixed axis ticks");
 
             var clickSnap = new ChartRangeSelection { MinimumDay = 1, SnapSegmentOnClick = true };
             clickSnap.Begin(12, Array.Empty<Interval>());
@@ -83,7 +83,7 @@ namespace BlackWhale.Tests
                 turn = 1, recipientPlayerId = "P1",
                 companies = new[] {
                     new VisibleCompany { companyId = "AI", visibleWindows = new[] { new VisibleInformationWindow { startDay = 1, dailyChangesBps = new[] { 300, 600, 900, 1200, -1800 } } } },
-                    new VisibleCompany { companyId = "FOOD", visibleWindows = new[] { new VisibleInformationWindow { startDay = 6, dailyChangesBps = new[] { 100, 200, 300, 400, 500 } } } }
+                    new VisibleCompany { companyId = "FOOD", visibleWindows = new[] { new VisibleInformationWindow { startDay = 6, source = "DEALT", dailyChangesBps = new[] { 100, 200, 300, 400, 500 } } } }
                 },
                 receivedTradeIntents = new[] { new TradeIntent { senderId = "P3", targetPlayerId = "P1", companyId = "FOOD", entryDay = 1, exitDay = 5 } }
             };
@@ -133,6 +133,7 @@ namespace BlackWhale.Tests
             Check(h.Send(1, StockRules.ShareInformation, share, "share-once").success, "idempotent retry");
             Check(h.View(2).companies.Single(c => c.companyId == "FOOD").visibleWindows.Count(w => w.startDay == 6) == 0, "pending exchange does not leak card before acceptance");
             Check(!h.Send(1, "COMPLETE_PHASE").success, "cannot finish info phase while exchange is pending");
+            Check(h.Send(2, StockRules.ShareInformation, new CommandPayload { targetPlayerId = "P3", companyId = "FOOD", startDay = 6, requestedCompanyId = "FOOD", requestedStartDay = 16 }).errorCode == "INFORMATION_NOT_KNOWN", "pending received card cannot be forwarded");
             Check(h.Send(2, StockRules.RespondExchange, new CommandPayload { exchangeId = shareRes.payload.exchangeId, acceptExchange = true }, "accept-once").success, "accept exchange");
             Check(h.View(2).companies.Single(c => c.companyId == "FOOD").visibleWindows.Count(w => w.startDay == 6) == 1, "recipient receives offered card");
             Check(h.View(1).companies.Single(c => c.companyId == "FOOD").visibleWindows.Count(w => w.startDay == 11) == 1, "sender receives requested card");
@@ -140,6 +141,15 @@ namespace BlackWhale.Tests
             Check(rejectReq.success && h.Send(3, StockRules.RespondExchange, new CommandPayload { exchangeId = rejectReq.payload.exchangeId, acceptExchange = false }).success, "reject exchange");
             Check(h.View(3).companies.Single(c => c.companyId == "FOOD").visibleWindows.Count(w => w.startDay == 26) == 0, "rejected exchange transfers nothing");
             Check(!h.Send(1, StockRules.ShareInformation, new CommandPayload { targetPlayerId = "P4", companyId = "FOOD", startDay = 16, requestedCompanyId = "FOOD", requestedStartDay = 21 }).success, "cannot forge unknown card");
+            var forward = h.Send(1, StockRules.ShareInformation, new CommandPayload { targetPlayerId = "P4", companyId = "FOOD", startDay = 11, requestedCompanyId = "FOOD", requestedStartDay = 21 });
+            Check(!forward.success && forward.errorCode == "INFORMATION_NOT_KNOWN", "exchanged information cannot be offered again");
+            Check(!h.View(4).companies.Single(c => c.companyId == "FOOD").visibleWindows.Any(w => w.startDay == 11), "blocked forwarding reveals nothing");
+            var ownership = h.Room.Snapshot().segmentKnowledge;
+            Check(ownership.Single(k => k.companyId == "FOOD" && k.startDay == 6).playerIds.SequenceEqual(new[] { "P1" }), "offered card still lists only original owner");
+            Check(ownership.Single(k => k.companyId == "FOOD" && k.startDay == 11).playerIds.SequenceEqual(new[] { "P2" }), "requested card does not list players who learned it");
+            Check(ownership.Single(k => k.companyId == "FOOD" && k.startDay == 1).playerIds.SequenceEqual(new[] { "ALL" }), "public segment remains public");
+            var originalAgain = h.Send(1, StockRules.ShareInformation, new CommandPayload { targetPlayerId = "P4", companyId = "FOOD", startDay = 6, requestedCompanyId = "FOOD", requestedStartDay = 21 });
+            Check(originalAgain.success && h.Send(4, StockRules.RespondExchange, new CommandPayload { exchangeId = originalAgain.payload.exchangeId, acceptExchange = true }).success, "original owner can exchange initially dealt information again");
             Check(h.Send(1, StockRules.SendPlan, new CommandPayload { targetPlayerId = "P2", companyId = "BIO", startDay = 6, endDay = 15 }).success, "send intent without exchange");
             Check(h.View(2).receivedTradeIntents.Single().senderId == "P1" && h.View(3).receivedTradeIntents.Length == 0, "intent recipient privacy");
             var copy = DtoCopy.Copy(h.View(2)); copy.receivedTradeIntents[0].entryDay = 26;
@@ -199,10 +209,27 @@ namespace BlackWhale.Tests
             var actual = food.GetWindow(1, "FOOD", 0, 6);
             for (int day = 1; day <= 5; day++) { int move = baseline[day] - baseline[day - 1]; Check(actual[day] - actual[day - 1] == move + Math.Sign(move) * 2000, "FOOD +20 point cap"); }
             Check(food.GetWindow(1, "AUTO", 0, 31).SequenceEqual(auto), "AUTO unchanged");
-            var ai = Market(55); Place(ai, 1, "AI", 3); Reveal(ai);
-            Check(ai.GetWindow(1, "AI", 5, 1)[0] == 1500 && Chance(ai, "AI") == 3000, "AI +15 points and next 30 percent");
-            Place(ai, 2, "AI", 1); Reveal(ai);
-            Check(ai.GetWindow(1, "AI", 10, 1)[0] - ai.GetWindow(1, "AI", 5, 1)[0] == -3000 && Chance(ai, "AI") == 0, "AI four tokens force -30 and reset");
+            var twoInvestors = Market(55); Place(twoInvestors, 1, "AI", 3); Place(twoInvestors, 2, "AI", 3); Reveal(twoInvestors);
+            Check(twoInvestors.GetWindow(1, "AI", 5, 1)[0] == 1500 && Chance(twoInvestors, "AI") == 3000, "two players with six tokens do not force a fall; next risk is 30 percent");
+            var threeInvestors = Market(55);
+            for (int p = 1; p <= 3; p++) Place(threeInvestors, p, "AI", 1);
+            Reveal(threeInvestors);
+            Check(threeInvestors.GetWindow(1, "AI", 5, 1)[0] == -3000 && Chance(threeInvestors, "AI") == 0, "three players with three tokens force a fall and reset");
+            int rises = 0, falls = 0;
+            for (int seed = 0; seed < 100; seed++) {
+                var ai = Market(seed); Place(ai, 1, "AI", 3); Reveal(ai);
+                Check(ai.GetWindow(1, "AI", 5, 1)[0] == 1500 && Chance(ai, "AI") == 1500, "three tokens from one player add only 15 percent risk");
+                Place(ai, 2, "AI", 1); Reveal(ai);
+                int move = ai.GetWindow(1, "AI", 10, 1)[0] - ai.GetWindow(1, "AI", 5, 1)[0];
+                Check(move == 1500 || move == -3000, "AI keeps segment rise and fall sizes");
+                if (move == 1500) { rises++; Check(Chance(ai, "AI") == 3500, "consecutive rise adds four tokens times five percent to prior 15 percent"); }
+                else { falls++; Check(Chance(ai, "AI") == 0, "random fall resets accumulated risk"); }
+                Place(ai, 1, "AI", 0); Place(ai, 2, "AI", 0); Reveal(ai);
+                Check(Chance(ai, "AI") == 0 && ai.GetWindow(1, "AI", 15, 1)[0] - ai.GetWindow(1, "AI", 10, 1)[0] == 1500, "empty segment resets risk before drawing, even after a rising streak");
+                Place(ai, 1, "AI", 1); Reveal(ai);
+                Check(Chance(ai, "AI") == 500 && ai.GetWindow(1, "AI", 20, 1)[0] - ai.GetWindow(1, "AI", 15, 1)[0] == 1500, "investment after empty segment restarts at five percent");
+            }
+            Check(rises > 0 && falls > 0, "accumulated risk permits both rising and falling paths");
             int occurredGames = 0, missedGames = 0;
             for (int seed = 0; seed < 300; seed++) {
                 var bio = Market(seed); bool occurred = false; int expectation = 0, events = 0;
@@ -212,8 +239,8 @@ namespace BlackWhale.Tests
                     Check(Chance(bio, "BIO") == (occurred ? 0 : 500 + expectation), "BIO next chance follows history");
                     Reveal(bio);
                     var values = bio.GetWindow(1, "BIO", start, 6);
-                    int spikes = Enumerable.Range(1, 5).Count(d => values[d] - values[d - 1] == 4000);
-                    Check(Enumerable.Range(1, 5).All(d => values[d] - values[d - 1] == 4000 || Math.Abs(values[d] - values[d - 1]) == 100), "BIO quiet days are one point");
+                    int spikes = Enumerable.Range(1, 5).Count(d => values[d] - values[d - 1] == 20000);
+                    Check(Enumerable.Range(1, 5).All(d => values[d] - values[d - 1] == 20000 || Math.Abs(values[d] - values[d - 1]) == 100), "BIO quiet days are one point");
                     events += spikes; occurred |= spikes > 0;
                     expectation = occurred ? 0 : count == 0 ? expectation / 2 : Math.Min(3500, expectation + (count == 1 ? 500 : count == 2 ? 800 : 1000));
                     Check(Chance(bio, "BIO") == (occurred ? 0 : 500 + expectation) && Chance(bio, "BIO") <= 4000, "BIO cap/halving/zero after event");
@@ -232,7 +259,7 @@ namespace BlackWhale.Tests
             int[] prices = h.Market.GetWindow(1, "AI", 1, 5);
             Check(h.Send(1, "DEV_NEXT").success && h.Market.ProcessedDay == 5, "developer next decision");
             Check(h.Send(1, "DEV_PREVIOUS").success && h.Market.ProcessedDay == 0 && h.Room.Snapshot().stockSegmentRevealing, "rewind reveal");
-            Check(h.Market.GetWindow(1, "AI", 1, 5).SequenceEqual(prices) && Chance(h.Market, "AI") == 3000, "restore committed prices and probabilities");
+            Check(h.Market.GetWindow(1, "AI", 1, 5).SequenceEqual(prices) && Chance(h.Market, "AI") == 1500, "restore committed prices and probabilities");
             Check(h.Send(1, "DEV_PREVIOUS").success && h.Market.DecisionOpen && Chance(h.Market, "AI") == 0, "rewind decision");
             Check(h.Room.Snapshot().stockSegmentHistory.Length == 0 && h.Market.GetWindow(1, "AI", 1, 5).All(v => v == 0), "clear future reveal and prices");
         }

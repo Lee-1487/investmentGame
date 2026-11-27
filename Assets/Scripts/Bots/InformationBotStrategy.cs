@@ -114,7 +114,8 @@ namespace BlackWhale.Bots
         {
             if (request == null || view == null) return false;
             // Reject if we don't own the requested card or already know the offered card.
-            if (!HasWindowCard(view, request.requestedCompanyId, request.requestedStartDay)) return false;
+            if (view.companies?.FirstOrDefault(c => c.companyId == request.requestedCompanyId)?.visibleWindows
+                ?.Any(w => w.startDay == request.requestedStartDay && w.source == "DEALT" && w.dailyChangesBps?.Length == 5) != true) return false;
             if (HasWindowCard(view, request.offeredCompanyId, request.offeredStartDay)) return false;
             double affinityMod = (GetAffinity(request.senderId) - 0.50) * 0.70;
             double personalityMod = Policy.Personality == BotPersonality.Adventurous ? 0.10 : Policy.Personality == BotPersonality.Stable ? -0.05 : 0.0;
@@ -136,11 +137,15 @@ namespace BlackWhale.Bots
             var known = (view.companies ?? Array.Empty<VisibleCompany>())
                 .Where(c => c.companyId == "FOOD" || c.companyId == "AUTO")
                 .SelectMany(c => (c.visibleWindows ?? Array.Empty<VisibleInformationWindow>())
-                    .Where(w => w.source != "PUBLIC" && w.source != "MARKET" && w.startDay >= 6 && w.startDay <= 26 && w.dailyChangesBps?.Length == 5)
+                    .Where(w => w.source == "DEALT" && w.startDay >= 6 && w.startDay <= 26 && w.dailyChangesBps?.Length == 5)
                     .Select(w => new { Company = c.companyId, Start = w.startDay }))
                 .GroupBy(x => x.Company + ":" + x.Start).Select(g => g.First()).ToArray();
             if (known.Length == 0) return null;
-            var knownKeys = new HashSet<string>(known.Select(k => k.Company + ":" + k.Start));
+            // Received information remains known, but only originally dealt cards can be offered.
+            var knownKeys = new HashSet<string>((view.companies ?? Array.Empty<VisibleCompany>())
+                .SelectMany(c => (c.visibleWindows ?? Array.Empty<VisibleInformationWindow>())
+                    .Where(w => w.dailyChangesBps?.Length == 5)
+                    .Select(w => c.companyId + ":" + w.startDay)));
             var unknown = new[] { "FOOD", "AUTO" }
                 .SelectMany(comp => new[] { 6, 11, 16, 21, 26 }.Select(start => new { Company = comp, Start = start }))
                 .Where(x => !knownKeys.Contains(x.Company + ":" + x.Start)).ToArray();
@@ -238,7 +243,7 @@ namespace BlackWhale.Bots
         {
             double chance = (view.portfolio?.insights?.FirstOrDefault(i => i.companyId == "AI")?.probabilityBps ?? 0) / 10000d;
             int previousOthers = state.shareMarket?.FirstOrDefault(c => c.companyId == "AI")?.owners
-                ?.Where(o => o.playerId != view.recipientPlayerId).Sum(o => o.shares) ?? 0;
+                ?.Count(o => o.playerId != view.recipientPlayerId && o.shares > 0) ?? 0;
             int day = view.portfolio?.processedDay ?? 0;
             int segStart = day + 1, segEnd = Math.Min(30, segStart + 4);
             int trustedRumors = (view.receivedTradeIntents ?? Array.Empty<TradeIntent>())
@@ -267,7 +272,7 @@ namespace BlackWhale.Bots
             }
             if (state.stockSystem && id == "BIO") {
                 double bioProb = (view.portfolio?.insights?.FirstOrDefault(i => i.companyId == id)?.probabilityBps ?? 500) / 10000d;
-                gain = bioProb * 4000;
+                gain = bioProb * 20000;
             }
             var market = state.shareMarket?.FirstOrDefault(c => c.companyId == id);
             double occupied = (market?.owners?.Where(o => o.playerId != view.recipientPlayerId).Sum(o => o.shares + o.reserved) ?? 0) / (double)StockRules.Supply;

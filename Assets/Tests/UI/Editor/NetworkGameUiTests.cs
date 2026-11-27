@@ -782,6 +782,131 @@ namespace BlackWhale.UI.Tests
             }
             finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); }
         }
+        [UnityTest]
+        public IEnumerator InformationExchange_CompactSelectionAndResponses_WorkWithoutZoom()
+        {
+            var client = new PlanningClient(); var controller = new GameClientController(client);
+            var events = new GameObject("Exchange events", typeof(EventSystem));
+            var canvas = new GameObject("Compact exchange UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.GetComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvas.GetComponent<CanvasScaler>().referenceResolution = new Vector2(1280, 720);
+            try
+            {
+                client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+                var state = new PublicState { turn = 1, phase = Protocol.Info, stockSystem = true, windowInformation = true,
+                    players = new[] { new Player { playerId = "P1", connected = true }, new Player { playerId = "P2", connected = true } },
+                    segmentKnowledge = new[] { new SegmentKnowledge { companyId = "FOOD", startDay = 11, playerIds = new[] { "P2" } } } };
+                VisibleInformationWindow Window(int day, string source) => new VisibleInformationWindow {
+                    startDay = day, source = source, dailyChangesBps = new[] { 100, 200, 300, 400, 500 }, dailyOpenBps = new[] { 0, 100, 200, 300, 400 } };
+                var view = new PlayerView { turn = 1, phase = Protocol.Info, recipientPlayerId = "P1", assets = 100000000,
+                    companies = UiRules.CompanyIds.Select(id => new VisibleCompany { companyId = id, visibleWindows = id == "FOOD"
+                        ? new[] { Window(1, "PUBLIC"), Window(6, "DEALT"), Window(16, "ITEM"), Window(21, "EXCHANGED") } : new VisibleInformationWindow[0] }).ToArray() };
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                var page = new InfoPurchasePage((RectTransform)canvas.transform, controller); page.Refresh();
+                yield return null; Canvas.ForceUpdateCanvases();
+                var card = canvas.GetComponentsInChildren<RectTransform>().Single(r => r.name == "Card_FOOD");
+                var pointer = card.GetComponentInChildren<ChartPointerLayer>();
+                Button Button(string name) => card.GetComponentsInChildren<Button>().Single(b => b.name == name);
+                var exchange = Button("ConfirmInformationWindow");
+                Assert.IsFalse(exchange.interactable, "select a hidden segment before exchanging");
+                Assert.AreEqual(82, pointer.GetComponent<RectTransform>().offsetMin.y, "compact chart reclaims unused reservation row");
+                DragChart(pointer, 11, 11);
+                Assert.IsTrue(exchange.interactable); exchange.onClick.Invoke();
+                Assert.AreEqual("\uBCF4\uB0B4\uAE30", exchange.GetComponentInChildren<Text>().text);
+                Assert.IsFalse(exchange.interactable, "sending requires an owned received card");
+                Assert.AreEqual(11, Field<int?>(pointer.GetComponent<BarChartGraphic>(), "_exchangeReceiveStart"));
+                DragChart(pointer, 1, 1); Assert.IsFalse(exchange.interactable, "public information is not sendable");
+                DragChart(pointer, 16, 16); Assert.IsFalse(exchange.interactable, "item information is not a received card");
+                DragChart(pointer, 21, 21); Assert.IsFalse(exchange.interactable, "exchanged information cannot be offered again");
+                // A draft survives changing chart size, and uses the same received/send selections.
+                page.OpenCompany("FOOD"); Canvas.ForceUpdateCanvases();
+                var zoom = canvas.GetComponentsInChildren<ChartPointerLayer>().Single(p => p.name == "ZoomChart_FOOD");
+                DragChart(zoom, 6, 6); page.Collapse(); page.Refresh();
+                Assert.IsTrue(exchange.interactable);
+                Assert.AreEqual(6, Field<int?>(pointer.GetComponent<BarChartGraphic>(), "_exchangeSendStart"));
+                exchange.onClick.Invoke();
+                var sent = client.Sent.Single(c => c.type == StockRules.ShareInformation);
+                Assert.AreEqual(6, sent.payload.startDay); Assert.AreEqual(11, sent.payload.requestedStartDay);
+                Assert.AreEqual("P2", sent.payload.targetPlayerId);
+                Assert.IsFalse(InformationWindowRules.KnownDays(controller.Store.View.companies.Single(c => c.companyId == "FOOD"))[11].HasValue);
+                foreach (bool accept in new[] { false, true })
+                {
+                    view.informationExchanges = new[] { new InformationExchange { id = "incoming-" + accept, senderId = "P2", targetPlayerId = "P1", status = "PENDING",
+                        offeredCompanyId = "FOOD", offeredStartDay = 11, requestedCompanyId = "FOOD", requestedStartDay = 6 } };
+                    client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view }); page.Refresh();
+                    Assert.IsTrue(Button("ConfirmInformationWindow").interactable);
+                    Assert.IsTrue(Button("ReserveRange").interactable);
+                    Button(accept ? "ConfirmInformationWindow" : "ReserveRange").onClick.Invoke();
+                    var response = client.Sent.Last(c => c.type == StockRules.RespondExchange);
+                    Assert.AreEqual(accept, response.payload.acceptExchange);
+                    client.Receive(new ServerMessage { type = "COMMAND_RESULT", response = new CommandResult {
+                        requestId = response.requestId, turn = 1, type = StockRules.RespondExchange + "_RESULT", success = true } });
+                }
+            }
+            finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); UnityEngine.Object.DestroyImmediate(events); }
+        }
+
+        [UnityTest]
+        public IEnumerator ReservedRange_RumorRecipients_CancelAndSend_WithoutSidebarActions()
+        {
+            var client = new PlanningClient(); var controller = new GameClientController(client);
+            var events = new GameObject("Rumor events", typeof(EventSystem));
+            var canvas = new GameObject("Reserved rumor UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.GetComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvas.GetComponent<CanvasScaler>().referenceResolution = new Vector2(1280, 720);
+            try {
+                client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+                var state = new PublicState { turn = 1, phase = Protocol.Info, stockSystem = true, windowInformation = true,
+                    players = Enumerable.Range(1, 4).Select(n => new Player { playerId = "P" + n, displayName = "Player " + n, connected = true }).ToArray() };
+                var view = new PlayerView { turn = 1, phase = Protocol.Info, recipientPlayerId = "P1", assets = 100000000,
+                    companies = UiRules.CompanyIds.Select(id => new VisibleCompany { companyId = id, visibleWindows = new VisibleInformationWindow[0] }).ToArray() };
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                var page = new InfoPurchasePage((RectTransform)canvas.transform, controller); page.Refresh();
+                Assert.AreEqual("", controller.Store.TradePlans.TryAddInterval("FOOD", 6, 10));
+                yield return null; Canvas.ForceUpdateCanvases();
+                var card = canvas.GetComponentsInChildren<RectTransform>().Single(r => r.name == "Card_FOOD");
+                var pointer = card.GetComponentInChildren<ChartPointerLayer>();
+                Button Action() => card.GetComponentsInChildren<Button>().Single(b => b.name == "ConfirmInformationWindow");
+                Button[] Recipients() => card.GetComponentsInChildren<Button>().Where(b => b.name.StartsWith("SendRumorTo_")).ToArray();
+                DragChart(pointer, 7, 7);
+                Assert.AreEqual("\uCC0C\uB77C\uC2DC \uBCF4\uB0B4\uAE30", Action().GetComponentInChildren<Text>().text);
+                Action().onClick.Invoke();
+                CollectionAssert.AreEquivalent(new[] { "SendRumorTo_P2", "SendRumorTo_P3", "SendRumorTo_P4" }, Recipients().Select(b => b.name));
+                Assert.AreEqual("\uCDE8\uC18C", Action().GetComponentInChildren<Text>().text);
+                Assert.IsTrue(card.GetComponentsInChildren<Button>().Single(b => b.name == "ReserveRange").interactable);
+                Assert.IsFalse(client.Sent.Any(c => c.type == StockRules.SendPlan));
+                Action().onClick.Invoke();
+                Assert.AreEqual(0, Recipients().Length);
+                Assert.AreEqual(1, controller.Store.TradePlans.Get("FOOD").Intervals.Length, "cancel recipient selection preserves reservation");
+                Assert.IsFalse(client.Sent.Any(c => c.type == StockRules.SendPlan));
+                Action().onClick.Invoke();
+                var stale = Recipients().Single(b => b.name == "SendRumorTo_P2");
+                controller.Store.TradePlans.RemoveInterval("FOOD", 0); stale.onClick.Invoke(); page.Refresh();
+                Assert.IsFalse(client.Sent.Any(c => c.type == StockRules.SendPlan), "deleted reservation cannot be sent through stale buttons");
+                Assert.AreEqual("", controller.Store.TradePlans.TryAddInterval("FOOD", 6, 10));
+                DragChart(pointer, 7, 7); page.Refresh();
+                Action().onClick.Invoke();
+                Recipients().Single(b => b.name == "SendRumorTo_P3").onClick.Invoke();
+                var command = client.Sent.Single(c => c.type == StockRules.SendPlan);
+                Assert.AreEqual("P3", command.payload.targetPlayerId); Assert.AreEqual("FOOD", command.payload.companyId);
+                Assert.AreEqual(6, command.payload.startDay); Assert.AreEqual(10, command.payload.endDay);
+                Assert.AreEqual(0, Recipients().Length);
+                Assert.AreEqual(1, controller.Store.TradePlans.Get("FOOD").Intervals.Length);
+                // Hovering a player now opens their summary, with no social action buttons.
+                var tablet = TabletView.Create((RectTransform)canvas.transform, controller);
+                var rowType = typeof(TabletView).Assembly.GetType("BlackWhale.UI.View.RankRow");
+                var row = Activator.CreateInstance(rowType); rowType.GetField("PlayerId").SetValue(row, "P2");
+                typeof(TabletView).GetMethod("ShowPlayerPopup", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(tablet, new[] { row, (object)card });
+                Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Any(b => b.name == "ChooseShareInformation" || b.name == "ChooseSendTradeIntent"));
+            }
+            finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); UnityEngine.Object.DestroyImmediate(events); }
+        }
+
         private sealed class PlanningClient : IGameClient
         {
             public readonly List<Command> Sent = new List<Command>();

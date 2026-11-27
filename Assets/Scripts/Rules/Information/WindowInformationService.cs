@@ -238,7 +238,7 @@ namespace BlackWhale.Rules.Information
                         var records = state.Records.Where(r => r.Company == company && r.Start == start && r.Length == 5 && r.HiddenUntil == 0).ToArray();
                         string[] owners = records.Any(r => r.Source == "PUBLIC")
                             ? new[] { "ALL" }
-                            : records.Select(r => r.Player).Where(p => !string.IsNullOrEmpty(p)).Distinct().OrderBy(p => p, StringComparer.Ordinal).ToArray();
+                            : records.Where(r => r.Source == "DEALT").Select(r => r.Player).Where(p => !string.IsNullOrEmpty(p)).Distinct().OrderBy(p => p, StringComparer.Ordinal).ToArray();
                         result.Add(new SegmentKnowledge { companyId = company, startDay = start, playerIds = owners });
                     }
                 return result.ToArray();

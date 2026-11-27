@@ -8,6 +8,9 @@ namespace BlackWhale.Rules.Information
         private static bool ExchangeCard(string company, int start) => (company == "FOOD" || company == "AUTO") && start >= 6 && start <= 26 && (start - 1) % 5 == 0;
         private WindowRecord KnownCard(WindowTurn state, string player, string company, int start) => state.Records
             .FirstOrDefault(r => r.Company == company && r.Start == start && r.Length == 5 && Accessible(r, player));
+        private WindowRecord SendableCard(WindowTurn state, string player, string company, int start) => state.Records
+            .FirstOrDefault(r => r.Player == player && r.Company == company && r.Start == start && r.Length == 5
+                && r.Source == "DEALT");
         public bool HasPendingInformationExchange(RequestContext c)
         {
             lock (gate) return Windows(c).Exchanges.Any(e => e.status == "PENDING" && (e.senderId == c.PlayerId || e.targetPlayerId == c.PlayerId));
@@ -21,7 +24,7 @@ namespace BlackWhale.Rules.Information
                 if (!ExchangeCard(offeredCompany, offeredStart) || !ExchangeCard(requestedCompany, requestedStart)) return new RuleResult("INVALID_WINDOW");
                 if (offeredCompany != requestedCompany) return new RuleResult("EXCHANGE_SAME_COMPANY");
                 var state = Windows(c);
-                if (KnownCard(state, c.PlayerId, offeredCompany, offeredStart) == null) return new RuleResult("INFORMATION_NOT_KNOWN");
+                if (SendableCard(state, c.PlayerId, offeredCompany, offeredStart) == null) return new RuleResult("INFORMATION_NOT_KNOWN");
                 if (KnownCard(state, c.PlayerId, requestedCompany, requestedStart) != null)
                     return new RuleResult("EXCHANGE_NOT_USEFUL");
                 // Pending requests carry card identities only. Never reveal whether the target privately owns the requested card.
@@ -43,8 +46,8 @@ namespace BlackWhale.Rules.Information
                 if (request == null) return new RuleResult("EXCHANGE_NOT_FOUND");
                 if (request.status != "PENDING") return new RuleResult("EXCHANGE_ALREADY_RESOLVED");
                 if (!accept) { request.status = "REJECTED"; return new RuleResult(payload: new ResultPayload { exchangeId = request.id }); }
-                var offered = KnownCard(state, request.senderId, request.offeredCompanyId, request.offeredStartDay);
-                var wanted = KnownCard(state, request.targetPlayerId, request.requestedCompanyId, request.requestedStartDay);
+                var offered = SendableCard(state, request.senderId, request.offeredCompanyId, request.offeredStartDay);
+                var wanted = SendableCard(state, request.targetPlayerId, request.requestedCompanyId, request.requestedStartDay);
                 if (offered == null || wanted == null) return new RuleResult("INFORMATION_NOT_KNOWN");
                 // Revalidate both sides before writing either one; concurrent offers may have made a card redundant.
                 if (KnownCard(state, request.targetPlayerId, request.offeredCompanyId, request.offeredStartDay) != null

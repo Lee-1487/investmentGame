@@ -15,6 +15,12 @@ namespace BlackWhale.UI.View
         private readonly Func<string> companyId;
         private readonly Text status;
         private readonly Button confirm, reserve;
+        private readonly RectTransform recipientRow;
+        private readonly Button[] recipientButtons = new Button[3];
+        private readonly string[] recipientIds = new string[3];
+        private string recipientSelectionKey;
+        public bool ChoosingRecipient { get; private set; }
+        public Action ControlsChanged;
         public RectTransform Root { get; }
         public ChartRangeSelection Selection { get; set; } = new ChartRangeSelection();
         public int StartDay => Selection.Start;
@@ -42,10 +48,17 @@ namespace BlackWhale.UI.View
             Root = UiKit.Rect(parent, "InformationWindowSelector"); UiKit.Stretch(Root);
             status = UiKit.Label(Root, "", 10, Palette.SubText, TextAnchor.UpperLeft);
             status.name = "InformationRangeCost"; UiKit.Stretch(status.rectTransform, 0, 0, 0, 26);
+            status.resizeTextForBestFit = true; status.resizeTextMinSize = 8; status.resizeTextMaxSize = 10;
             confirm = UiKit.Button(Root, "정보 사기", 11, Palette.Accent, Color.white, () => {
                 if (controller.Store.Public?.stockSystem == true) {
                     if (HasIncomingExchange) AcceptExchange?.Invoke();
-                    else if (InExchangeMode) CancelExchange?.Invoke();
+                    else if (InExchangeMode) RequestExchange?.Invoke();
+                    else if (Selection.SelectedIndex >= 0) {
+                        if (!IsSavedReservation()) return;
+                        ChoosingRecipient = !ChoosingRecipient;
+                        recipientSelectionKey = ReservationKey();
+                        Refresh(); ControlsChanged?.Invoke();
+                    }
                     else StartExchange?.Invoke();
                 }
                 else if (Selection.HasSelection && EndDay >= Math.Max(1, StartDay)) controller.SelectInformationWindow(companyId(), Math.Max(1, StartDay), EndDay);
@@ -57,7 +70,7 @@ namespace BlackWhale.UI.View
             {
                 if (controller.Store.Public?.stockSystem == true) {
                     if (HasIncomingExchange) RejectExchange?.Invoke();
-                    else if (InExchangeMode) RequestExchange?.Invoke();
+                    else if (InExchangeMode) CancelExchange?.Invoke();
                     else if (Selection.SelectedIndex >= 0) CancelReservation?.Invoke();
                     else Reserve?.Invoke();
                 } else {
@@ -67,6 +80,55 @@ namespace BlackWhale.UI.View
             reserve.name = "ReserveRange";
             rt = (RectTransform)reserve.transform; rt.anchorMin = new Vector2(.5f, 0); rt.anchorMax = new Vector2(1, 0);
             rt.offsetMin = new Vector2(3, 0); rt.offsetMax = new Vector2(0, 24);
+            recipientRow = UiKit.Panel(Root, "RumorRecipients", Palette.Card, rounded: true, raycast: true).rectTransform;
+            recipientRow.anchorMin = Vector2.zero; recipientRow.anchorMax = new Vector2(1, 0);
+            recipientRow.offsetMin = new Vector2(0, 48); recipientRow.offsetMax = new Vector2(0, 76);
+            for (int i = 0; i < recipientButtons.Length; i++) {
+                int index = i;
+                var button = UiKit.Button(recipientRow, "", 11, Palette.AccentSoft, Palette.Text, () => SendRumor(index));
+                UiKit.Anchor((RectTransform)button.transform, i / 3f, 0, (i + 1) / 3f, 1, 2, 0);
+                recipientButtons[i] = button;
+            }
+            recipientRow.gameObject.SetActive(false);
+        }
+        private bool IsSavedReservation()
+        {
+            var intervals = controller.Store.TradePlans.Get(companyId()).Intervals;
+            int index = Selection.SelectedIndex;
+            return Selection.HasSelection && index >= 0 && index < intervals.Length
+                && intervals[index].entryDay == StartDay && intervals[index].exitDay == EndDay;
+        }
+        private string ReservationKey() => controller.Store.CurrentTurn + ":" + controller.Store.Public?.phase
+            + ":" + companyId() + ":" + StartDay + ":" + EndDay;
+        private void SendRumor(int index)
+        {
+            var state = controller.Store.Public;
+            string target = recipientIds[index];
+            if (!ChoosingRecipient || recipientSelectionKey != ReservationKey() || !IsSavedReservation()
+                || state?.stockSystem != true || state.phase != Protocol.Info || state.paused
+                || !string.IsNullOrEmpty(controller.Store.EndReason) || HasIncomingExchange || InExchangeMode
+                || string.IsNullOrEmpty(target) || target == controller.LocalPlayerId
+                || state.players?.Any(p => p.playerId == target) != true) return;
+            if (controller.SendTradeIntent(target, companyId(), StartDay, EndDay) == CommandStatus.Sent) {
+                ChoosingRecipient = false; Refresh(); ControlsChanged?.Invoke();
+            }
+        }
+        private void RefreshRecipients(bool active)
+        {
+            if (!active || !IsSavedReservation() || recipientSelectionKey != ReservationKey()) ChoosingRecipient = false;
+            recipientRow.gameObject.SetActive(ChoosingRecipient);
+            if (!ChoosingRecipient) return;
+            var players = (controller.Store.Public?.players ?? Array.Empty<Player>())
+                .Where(p => p.playerId != controller.LocalPlayerId && !string.IsNullOrEmpty(p.playerId)).Take(3).ToArray();
+            for (int i = 0; i < recipientButtons.Length; i++) {
+                bool present = i < players.Length;
+                recipientButtons[i].gameObject.SetActive(present);
+                recipientIds[i] = present ? players[i].playerId : null;
+                if (!present) continue;
+                recipientButtons[i].name = "SendRumorTo_" + players[i].playerId;
+                string label = string.IsNullOrEmpty(players[i].displayName) ? players[i].playerId : players[i].displayName;
+                SetButtonStable(recipientButtons[i], label, !controller.Store.HasPending(StockRules.SendPlan), Palette.AccentSoft, Palette.Text);
+            }
         }
         /// <summary>값이 실제로 바뀔 때만 버튼을 건드린다(같은 값을 다시 넣어 상태 전환 효과가 다시 도는 것 방지).</summary>
         private static void SetButtonStable(Button button, string label, bool interactable, Color background, Color textColor)
@@ -82,6 +144,8 @@ namespace BlackWhale.UI.View
         {
             var state = controller.Store.Public;
             Root.gameObject.SetActive(state?.windowInformation == true && (state.phase == Protocol.Info || !state.stockSystem && state.phase == Protocol.Selection));
+            RefreshRecipients(state?.windowInformation == true && state.stockSystem && state.phase == Protocol.Info
+                && !state.paused && string.IsNullOrEmpty(controller.Store.EndReason) && !HasIncomingExchange && !InExchangeMode);
             if (state?.windowInformation != true) return;
             if (state.stockSystem) {
                 Selection.MinimumDay = 1;
@@ -103,12 +167,12 @@ namespace BlackWhale.UI.View
                 if (InExchangeMode) {
                     confirm.gameObject.SetActive(true);
                     reserve.gameObject.SetActive(true);
-                    ((RectTransform)confirm.transform).anchorMin = Vector2.zero; ((RectTransform)confirm.transform).anchorMax = new Vector2(.5f, 0);
-                    ((RectTransform)reserve.transform).anchorMin = new Vector2(.5f, 0); ((RectTransform)reserve.transform).anchorMax = new Vector2(1, 0);
+                    ((RectTransform)confirm.transform).anchorMin = new Vector2(.5f, 0); ((RectTransform)confirm.transform).anchorMax = new Vector2(1, 0);
+                    ((RectTransform)reserve.transform).anchorMin = Vector2.zero; ((RectTransform)reserve.transform).anchorMax = new Vector2(.5f, 0);
                     bool canReq = infoActive && CanRequestExchange?.Invoke() == true && !controller.Store.HasPending(StockRules.ShareInformation);
                     status.text = ExchangeStatus;
-                    SetButtonStable(reserve, "교환 요청", canReq, canReq ? Palette.Accent : Palette.Disabled, canReq ? Color.white : Palette.DisabledText);
-                    SetButtonStable(confirm, "취소", infoActive, infoActive ? Palette.AccentSoft : Palette.Disabled, infoActive ? Palette.Text : Palette.DisabledText);
+                    SetButtonStable(confirm, "보내기", canReq, canReq ? Palette.Accent : Palette.Disabled, canReq ? Color.white : Palette.DisabledText);
+                    SetButtonStable(reserve, "취소", infoActive, infoActive ? Palette.AccentSoft : Palette.Disabled, infoActive ? Palette.Text : Palette.DisabledText);
                     return;
                 }
                 bool canExchange = infoActive && CanStartExchange?.Invoke() == true;
@@ -118,11 +182,12 @@ namespace BlackWhale.UI.View
                 ((RectTransform)confirm.transform).anchorMin = new Vector2(.5f, 0); ((RectTransform)confirm.transform).anchorMax = new Vector2(1, 0);
                 bool selected = Selection.SelectedIndex >= 0;
                 bool canReserve = infoActive && Selection.HasSelection && (selected ? CanCancel?.Invoke() == true : CanReserve?.Invoke() == true);
-                status.text = Selection.HasSelection ? StartDay + "~" + EndDay + "일" : "";
+                status.text = !string.IsNullOrEmpty(ExchangeStatus) ? ExchangeStatus : Selection.HasSelection ? StartDay + "~" + EndDay + "일" : "";
                 SetButtonStable(reserve, selected ? "예약 취소" : "구간 예약", canReserve,
                     canReserve ? Palette.AccentSoft : Palette.Disabled, canReserve ? Palette.Accent : Palette.DisabledText);
-                SetButtonStable(confirm, "정보 교환", canExchange,
-                    canExchange ? Palette.Accent : Palette.Disabled, canExchange ? Color.white : Palette.DisabledText);
+                bool canConfirm = selected ? infoActive && IsSavedReservation() && (ChoosingRecipient || !controller.Store.HasPending(StockRules.SendPlan)) : canExchange;
+                SetButtonStable(confirm, selected ? ChoosingRecipient ? "취소" : "찌라시 보내기" : "정보 교환", canConfirm,
+                    canConfirm ? Palette.Accent : Palette.Disabled, canConfirm ? Color.white : Palette.DisabledText);
                 return;
             }
             bool planning = state.stockSystem && state.phase == Protocol.Investment;

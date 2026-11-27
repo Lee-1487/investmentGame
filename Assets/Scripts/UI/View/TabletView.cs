@@ -798,9 +798,6 @@ namespace BlackWhale.UI.View
         {
             if (row == null) return;
             if (_socialPinned) return;
-            if (Store.Public?.stockSystem == true && Store.Public.phase == Protocol.Info && row.PlayerId != _c.LocalPlayerId) {
-                ShowSocialPopup(row.PlayerId, slot); return;
-            }
             bool stock = Store.Public?.stockSystem == true;
             var popup = OpenPopup(stock ? new Vector2(460, 540) : new Vector2(320, 230));
             PositionNextTo(popup, slot, rightSide: true);

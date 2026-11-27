@@ -135,7 +135,7 @@ namespace BlackWhale.UI.View
                 case Page.Ability:
                     if (state.stockSystem)
                     {
-                        Message("<b>게임 규칙</b>\n\n투자말 3개 · 정보 공유 120초\n비공개 선택 10초 → 5일 시장 공개 2초 · 총 6구간\n\nFOOD: 기본 흐름 + 투자말 1개당 변동폭 2%p (최대 20%p)\nAUTO: 기본 흐름만 적용\nAI: 구간 상승 +15%p / 하락 −30%p · 투자말 4개 이상이면 하락\nBIO: 평소 ±1%p · Lightening은 30일당 최대 1회\n\n왼쪽 플레이어 메뉴에서 정보 카드 / 진입·정산 계획을 보낼 수 있습니다.\n계획 통보는 자동 주문이 아닙니다. 증강은 현재 비활성화되어 있습니다.");
+                        Message("<b>게임 규칙</b>\n\n투자말 3개 · 정보 공유 120초\n비공개 선택 10초 → 5일 시장 공개 2초 · 총 6구간\n\nFOOD: 기본 흐름 + 투자말 1개당 변동폭 2%p (최대 20%p)\nAUTO: 기본 흐름만 적용\nAI: 구간 상승 +15%p / 하락 −30%p\n상승 시 투자말당 하락 확률 5% 누적 · 미투자 구간은 0%\n투자 플레이어 3명 이상이면 하락\nBIO: 평소 ±1%p · Lightening +200%p (30일당 최대 1회)\n\n그래프에서 정보를 교환하고 예약 구간에서 찌라시를 보낼 수 있습니다.\n계획 통보는 자동 주문이 아닙니다. 증강은 현재 비활성화되어 있습니다.");
                         break;
                     }
                     var ability = LiveScreenModels.Ability(state, view, abilityDraft, store.HasPending(CommandTypes.SelectAbility), seconds);

@@ -8,7 +8,7 @@ namespace BlackWhale.UI.Presentation
     {
         public double MinBps, MaxBps;
         public double Span => MaxBps - MinBps;
-        public static ChartVerticalRange BioFixed => new ChartVerticalRange { MinBps = -4000, MaxBps = 8000 };
+        public static ChartVerticalRange BioFixed => new ChartVerticalRange { MinBps = -4000, MaxBps = 24000 };
         public double Fraction(int bps) => Math.Max(0, Math.Min(1, (bps - MinBps) / Span));
         public static ChartVerticalRange FromVisibleValues(IEnumerable<int> values)
         {

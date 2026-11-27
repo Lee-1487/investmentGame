@@ -95,8 +95,6 @@ namespace BlackWhale.UI.View
             float extraHeight = incoming != null ? 104 : outgoing != null ? 54 : 0;
             var panel = SocialFrame(target + "에게 보내기", 330 + extraHeight);
             SocialLabel(panel, "합의 정보 교환이나 진입 계획을 선택하세요.", 48, 28);
-            SocialButton(panel, "ChooseShareInformation", "정보 교환 요청 (상호 합의)", 86, ShowShareCards);
-            SocialButton(panel, "ChooseSendTradeIntent", "진입·정산 계획 통보 (찌라시)", 132, ShowIntentEditor);
             float y = 180;
             if (incoming != null)
             {
@@ -136,11 +134,14 @@ namespace BlackWhale.UI.View
             var known = (Store.View?.companies ?? Array.Empty<VisibleCompany>())
                 .Where(c => c.companyId == "FOOD" || c.companyId == "AUTO")
                 .SelectMany(c => (c.visibleWindows ?? Array.Empty<VisibleInformationWindow>())
-                    .Where(w => w.source != "PUBLIC" && w.source != "MARKET" && w.startDay >= 6 && w.startDay <= 26 && w.dailyChangesBps?.Length == 5)
+                    .Where(w => w.source == "DEALT" && w.startDay >= 6 && w.startDay <= 26 && w.dailyChangesBps?.Length == 5)
                     .Select(w => new { Company = c.companyId, Start = w.startDay }))
                 .GroupBy(c => c.Company + ":" + c.Start).Select(g => g.First())
                 .OrderBy(c => c.Company).ThenBy(c => c.Start).ToArray();
-            var knownSet = new System.Collections.Generic.HashSet<string>(known.Select(k => k.Company + ":" + k.Start));
+            var knownSet = new System.Collections.Generic.HashSet<string>((Store.View?.companies ?? Array.Empty<VisibleCompany>())
+                .SelectMany(c => (c.visibleWindows ?? Array.Empty<VisibleInformationWindow>())
+                    .Where(w => w.dailyChangesBps?.Length == 5)
+                    .Select(w => c.companyId + ":" + w.startDay)));
             var wanted = new[] { "FOOD", "AUTO" }
                 .SelectMany(comp => new[] { 6, 11, 16, 21, 26 }.Select(start => new { Company = comp, Start = start }))
                 .Where(c => !knownSet.Contains(c.Company + ":" + c.Start))
