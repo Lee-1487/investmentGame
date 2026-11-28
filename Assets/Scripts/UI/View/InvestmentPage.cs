@@ -29,6 +29,27 @@ namespace BlackWhale.UI.View
         private int _draftTurn = -1;
         private LobbySettings _lobbySettingsDraft, _lobbySettingsBase;
         private Button _lobbyStart;
+        private string _lobbyKey;
+
+        /// <summary>대기실 화면에 보이는 값들을 한 줄로: 이 값이 같으면 화면을 다시 만들 필요가 없다.</summary>
+        private string LobbyKey(PublicState s)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append(s.stockSystem).Append('|').Append(s.windowInformation).Append('|')
+              .Append(_c.IsHost).Append('|').Append(_c.LocalPlayerId).Append('|').Append(_c.IsLocalReady).Append('|')
+              .Append(_c.AllPlayersReady).Append('|')
+              .Append(_c.Store.HasPending(CommandTypes.SetReady)).Append(_c.Store.HasPending(CommandTypes.StartGame))
+              .Append(_c.Store.HasPending(CommandTypes.SetLobbySettings)).Append('|')
+              .Append(_lobby?.Busy).Append('|').Append(_lobby?.Status).Append('|');
+            var ls = s.lobbySettings;
+            if (ls != null) sb.Append(ls.earlyTurnCoins).Append(',').Append(ls.lateTurnCoins).Append(',').Append(ls.publicRevealDays).Append(',')
+                .Append(ls.daySeconds).Append(',').Append(ls.informationStartDay).Append(',').Append(ls.informationEndDay).Append(',').Append(ls.scatteredPublicDays);
+            if (s.players != null)
+                foreach (var p in s.players)
+                    if (p != null) sb.Append('|').Append(p.playerId).Append(',').Append(p.displayName).Append(',').Append(p.connected).Append(',')
+                        .Append(p.ready).Append(',').Append(p.isBot).Append(',').Append(p.botDifficulty).Append(',').Append(p.botPersonality);
+            return sb.ToString();
+        }
 
         // 날짜 입력 중에는 화면 전체를 다시 그리지 않고 아래 요소만 바로 갱신한다
         // (전체를 다시 그리면 입력 직후 '주문 확정' 첫 클릭이 사라질 수 있음).
@@ -68,6 +89,10 @@ namespace BlackWhale.UI.View
             _title.gameObject.SetActive(!stock && !lobby); _status.gameObject.SetActive(!stock && !lobby);
             UiKit.Stretch(_body, 0, stock || lobby ? 0 : 34, 0, 0);
             if (stock && _stockPage.TryRefresh()) return;
+            // 대기실: 바뀐 게 없으면 다시 만들지 않는다(다시 만들 때마다 BOT 성향·난이도 선택 칸이 깜박이고 열린 목록이 닫혔음)
+            string lobbyKey = lobby && string.IsNullOrEmpty(_c.Store.EndReason) ? LobbyKey(current) : null;
+            if (lobbyKey != null && lobbyKey == _lobbyKey && _body.childCount > 0) { UpdateLobbyStart(); return; }
+            _lobbyKey = lobbyKey;
             UiKit.Clear(_body);
             var s = _c.Store.Public;
             if (s == null)
