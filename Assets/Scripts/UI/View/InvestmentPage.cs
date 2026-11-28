@@ -31,25 +31,74 @@ namespace BlackWhale.UI.View
         private Button _lobbyStart;
         private string _lobbyKey;
 
-        /// <summary>대기실 화면에 보이는 값들을 한 줄로: 이 값이 같으면 화면을 다시 만들 필요가 없다.</summary>
+        // 대기실 화면 요소(제자리 갱신용)
+        private readonly Text[] _lobbyRowLabels = new Text[4];
+        private readonly Image[] _lobbyRowFrames = new Image[4], _lobbyRowFills = new Image[4];
+        private readonly Dictionary<string, Dropdown[]> _lobbyDropdowns = new Dictionary<string, Dropdown[]>();
+        private Button _lobbyReady, _lobbyFill, _lobbyRemove;
+        private Text _lobbyStatus, _lobbyTitle;
+
+        /// <summary>
+        /// 대기실 '구성'(자리마다 누가 있는지·BOT 여부·방장·설정값)만 한 줄로. 이게 같으면 화면을 다시 만들지 않고
+        /// 준비 상태·접속·BOT 성향/난이도 같은 값만 제자리에서 바꾼다(다시 만들면 선택 칸이 깜박이고 열린 목록이 닫힘).
+        /// </summary>
         private string LobbyKey(PublicState s)
         {
             var sb = new System.Text.StringBuilder();
             sb.Append(s.stockSystem).Append('|').Append(s.windowInformation).Append('|')
-              .Append(_c.IsHost).Append('|').Append(_c.LocalPlayerId).Append('|').Append(_c.IsLocalReady).Append('|')
-              .Append(_c.AllPlayersReady).Append('|')
-              .Append(_c.Store.HasPending(CommandTypes.SetReady)).Append(_c.Store.HasPending(CommandTypes.StartGame))
-              .Append(_c.Store.HasPending(CommandTypes.SetLobbySettings)).Append('|')
-              .Append(_lobby?.Busy).Append('|').Append(_lobby?.Status).Append('|');
+              .Append(_c.IsHost).Append('|').Append(_c.LocalPlayerId).Append('|').Append(_lobby != null).Append('|');
             var ls = s.lobbySettings;
             if (ls != null) sb.Append(ls.earlyTurnCoins).Append(',').Append(ls.lateTurnCoins).Append(',').Append(ls.publicRevealDays).Append(',')
                 .Append(ls.daySeconds).Append(',').Append(ls.informationStartDay).Append(',').Append(ls.informationEndDay).Append(',').Append(ls.scatteredPublicDays);
             if (s.players != null)
                 foreach (var p in s.players)
-                    if (p != null) sb.Append('|').Append(p.playerId).Append(',').Append(p.displayName).Append(',').Append(p.connected).Append(',')
-                        .Append(p.ready).Append(',').Append(p.isBot).Append(',').Append(p.botDifficulty).Append(',').Append(p.botPersonality);
+                    if (p != null) sb.Append('|').Append(p.playerId).Append(',').Append(p.isBot);
             return sb.ToString();
         }
+
+        /// <summary>대기실 값만 제자리에서 갱신(새로 만들지 않음).</summary>
+        private void UpdateLobby(PublicState s)
+        {
+            var players = s.players ?? new Player[0];
+            if (_lobbyTitle != null) _lobbyTitle.text = "<b>참가자</b>  <size=12>" + players.Length + " / 4명</size>";
+            for (int i = 0; i < 4; i++)
+            {
+                var p = i < players.Length ? players[i] : null;
+                if (_lobbyRowLabels[i] != null) _lobbyRowLabels[i].text = LobbyRowText(p);
+                if (_lobbyRowFrames[i] != null) _lobbyRowFrames[i].color = p == null ? Palette.ChartFrame : Palette.CardBorder;
+                if (_lobbyRowFills[i] != null) _lobbyRowFills[i].color = p == null ? Palette.Disabled : Palette.Card;
+                if (p != null && p.isBot && _lobbyDropdowns.TryGetValue(p.playerId, out var dd))
+                {
+                    bool editable = _c.IsHost && p.connected && _lobby?.Busy == false && _lobby.SetBotProfile != null;
+                    SetDropdown(dd[0], new[] { "Adventurous", "Stable", "Strategic" }, p.botPersonality, editable);
+                    SetDropdown(dd[1], new[] { "Easy", "Normal", "Hard" }, p.botDifficulty, editable);
+                }
+            }
+            if (_lobbyReady != null)
+            {
+                bool ready = _c.IsLocalReady, pending = _c.Store.HasPending(CommandTypes.SetReady);
+                UiKit.SetButton(_lobbyReady, pending ? "처리 중…" : ready ? "준비 취소" : "준비", !pending && _lobby?.Busy != true,
+                    ready ? Palette.Card : Palette.Accent, ready ? Palette.Text : Color.white);
+            }
+            if (_lobbyFill != null) _lobbyFill.interactable = _lobby != null && !_lobby.Busy && players.Count(p => p.connected) < 4;
+            if (_lobbyRemove != null) _lobbyRemove.interactable = _lobby != null && !_lobby.Busy && players.Any(p => p.isBot);
+            if (_lobbyStatus != null && _lobby != null && _lobbyStatus.text != _lobby.Status) _lobbyStatus.text = _lobby.Status;
+            UpdateLobbyStart();
+        }
+
+        private static void SetDropdown(Dropdown d, string[] values, string current, bool editable)
+        {
+            if (d == null) return;
+            int index = System.Math.Max(0, System.Array.IndexOf(values, current));
+            if (d.value != index) d.SetValueWithoutNotify(index);
+            if (d.interactable != editable) d.interactable = editable;
+        }
+
+        private string LobbyRowText(Player p) => p == null
+            ? "<color=#B39C74>빈 자리 · 접속 대기</color>"
+            : "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(p.playerId)) + ">■</color>  <b>" + p.playerId + "</b>  "
+              + (p.displayName ?? "").Replace("<", "‹").Replace(">", "›") + (p.isBot ? "  <size=11>BOT</size>" : "") + (p.playerId == _c.LocalPlayerId ? " (나)" : "") + (p.playerId == "P1" ? "  <size=11>방장</size>" : "")
+              + "      " + (!p.connected ? Palette.BadText("연결 끊김") : p.ready ? "<color=#5CD17A><b>준비 완료</b></color>" : "<color=#B39C74>준비 전</color>");
 
         // 날짜 입력 중에는 화면 전체를 다시 그리지 않고 아래 요소만 바로 갱신한다
         // (전체를 다시 그리면 입력 직후 '주문 확정' 첫 클릭이 사라질 수 있음).
@@ -91,7 +140,7 @@ namespace BlackWhale.UI.View
             if (stock && _stockPage.TryRefresh()) return;
             // 대기실: 바뀐 게 없으면 다시 만들지 않는다(다시 만들 때마다 BOT 성향·난이도 선택 칸이 깜박이고 열린 목록이 닫혔음)
             string lobbyKey = lobby && string.IsNullOrEmpty(_c.Store.EndReason) ? LobbyKey(current) : null;
-            if (lobbyKey != null && lobbyKey == _lobbyKey && _body.childCount > 0) { UpdateLobbyStart(); return; }
+            if (lobbyKey != null && lobbyKey == _lobbyKey && _body.childCount > 0) { UpdateLobby(current); return; } // 자리 구성이 같으면 글자·값만 바꿈
             _lobbyKey = lobbyKey;
             UiKit.Clear(_body);
             var s = _c.Store.Public;
@@ -158,6 +207,7 @@ namespace BlackWhale.UI.View
 
             var title = UiKit.Label(root, "<b>참가자</b>  <size=12>" + (s.players?.Length ?? 0) + " / 4명</size>", 18, Palette.Text, TextAnchor.UpperLeft);
             UiKit.Stretch(title.rectTransform, 24, 18, 24, 0);
+            _lobbyTitle = title; _lobbyDropdowns.Clear(); _lobbyReady = _lobbyFill = _lobbyRemove = null; _lobbyStatus = null;
 
             var players = s.players ?? new Player[0];
             bool configurable = s.stockSystem && s.windowInformation;
@@ -168,26 +218,21 @@ namespace BlackWhale.UI.View
                 var row = UiKit.Panel(root, "Player" + (i + 1), p == null ? Palette.ChartFrame : Palette.CardBorder, rounded: true);
                 var rowFill = UiKit.Panel(row.transform, "Fill", p == null ? Palette.Disabled : Palette.Card, rounded: true);
                 UiKit.Stretch(rowFill.rectTransform, 2, 2, 2, 2);
+                _lobbyRowFrames[i] = row; _lobbyRowFills[i] = rowFill;
                 UiKit.Place(row.rectTransform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, -60 - i * 54), new Vector2(520, 46));
                 if (configurable) {
                     row.rectTransform.anchorMin = new Vector2(0, 1); row.rectTransform.anchorMax = new Vector2(.49f, 1);
                     row.rectTransform.offsetMin = new Vector2(20, -106 - i * 54); row.rectTransform.offsetMax = new Vector2(-8, -60 - i * 54);
                 }
-                string text = p == null
-                    ? "<color=#B39C74>빈 자리 · 접속 대기</color>"
-                    : "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(p.playerId)) + ">■</color>  <b>" + p.playerId + "</b>  "
-                      + (p.displayName ?? "").Replace("<", "‹").Replace(">", "›") + (p.isBot ? "  <size=11>BOT</size>" : "") + (p.playerId == _c.LocalPlayerId ? " (나)" : "") + (p.playerId == "P1" ? "  <size=11>방장</size>" : "")
-                      + "      " + (!p.connected ? Palette.BadText("연결 끊김") : p.ready ? "<color=#5CD17A><b>준비 완료</b></color>" : "<color=#B39C74>준비 전</color>");
-                var label = UiKit.Label(row.transform, text, 15, Palette.Text, TextAnchor.MiddleLeft);
-                label.resizeTextForBestFit = true;
-                label.resizeTextMinSize = 10;
-                label.resizeTextMaxSize = 15;
+                // 글자 크기 자동 맞춤(best fit)은 쓰지 않음: 폰트 글자판을 계속 다시 만들어 글자가 깜박였음
+                var label = UiKit.Label(row.transform, LobbyRowText(p), 14, Palette.Text, TextAnchor.MiddleLeft);
+                label.horizontalOverflow = HorizontalWrapMode.Overflow;
+                _lobbyRowLabels[i] = label;
                 UiKit.Stretch(label.rectTransform, 16, 0, 16, 0);
                 if (p?.isBot == true) {
                     UiKit.Stretch(label.rectTransform, 16, 0, 16, 24);
                     bool editable = _c.IsHost && p.connected && _lobby?.Busy == false && _lobby.SetBotProfile != null;
-                    BotProfileDropdown(row.rectTransform, p, true, editable);
-                    BotProfileDropdown(row.rectTransform, p, false, editable);
+                    _lobbyDropdowns[p.playerId] = new[] { BotProfileDropdown(row.rectTransform, p, true, editable), BotProfileDropdown(row.rectTransform, p, false, editable) };
                 }
             }
             if (configurable) BuildLobbySettings(root, s);
@@ -195,7 +240,8 @@ namespace BlackWhale.UI.View
             bool ready = _c.IsLocalReady;
             bool readyPending = _c.Store.HasPending(CommandTypes.SetReady);
             var readyButton = UiKit.Button(root, readyPending ? "처리 중…" : ready ? "준비 취소" : "준비", 16,
-                ready ? Palette.Card : Palette.Accent, ready ? Palette.Text : Color.white, () => _c.SetReady(!ready));
+                ready ? Palette.Card : Palette.Accent, ready ? Palette.Text : Color.white, () => _c.SetReady(!_c.IsLocalReady));
+            _lobbyReady = readyButton;
             UiKit.Place((RectTransform)readyButton.transform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(_c.IsHost ? -100 : 0, 24), new Vector2(180, 46));
             readyButton.name = "Ready";
             readyButton.interactable = !readyPending && _lobby?.Busy != true;
@@ -215,16 +261,16 @@ namespace BlackWhale.UI.View
                     var fill = UiKit.Button(root, "빈자리를 BOT으로 채우기", 13, Palette.AccentSoft, Palette.Accent, _lobby.FillBots);
                     fill.name = "FillBots";
                     UiKit.Place((RectTransform)fill.transform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(-100, 80), new Vector2(220, 34));
-                    fill.interactable = !_lobby.Busy && players.Count(p => p.connected) < 4;
+                    fill.interactable = !_lobby.Busy && players.Count(p => p.connected) < 4; _lobbyFill = fill;
                     var remove = UiKit.Button(root, "BOT 모두 내보내기", 13, Palette.Card, Palette.Text, _lobby.RemoveBots);
                     remove.name = "RemoveBots";
                     UiKit.Place((RectTransform)remove.transform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(130, 80), new Vector2(200, 34));
-                    remove.interactable = !_lobby.Busy && players.Any(p => p.isBot);
+                    remove.interactable = !_lobby.Busy && players.Any(p => p.isBot); _lobbyRemove = remove;
                 }
             }
             if (_lobby != null)
             {
-                var status = UiKit.Label(root, _lobby.Status, 12, Palette.SubText);
+                var status = UiKit.Label(root, _lobby.Status, 12, Palette.SubText); _lobbyStatus = status;
                 UiKit.Place(status.rectTransform, new Vector2(0.5f, 0), new Vector2(0.5f, 0), new Vector2(0, 120), new Vector2(640, 54));
                 if (configurable) {
                     status.rectTransform.anchorMin = Vector2.zero; status.rectTransform.anchorMax = new Vector2(.49f, 0);
@@ -233,7 +279,7 @@ namespace BlackWhale.UI.View
             }
         }
 
-        private void BotProfileDropdown(RectTransform row, Player bot, bool personality, bool editable)
+        private Dropdown BotProfileDropdown(RectTransform row, Player bot, bool personality, bool editable)
         {
             string[] values = personality ? new[] { "Adventurous", "Stable", "Strategic" } : new[] { "Easy", "Normal", "Hard" };
             string[] names = personality ? new[] { "성향: 모험", "성향: 안정", "성향: 전략" } : new[] { "난이도: 쉬움", "난이도: 보통", "난이도: 어려움" };
@@ -247,6 +293,7 @@ namespace BlackWhale.UI.View
             rect.offsetMin = new Vector2(personality ? 16 : 4, 3);
             rect.offsetMax = new Vector2(personality ? -4 : -16, 25);
             var dropdown = go.GetComponent<Dropdown>();
+            dropdown.alphaFadeSpeed = 0f; // 목록이 열리고 닫힐 때 흐릿하게 남는 잔상(깜박임처럼 보임) 없이 바로
             dropdown.ClearOptions(); dropdown.AddOptions(names.ToList());
             dropdown.SetValueWithoutNotify(System.Math.Max(0, System.Array.IndexOf(values, personality ? bot.botPersonality : bot.botDifficulty)));
             dropdown.interactable = editable;
@@ -295,6 +342,7 @@ namespace BlackWhale.UI.View
                 if (!accepted) dropdown.SetValueWithoutNotify(System.Math.Max(0, System.Array.IndexOf(values,
                     personality ? current.botPersonality : current.botDifficulty)));
             });
+            return dropdown;
         }
 
         private bool LobbySettingsDirty => _c.Store.Public?.stockSystem == true && _c.Store.Public.windowInformation
