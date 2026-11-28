@@ -92,11 +92,11 @@ namespace BlackWhale.UI.View
             {
                 var s = _sparks[_next]; _next = (_next + 1) % Pool;
                 // 위로 톡 튀어 올랐다가 떨어지며 바닥에서 한두 번 통통
-                float vx = (float)(_rng.NextDouble() * 2 - 1) * 150f;
-                float vy = 220f + (float)_rng.NextDouble() * 200f;
+                float vx = (float)(_rng.NextDouble() * 2 - 1) * 340f; // 좌우로 넓게
+                float vy = 260f + (float)_rng.NextDouble() * 280f;    // 더 높이
                 s.Vel = new Vector2(vx, vy);
                 s.Age = 0; s.On = true; s.Bounces = 0;
-                s.Floor = local.y - 28f - (float)_rng.NextDouble() * 24f;
+                s.Floor = local.y - 40f - (float)_rng.NextDouble() * 50f;
                 float size = _rng.NextDouble() < 0.35 ? 2f : 4f; // 작게
                 s.Rt.sizeDelta = new Vector2(size, size);
                 s.Rt.anchoredPosition = local;
