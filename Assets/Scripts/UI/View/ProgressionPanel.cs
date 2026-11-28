@@ -14,7 +14,7 @@ namespace BlackWhale.UI.View
         private enum Page { None, Board, Ability, Auction, Shop, Inventory }
         private GameClientController controller;
         private LobbyActions lobby;
-        private RectTransform modal, content;
+        private RectTransform modal, content, nav;
         private Text feedback;
         private Button close, complete;
         private Page page;
@@ -39,7 +39,7 @@ namespace BlackWhale.UI.View
         private void RequestRefresh() => refreshRequested = true;
         private void Build(RectTransform root)
         {
-            var nav = UiKit.Rect(root, "GameScreens");
+            nav = UiKit.Rect(root, "GameScreens");
             nav.anchorMin = new Vector2(0, 1); nav.anchorMax = Vector2.one;
             nav.offsetMin = new Vector2(148, -33); nav.offsetMax = new Vector2(-48, -2);
             // 아이템이 기획에서 빠져 '상점'·'보유 아이템' 탭은 두지 않는다.
@@ -50,12 +50,15 @@ namespace BlackWhale.UI.View
             for (int i = 0; i < labels.Length; i++)
             {
                 Page target = pages[i];
-                var button = UiKit.Button(nav, labels[i], 12, Palette.Card, Palette.Text, () => Open(target));
+                var button = UiKit.Button(nav, labels[i], 12, i == 0 ? Palette.Maroon : Palette.Card, Palette.Text, () => Open(target)); // 도트 테마: 전광판 탭은 자주색
                 button.name = "Open" + target;
                 UiKit.Anchor((RectTransform)button.transform, i / (float)labels.Length, 0, (i + 1) / (float)labels.Length, 1, 3, 1);
             }
             modal = UiKit.Panel(root, "LiveGameScreen", Palette.Screen, rounded: true, raycast: true).rectTransform;
             UiKit.Stretch(modal, 42, 40, 42, 40);
+            var modalFrame = UiKit.Panel(modal, "PixelFrame", Palette.CardBorder); // 도트 테마 테두리(속이 빈 틀)
+            modalFrame.sprite = UiKit.PixelFrame; modalFrame.type = Image.Type.Sliced; modalFrame.pixelsPerUnitMultiplier = UiKit.PixelScale;
+            UiKit.Stretch(modalFrame.rectTransform);
             content = UiKit.Rect(modal, "LiveFeatureContent"); UiKit.Stretch(content, 16, 12, 16, 68);
             feedback = UiKit.Label(modal, "", 12, Palette.SubText, TextAnchor.MiddleLeft);
             UiKit.Place(feedback.rectTransform, Vector2.zero, Vector2.zero, new Vector2(16, 12), new Vector2(710, 42));
@@ -86,6 +89,7 @@ namespace BlackWhale.UI.View
         private void Refresh()
         {
             var store = controller.Store; var state = store.Public;
+            nav.gameObject.SetActive(state != null && state.phase != Protocol.Lobby); // 대기실에서는 전광판·주식 현황·내 증강 탭 숨김
             if (state == null) { modal.gameObject.SetActive(false); return; }
             if (!ReferenceEquals(synced, state)) { synced = state; clock.Sync(state.serverElapsedSeconds, Time.realtimeSinceStartup); }
             if (!refreshRequested) return;

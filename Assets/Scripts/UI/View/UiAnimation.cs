@@ -73,7 +73,7 @@ namespace BlackWhale.UI.View
                 else s_flipStart[key] = now;
                 if (elapsed >= delay + seconds) return;
             }
-            var back = UiKit.Panel(card, "CardBack", new Color32(0x1A, 0x1A, 0x1A, 0xFF), rounded: true);
+            var back = UiKit.Panel(card, "CardBack", new Color32(0x1D, 0x18, 0x12, 0xFF), rounded: true);
             UiKit.Stretch(back.rectTransform);
             back.raycastTarget = true; // 뒤집히는 동안 클릭 막기
             var mark = UiKit.Label(back.transform, "?", 64, new Color32(0xFF, 0xFF, 0xFF, 0xFF), TextAnchor.MiddleCenter, FontStyle.Bold);
