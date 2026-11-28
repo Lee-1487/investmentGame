@@ -9,10 +9,11 @@ namespace BlackWhale.UI.View
     {
         private const int Pool = 48;          // 동시에 보일 수 있는 파편 수
         private const int PerClick = 9;       // 한 번 클릭에 튀는 파편 수
-        private const float Life = 0.6f;      // 파편이 흐려지며 사라질 때까지(초)
-        private const float Drag = 5f;        // 점점 느려지는 정도(원형으로 퍼졌다가 멈추듯 사라짐)
+        private const float Life = 0.75f;     // 파편이 흐려지며 사라질 때까지(초)
+        private const float Drag = 3.5f;      // 퍼지는 힘이 점점 줄어드는 정도
+        private const float Gravity = -900f;  // 아래로 떨어지는 힘(캔버스 px/초²)
 
-        private const float Speed = 240f;   // 튀는 세기(모든 파편 같음 → 범위 일정)
+        private const float Speed = 200f;   // 튀는 세기(모든 파편 같음 → 범위 일정)
         private readonly System.Random _rng = new System.Random();
         private static readonly Color32 SparkColor = new Color32(0xA0, 0xA0, 0xA0, 0xFF); // 회색
 
@@ -63,6 +64,7 @@ namespace BlackWhale.UI.View
                 s.Age += dt;
                 if (s.Age >= Life) { s.On = false; s.Rt.gameObject.SetActive(false); _sparks[i] = s; continue; }
                 s.Vel *= Mathf.Exp(-Drag * dt);
+                s.Vel.y += Gravity * dt; // 원형으로 퍼지면서 아래로 떨어짐(바닥 튕김 없음)
                 // 실제 위치는 소수점까지 따로 기억하고, 화면에 그릴 때만 2px 칸에 맞춘다
                 // (예전엔 칸에 맞춘 값을 다시 위치로 써서, 프레임이 빠르면 한 프레임 이동이 1px 미만이라 제자리에 멈췄음)
                 var p = s.Pos + s.Vel * dt;
