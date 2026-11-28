@@ -140,14 +140,14 @@ namespace BlackWhale.UI.State
         public static HistorySnapshot Copy(HistorySnapshot s) => s == null ? null : new HistorySnapshot {
             turn = s.turn, playerView = Copy(s.playerView), scoreboard = Copy(s.scoreboard) };
         public static VisibleInformationWindow Copy(VisibleInformationWindow s) => s == null ? null : new VisibleInformationWindow {
-            recordId = s.recordId, source = s.source, companyId = s.companyId, startDay = s.startDay, paidCoins = s.paidCoins,
+            recordId = s.recordId, source = s.source, companyId = s.companyId, startDay = s.startDay, paidCoins = s.paidCoins, direction = s.direction,
             dailyChangesBps = (int[])s.dailyChangesBps?.Clone(), dailyOpenBps = (int[])s.dailyOpenBps?.Clone() };
         public static PortfolioState Copy(PortfolioState s) => s == null ? null : new PortfolioState {
-            processedDay = s.processedDay,
+            processedDay = s.processedDay, totalReturnBps = s.totalReturnBps,
             capacity = s.capacity, usedSlots = s.usedSlots, informationDiscount = s.informationDiscount, draftSharesRemaining = s.draftSharesRemaining,
             augmentChosen = s.augmentChosen, priorityUsed = s.priorityUsed, concentrationCompany = s.concentrationCompany,
             augments = (string[])s.augments?.Clone(), candidates = (string[])s.candidates?.Clone(),
-            holdings = s.holdings?.Select(v => new PortfolioHolding { companyId = v.companyId, shares = v.shares, activeShares = v.activeShares, consecutiveTurns = v.consecutiveTurns }).ToArray(),
-            insights = s.insights?.Select(v => new StockInsight { companyId = v.companyId, message = v.message, probabilityBps = v.probabilityBps }).ToArray() };
+            holdings = s.holdings?.Select(v => new PortfolioHolding { companyId = v.companyId, shares = v.shares, activeShares = v.activeShares, consecutiveTurns = v.consecutiveTurns, marketReturnBps = v.marketReturnBps, returnBps = v.returnBps, canBuy = v.canBuy }).ToArray(),
+            insights = s.insights?.Select(v => new StockInsight { companyId = v.companyId, message = v.message, probabilityBps = v.probabilityBps, upProbabilityBps = v.upProbabilityBps, downProbabilityBps = v.downProbabilityBps, probabilitySegment = v.probabilitySegment }).ToArray() };
     }
 }

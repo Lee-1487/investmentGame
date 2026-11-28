@@ -108,14 +108,14 @@ namespace BlackWhale.Bots
         private static bool HasWindowCard(PlayerView view, string companyId, int startDay)
         {
             var comp = view?.companies?.FirstOrDefault(c => c.companyId == companyId);
-            return comp?.visibleWindows != null && comp.visibleWindows.Any(w => w.startDay == startDay && w.source != "PUBLIC" && w.source != "MARKET" && w.dailyChangesBps?.Length == 5);
+            return comp?.visibleWindows != null && comp.visibleWindows.Any(w => w.startDay == startDay && w.source != "PUBLIC" && w.source != "MARKET" && InformationWindowRules.IsSegmentCard(w));
         }
         public bool ShouldAcceptExchange(PlayerView view, InformationExchange request)
         {
             if (request == null || view == null) return false;
             // Reject if we don't own the requested card or already know the offered card.
             if (view.companies?.FirstOrDefault(c => c.companyId == request.requestedCompanyId)?.visibleWindows
-                ?.Any(w => w.startDay == request.requestedStartDay && w.source == "DEALT" && w.dailyChangesBps?.Length == 5) != true) return false;
+                ?.Any(w => w.startDay == request.requestedStartDay && w.source == "DEALT" && InformationWindowRules.IsSegmentCard(w)) != true) return false;
             if (HasWindowCard(view, request.offeredCompanyId, request.offeredStartDay)) return false;
             double affinityMod = (GetAffinity(request.senderId) - 0.50) * 0.70;
             double personalityMod = Policy.Personality == BotPersonality.Adventurous ? 0.10 : Policy.Personality == BotPersonality.Stable ? -0.05 : 0.0;
@@ -137,17 +137,17 @@ namespace BlackWhale.Bots
             var known = (view.companies ?? Array.Empty<VisibleCompany>())
                 .Where(c => c.companyId == "FOOD" || c.companyId == "AUTO")
                 .SelectMany(c => (c.visibleWindows ?? Array.Empty<VisibleInformationWindow>())
-                    .Where(w => w.source == "DEALT" && w.startDay >= 6 && w.startDay <= 26 && w.dailyChangesBps?.Length == 5)
+                    .Where(w => w.source == "DEALT" && w.startDay >= 6 && w.startDay <= 21 && InformationWindowRules.IsSegmentCard(w))
                     .Select(w => new { Company = c.companyId, Start = w.startDay }))
                 .GroupBy(x => x.Company + ":" + x.Start).Select(g => g.First()).ToArray();
             if (known.Length == 0) return null;
             // Received information remains known, but only originally dealt cards can be offered.
             var knownKeys = new HashSet<string>((view.companies ?? Array.Empty<VisibleCompany>())
                 .SelectMany(c => (c.visibleWindows ?? Array.Empty<VisibleInformationWindow>())
-                    .Where(w => w.dailyChangesBps?.Length == 5)
+                    .Where(w => InformationWindowRules.IsSegmentCard(w))
                     .Select(w => c.companyId + ":" + w.startDay)));
             var unknown = new[] { "FOOD", "AUTO" }
-                .SelectMany(comp => new[] { 6, 11, 16, 21, 26 }.Select(start => new { Company = comp, Start = start }))
+                .SelectMany(comp => new[] { 6, 11, 16, 21 }.Select(start => new { Company = comp, Start = start }))
                 .Where(x => !knownKeys.Contains(x.Company + ":" + x.Start)).ToArray();
             if (unknown.Length == 0) return null;
             var knowledge = state.segmentKnowledge ?? Array.Empty<SegmentKnowledge>();
@@ -198,8 +198,8 @@ namespace BlackWhale.Bots
                 .Where(id => !string.IsNullOrEmpty(id) && id != view.recipientPlayerId && (sentTargets == null || !sentTargets.Contains(id))).ToArray();
             if (targets.Length == 0) return null;
             string target = targets[random.Next(targets.Length)];
-            var ranks = RankStockCompanies(view, state);
-            string intended = ranks.FirstOrDefault() ?? "AUTO";
+            var ranks = RankStockCompanies(view, state).Where(StockRules.CanShareRumor).ToArray();
+            string intended = ranks.FirstOrDefault() ?? "AI";
             bool bluff = random.NextDouble() < Policy.BluffRumorProb + (GetAffinity(target) < 0.4 ? 0.20 : 0.0);
             string company = bluff ? (ranks.LastOrDefault() ?? "AI") : intended;
             int seg = random.Next(0, 6);
@@ -221,6 +221,14 @@ namespace BlackWhale.Bots
         {
             var days = KnownDays(company);
             day = Math.Max(0, Math.Min(30, day));
+            int start = day < 1 ? 1 : (day - 1) / 5 * 5 + 1;
+            int direction = InformationWindowRules.SegmentDirection(company, start);
+            if (!days[day].HasValue && direction != 0) {
+                // Use the card's direction, never reconstruct an undisclosed absolute price.
+                int anchor = start - 1;
+                while (anchor > 0 && !days[anchor].HasValue) anchor--;
+                return (days[anchor] ?? 0) + direction * 500 * (day - start + 1);
+            }
             if (days[day].HasValue) return days[day].Value;
             int left = day, right = day;
             while (left > 0 && !days[left].HasValue) left--;

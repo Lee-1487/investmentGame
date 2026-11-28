@@ -76,7 +76,7 @@ namespace BlackWhale.Flow
         private bool stockSegmentRevealing;
         private bool paused;
         private double pausedAt, pausedSeconds;
-        private static readonly string[] DefaultCompanies = { "AI", "FOOD", "AUTO", "BIO" };
+        private static readonly string[] DefaultCompanies = { "AUTO", "FOOD", "AI", "BIO" };
 
         public GameRoom(string roomId, IMarketService market, IInformationService information,
             IServerClock clock, TimerMode mode = TimerMode.Realtime, bool fixedOrderForFixture = false,

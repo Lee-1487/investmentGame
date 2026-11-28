@@ -33,6 +33,7 @@ namespace BlackWhale.UI.Presentation
     public struct DayBar
     {
         public int Day;
+        public int SegmentDirection;
         public int? Bps;
         public DayBarState State;
         /// <summary>PUBLIC / PURCHASED / ITEM / STOLEN / ABILITY / BASE(0일차) / REVEALED / "" (미열람)</summary>
@@ -47,6 +48,15 @@ namespace BlackWhale.UI.Presentation
 
     public static class DailyBarModel
     {
+        // All preview cards use their own identical scale, independent of actual prices.
+        public static float[] DirectionPreview(int direction)
+        {
+            if (direction != 1 && direction != -1) return System.Array.Empty<float>();
+            var values = new float[6];
+            for (int i = 0; i < values.Length; i++) values[i] = direction > 0 ? .18f + i * .128f : .82f - i * .128f;
+            return values;
+        }
+
         public const string BaseSource = "BASE";
         public const string RevealedSource = "REVEALED";
 
@@ -85,6 +95,10 @@ namespace BlackWhale.UI.Presentation
 
             foreach (var w in company?.visibleWindows ?? System.Array.Empty<VisibleInformationWindow>())
             {
+                if (w != null && w.direction != 0) {
+                    for (int day = w.startDay; day < w.startDay + 5 && day < bars.Length; day++)
+                        if (day >= 1) bars[day].SegmentDirection = w.direction;
+                }
                 if (w?.dailyChangesBps == null) continue;
                 for (int i = 0; i < w.dailyChangesBps.Length; i++)
                 {
@@ -117,7 +131,8 @@ namespace BlackWhale.UI.Presentation
         public static string Tooltip(DayBar bar)
         {
             string head = bar.Day + "일";
-            if (!bar.Bps.HasValue) return head + " · 미열람";
+            if (!bar.Bps.HasValue) return bar.SegmentDirection == 0 ? head + " · 미열람"
+                : head + (bar.SegmentDirection > 0 ? " · 상승 카드" : " · 하락 카드") + " · 실제 주가 공개 전";
             string value = DisplayFormat.Percent(bar.Bps.Value);
             string candle = bar.Day == 0 ? ""
                 : bar.OpenBps.HasValue

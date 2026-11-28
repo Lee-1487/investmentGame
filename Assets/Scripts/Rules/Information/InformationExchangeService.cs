@@ -5,7 +5,7 @@ namespace BlackWhale.Rules.Information
 {
     public sealed partial class SharedInformationService
     {
-        private static bool ExchangeCard(string company, int start) => (company == "FOOD" || company == "AUTO") && start >= 6 && start <= 26 && (start - 1) % 5 == 0;
+        private static bool ExchangeCard(string company, int start) => (company == "FOOD" || company == "AUTO") && start >= 6 && start <= 21 && (start - 1) % 5 == 0;
         private WindowRecord KnownCard(WindowTurn state, string player, string company, int start) => state.Records
             .FirstOrDefault(r => r.Company == company && r.Start == start && r.Length == 5 && Accessible(r, player));
         private WindowRecord SendableCard(WindowTurn state, string player, string company, int start) => state.Records

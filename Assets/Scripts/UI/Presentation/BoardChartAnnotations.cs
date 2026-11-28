@@ -23,25 +23,35 @@ namespace BlackWhale.UI.Presentation
             var own = plans.Get(company).Intervals.Select(i => new ChartPlanOverlay { playerId = player,
                 entryDay = i.entryDay, exitDay = i.exitDay });
             var rumors = (view.receivedTradeIntents ?? Array.Empty<TradeIntent>())
-                .Where(i => showRumors && i.companyId == company && i.targetPlayerId == player)
+                .Where(i => StockRules.CanShareRumor(company) && showRumors && i.companyId == company && i.targetPlayerId == player)
                 .Select(i => new ChartPlanOverlay { playerId = i.senderId, entryDay = i.entryDay, exitDay = i.exitDay, rumor = true });
             return own.Concat(rumors).ToArray();
         }
 
+        public static bool HiddenFinalSegment(VisibleCompany company, RevealedCompany revealed = null) =>
+            (company?.companyId == "AUTO" || company?.companyId == "FOOD")
+            && revealed == null && !InformationWindowRules.KnownDays(company)[26].HasValue;
+
+        public static SegmentKnowledge[] RumorKnowledge(PlayerView view, PublicState state, bool showRumors)
+        {
+            var intents = showRumors ? view?.receivedTradeIntents ?? Array.Empty<TradeIntent>() : Array.Empty<TradeIntent>();
+            return (state?.segmentKnowledge ?? Array.Empty<SegmentKnowledge>()).Concat(
+                new[] { "AI", "BIO" }.SelectMany(company => Enumerable.Range(0, 6).Select(segment => new SegmentKnowledge {
+                    companyId = company, startDay = segment * 5 + 1,
+                    playerIds = intents.Where(i => i.companyId == company && i.targetPlayerId == view?.recipientPlayerId
+                        && i.entryDay >= segment * 5 + 1 && i.entryDay <= segment * 5 + 5)
+                        .Select(i => i.senderId).Distinct().ToArray()
+                }))).ToArray();
+        }
+
         public static string ProbabilityLabel(PublicState state, PortfolioState portfolio, string company)
         {
-            if (company != "AI" && company != "BIO") return "";
+            if (!StockRules.CanShareRumor(company)) return "";
             var insight = portfolio?.insights?.FirstOrDefault(i => i.companyId == company);
-            if (insight == null) return "확률 수신 대기";
-            if (state?.phase == Protocol.Reveal || state?.phase == Protocol.Result || state?.phase == Protocol.Ended)
-                return "30일 종료 · 이번 라운드 확률 추첨 완료";
-            if (state?.phase == Protocol.Investment && state.stockSegmentRevealing && state.stockSegmentIndex == 5)
-                return "마지막 구간 공개 중 · 다음 구간 없음";
-            int segment = state?.phase == Protocol.Investment ? state.stockSegmentIndex + (state.stockSegmentRevealing ? 2 : 1) : 1;
-            string chance = (insight.probabilityBps / 100m).ToString("0.##") + "%";
-            return segment + "구간 " + (company == "AI" ? "하락 " : "Lightening ") + chance + " · "
-                + (segment == 1 ? "초기 확률" : "직전 구간 투자 반영")
-                + (company == "AI" ? "\n투자 플레이어 3명 이상이면 하락 100%" : insight.probabilityBps == 0 ? "\n이미 발생 · 남은 구간 0%" : "\n기본 5% · 최대 40% · +200%p · 30일당 1회");
+            string up = insight?.upProbabilityBps >= 0 ? (insight.upProbabilityBps / 100m).ToString("0.##") + "%" : "—";
+            string down = insight?.downProbabilityBps >= 0 ? (insight.downProbabilityBps / 100m).ToString("0.##") + "%" : "—";
+            string segment = insight?.probabilitySegment >= 6 ? "최종 누적 · " : insight?.probabilitySegment >= 0 ? "다음 " + (insight.probabilitySegment + 1) + "구간 · " : "";
+            return segment + "<b><color=#FF7078>" + (company == "BIO" ? "급등 " : "상승 ") + up + "</color>  <color=#69AFFF>" + (company == "BIO" ? "미발생 " : "하락 ") + down + "</color></b>";
         }
     }
 }

@@ -219,12 +219,17 @@ namespace BlackWhale.UI.Dev
             connectionPanel = UiKit.Panel(canvasRoot, "ConnectionScreen", Palette.Background, raycast: true).rectTransform;
             UiKit.Stretch(connectionPanel);
             // 회색 네모 대신 가장자리로 갈수록 바탕(검정)에 녹아드는 넓고 어두운 그라데이션(내용 칸보다 크게)
-            var glow = UiKit.Panel(connectionPanel, "ConnectionGlow", new Color32(0x24, 0x24, 0x24, 0xFF)); // 바탕보다 살짝 밝게
-            glow.sprite = UiKit.Soft; glow.type = UnityEngine.UI.Image.Type.Sliced; glow.pixelsPerUnitMultiplier = 0.35f;
-            UiKit.Place(glow.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1100, 1000));
+            PixelBackdrop.Create(connectionPanel); // 도트 글리치 배경 효과
+            PixelClickSparks.Attach(connectionPanel); // 클릭할 때 도트 파편
+            PrologueExitFx.Attach(connectionPanel);   // 초대장 → 방 만들기로 넘어갈 때 확대·흐려지며 입장
+            // 도트 테마: 내용 칸을 황토 테두리 + 어두운 갈색 카드로 감싼다
+            var frame = UiKit.Panel(connectionPanel, "ConnectionFrame", Palette.CardBorder, rounded: true);
+            UiKit.Place(frame.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(680, 680));
+            var glow = UiKit.Panel(frame.transform, "ConnectionGlow", Palette.Screen, rounded: true);
+            UiKit.Stretch(glow.rectTransform, 2, 2, 2, 2);
             var card = UiKit.Panel(connectionPanel, "ConnectionCard", Color.clear).rectTransform; // 내용 배치용(투명)
             UiKit.Place(card, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(640, 650));
-            Label(card, "BLACK WHALE", 30, -26, 50, Palette.Text);
+            Label(card, "BLACK WHALE", 30, -26, 50, Palette.Accent);
             normalTab = UiKit.Button(card, "일반 플레이", 15, Palette.Accent, Color.white, () => SelectMode(false));
             normalTab.name = "NormalPlayTab";
             developerTab = UiKit.Button(card, "개발자", 15, Palette.AccentSoft, Palette.Accent, () => SelectMode(true));

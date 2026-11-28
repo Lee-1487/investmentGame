@@ -26,7 +26,7 @@ namespace BlackWhale.Rules
         public const int FullWeightBps = 10000;
         public const int BundlesPerCompany = 6;
         public const int PublicBundlesPerCompany = 2;
-        public static readonly string[] CompanyIds = { "AI", "FOOD", "AUTO", "BIO" };
+        public static readonly string[] CompanyIds = { "AUTO", "FOOD", "AI", "BIO" };
 
         public InvestmentRules Copy()
         {

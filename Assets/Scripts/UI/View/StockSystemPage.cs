@@ -48,7 +48,7 @@ namespace BlackWhale.UI.View
         private readonly GameClientController controller;
         private readonly Dictionary<string, Card> cards = new Dictionary<string, Card>();
         private readonly Dictionary<string, int> targets = new Dictionary<string, int>();
-        private string builtKey, draggingCompany, focus = "AI";
+        private string builtKey, draggingCompany, focus = "AUTO";
         private Text summary;
         private Button finish;
         private Button rumors;
@@ -133,7 +133,7 @@ namespace BlackWhale.UI.View
             if (currentBar != null)
             {
                 currentBar.rectTransform.anchorMax = new Vector2(ratio, 0);
-                currentBar.color = ratio > .5f ? new Color32(0x10, 0xB9, 0x81, 0xFF) : ratio > .25f ? new Color32(0xBF, 0xBF, 0xBF, 0xFF) : new Color32(0xFF, 0xFF, 0xFF, 0xFF); // 초록 → 회색 → 흰색
+                currentBar.color = ratio > .5f ? new Color32(0x10, 0xB9, 0x81, 0xFF) : ratio > .25f ? new Color32(0xD2, 0xB0, 0x82, 0xFF) : new Color32(0xFF, 0xFF, 0xFF, 0xFF); // 초록 → 회색 → 흰색
             }
             int sec = Mathf.CeilToInt((float)remain);
             bool hurry = remain > 0 && sec <= 3;
@@ -146,7 +146,7 @@ namespace BlackWhale.UI.View
             if (currentSlotText != null && currentSlotText.text.Contains("·"))
             {
                 string head = currentSlotText.text.Split('<')[0];
-                currentSlotText.text = head + "<size=12>" + (State.selectionIndex / 4 + 1) + "차 · " + (hurry ? "<color=#FFFFFF><b>" + sec + "초</b></color>" : sec + "초") + " · 지금</size>";
+                currentSlotText.text = head + "<size=12>" + (State.selectionIndex / 4 + 1) + "차 · " + (hurry ? "<color=#F2E6CC><b>" + sec + "초</b></color>" : sec + "초") + " · 지금</size>";
             }
             if (urgency != null)
             {
@@ -162,7 +162,8 @@ namespace BlackWhale.UI.View
             for (int i = first; i < Math.Min(ids.Length, first + 4); i++)
             {
                 bool current = i == State.selectionIndex && State.phase == Protocol.Selection;
-                var panel = UiKit.Panel(root, "StockDraftSlot_" + i, Palette.Card, rounded: true);
+                var panel = UiKit.Panel(root, "StockDraftSlot_" + i, current ? Palette.Maroon : Palette.Card, rounded: true);
+                UiKit.AddFrame(panel, current ? Palette.MaroonBorder : Palette.CardBorder);
                 panel.rectTransform.anchorMin = new Vector2((i - first) / 4f, 1); panel.rectTransform.anchorMax = new Vector2((i - first + 1) / 4f, 1);
                 panel.rectTransform.offsetMin = new Vector2(3, -45); panel.rectTransform.offsetMax = new Vector2(-3, 0);
                 var text = UiKit.Label(panel.transform, ids[i] + "  <size=12>" + (i / 4 + 1) + (State.developerMode ? "차 · 완료 시 진행" : "차 · 7초") + (current ? " · 지금" : "") + "</size>", 22, Palette.Player(ids[i]), TextAnchor.MiddleCenter, FontStyle.Bold);
@@ -188,6 +189,7 @@ namespace BlackWhale.UI.View
         private void BuildCompany(RectTransform cell, string id)
         {
             var panel = UiKit.Panel(cell, "ShareCardBackground", Palette.Card, rounded: true); UiKit.Stretch(panel.rectTransform);
+            UiKit.AddFrame(panel, Palette.CardBorder);
             var r = panel.rectTransform;
             var card = new Card { InitialShares = targets.TryGetValue(id, out var initial) ? initial : Holding(id) }; cards[id] = card;
             // 1줄: 기업명·수량(왼쪽) | 내 보유 배지 · 확대(오른쪽)   2줄: 플레이어별 보유   3줄~: 차트
@@ -198,7 +200,7 @@ namespace BlackWhale.UI.View
             card.Heading.horizontalOverflow = HorizontalWrapMode.Overflow; // 리치 텍스트는 best-fit이 작게 잡혀 글자가 줄어들어서 고정 크기
             card.TradeMarker = UiKit.Label(r, "", 12, Palette.Text, TextAnchor.MiddleCenter, FontStyle.Bold);
             card.TradeMarker.name = "TradeDraftMarker_" + id;
-            UiKit.Place(card.TradeMarker.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(10, -35), new Vector2(70, 20));
+            UiKit.Place(card.TradeMarker.rectTransform, Vector2.one, Vector2.one, new Vector2(-70, -5), new Vector2(70, 20));
             card.TradeMarker.gameObject.SetActive(false);
             var expand = UiKit.Button(r, "확대 ↗", 11, Palette.AccentSoft, Palette.Accent, () => OpenPlan?.Invoke(id));
             expand.name = "ExpandShare_" + id;
@@ -215,7 +217,7 @@ namespace BlackWhale.UI.View
             card.Owners.resizeTextForBestFit = true; card.Owners.resizeTextMinSize = 8; card.Owners.resizeTextMaxSize = 12;
             card.SegmentPointerRoot = UiKit.Rect(r, "NextSegmentPointer_" + id);
             card.SegmentPointerRoot.anchorMin = new Vector2(0, 1); card.SegmentPointerRoot.anchorMax = Vector2.one;
-            card.SegmentPointerRoot.offsetMin = new Vector2(8, -51); card.SegmentPointerRoot.offsetMax = new Vector2(-8, -30);
+            card.SegmentPointerRoot.offsetMin = new Vector2(8, -73); card.SegmentPointerRoot.offsetMax = new Vector2(-8, -52);
             var spanBar = UiKit.Panel(card.SegmentPointerRoot, "SpanLine", new Color32(0xFF, 0x3B, 0x30, 0xD8));
             spanBar.raycastTarget = false;
             card.SegmentSpanLine = spanBar.rectTransform;
@@ -373,13 +375,17 @@ namespace BlackWhale.UI.View
                 : State.phase == Protocol.Info ? "정보 공유 2분 · 왼쪽 플레이어에 마우스를 올려 카드 / 계획을 보내세요."
                 : State.phase == Protocol.Investment ? (State.stockSegmentIndex + 1) + "/6구간 · " + (State.stockSegmentRevealing ? "시장 공개 · 배치 변경은 다음 구간에" : "비공개 선택 10초 · 미사용 투자말 " + Portfolio.CashSlots + "/3 · 시간 종료 시 현재 배치 유지")
                 : "확정된 기업별 주식 현황 · 차트를 눌러 확인하세요.";
+            if (summary != null && (State.phase == Protocol.Investment || State.phase == Protocol.Reveal || State.phase == Protocol.Result))
+                summary.text = Portfolio.processedDay + "일 · 내 전체 누적 " + (Portfolio.totalReturnBps / 100m).ToString("+0.00;-0.00;0.00") + "% · "
+                    + (State.phase != Protocol.Investment ? "최종 공개" : (State.stockSegmentIndex + 1) + "/6구간 · 현금 " + Portfolio.CashSlots + "/3 · "
+                        + (State.stockSegmentRevealing ? "시장 공개 중" : "비공개 선택 10초"));
             foreach (var pair in cards)
             {
                 string id = pair.Key; var card = pair.Value;
                 var company = State.shareMarket?.FirstOrDefault(c => c.companyId == id);
                 var owners = company?.owners ?? Array.Empty<ShareOwner>();
                 int used = owners.Sum(o => o.shares + o.reserved), total = company?.totalShares ?? StockRules.Supply;
-                string tag = used >= total ? "  <color=#FFFFFF><b>매진</b></color>" : total - used <= 4 ? "  <color=#FFFFFF>품절 임박</color>" : "";
+                string tag = used >= total ? "  <color=#F2E6CC><b>매진</b></color>" : total - used <= 4 ? "  <color=#F2E6CC>품절 임박</color>" : "";
                 card.Heading.text = "<b>" + id + "</b>" + (State.phase == Protocol.Info ? id == "FOOD" || id == "AUTO" ? " · 기본 흐름" : " · 시장 반응" : "");
                 // 진입·청산 단계: 내가 보유한(매매 가능한) 기업 강조, 미보유는 흐리게
                 bool investing = State.phase == Protocol.Investment && !State.stockSegmentRevealing && !controller.Store.OrderLocked;
@@ -422,9 +428,12 @@ namespace BlackWhale.UI.View
                 card.TradableDot.gameObject.SetActive(tradable);
                 card.Shade.gameObject.SetActive(false);
                 card.Heading.rectTransform.offsetMin = new Vector2(tradable ? 22 : 10, card.Heading.rectTransform.offsetMin.y);
-                card.Heading.rectTransform.offsetMax = new Vector2(-70, card.Heading.rectTransform.offsetMax.y);
+                card.Heading.rectTransform.offsetMax = new Vector2(changed ? -150 : -70, card.Heading.rectTransform.offsetMax.y);
                 bool showNextArrows = State.phase == Protocol.Investment && State.stockSegmentIndex >= 0 && State.stockSegmentIndex < 6;
-                card.Owners.text = State.phase == Protocol.Investment ? "" : string.Join("  ", owners.Select(o => "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(o.playerId)) + ">" + o.playerId + " ■" + (o.shares + o.reserved) + "</color>"));
+                var holding = Portfolio.holdings.FirstOrDefault(h => h.companyId == id);
+                card.Owners.text = State.phase == Protocol.Investment || State.phase == Protocol.Reveal || State.phase == Protocol.Result
+                    ? "주가 누적 " + ((holding?.marketReturnBps ?? 0) / 100m).ToString("+0.00;-0.00;0.00") + "% · 내 누적 "
+                        + ((holding?.returnBps ?? 0) / 100m).ToString("+0.00;-0.00;0.00") + "%" : string.Join("  ", owners.Select(o => "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(o.playerId)) + ">" + o.playerId + " ■" + (o.shares + o.reserved) + "</color>"));
                 if (card.SegmentPointerRoot != null) {
                     card.SegmentPointerRoot.gameObject.SetActive(showNextArrows);
                     if (showNextArrows) {
@@ -450,11 +459,12 @@ namespace BlackWhale.UI.View
                         card.SegmentLabels[segment].text = (segment + 1) + "구간\n" + (record == null ? "미공개" : tokens.Length == 0 ? "없음" : tokens);
                     }
                 }
-                if (card.Probability != null) card.Probability.text = BoardChartAnnotations.ProbabilityLabel(State, Portfolio, id);
+                if (card.Probability != null) { card.Probability.text = BoardChartAnnotations.ProbabilityLabel(State, Portfolio, id); card.Probability.fontSize = 13; card.Probability.alignment = TextAnchor.MiddleCenter; }
                 var visible = controller.Store.View?.companies?.FirstOrDefault(c => c.companyId == id);
                 var revealed = controller.Store.RevealedTurn == State.turn ? controller.Store.Revealed?.FirstOrDefault(c => c.companyId == id) : null;
+                card.Chart.SetHiddenTail(BoardChartAnnotations.HiddenFinalSegment(visible, revealed));
                 card.Chart.SetCompany(id);
-                card.Chart.SetSegmentKnowledge(State.segmentKnowledge, id);
+                card.Chart.SetSegmentKnowledge(BoardChartAnnotations.RumorKnowledge(controller.Store.View, State, controller.Store.RumorsVisible), id, State.players);
                 card.Chart.SetData(DailyBarModel.Build(visible, revealed));
                 card.Chart.SetTrendThroughDay(revealed != null ? 30 : State.phase == Protocol.Investment ? Portfolio?.processedDay : (int?)null);
                 card.Chart.SetCurrentDay(StockRules.CurrentDay(State, Portfolio));
@@ -474,7 +484,7 @@ namespace BlackWhale.UI.View
                 int other = Math.Min(20, colors.Count);
                 int ownUnits = card.Slider != null ? targets[id] : owners.Where(o => o.playerId == controller.LocalPlayerId).Sum(o => o.shares + o.reserved);
                 colors.AddRange(Enumerable.Repeat(Palette.Player(controller.LocalPlayerId), Math.Max(0, ownUnits)));
-                Color empty = new Color32(0x3A, 0x3A, 0x3A, 0xFF);
+                Color empty = new Color32(0x40, 0x35, 0x27, 0xFF);
                 bool first = card.LastColors == null;
                 if (first) card.LastColors = new Color[card.Units.Length];
                 for (int i = 0; i < card.Units.Length; i++)
@@ -512,6 +522,7 @@ namespace BlackWhale.UI.View
                 var cell = UiKit.Rect(root, "Augment_" + id); UiKit.Anchor(cell, i / columns, 0, (i + 1) / columns, 1, 6, 90);
                 cell.offsetMin = new Vector2(cell.offsetMin.x, 30);
                 var panel = UiKit.Panel(cell, "Card", Palette.Card, rounded: true); UiKit.Stretch(panel.rectTransform);
+                UiKit.AddFrame(panel, Palette.CardBorder);
                 // 증강 이름은 규칙 카탈로그의 원래 표기를 그대로 사용합니다.
                 // HIDDEN 손실 제어도 다른 증강 이름과 마찬가지로 한 줄로 표시합니다.
                 var name = UiKit.Label(panel.transform, StockRules.Name(id), 20, Palette.Accent, TextAnchor.UpperCenter, FontStyle.Bold); UiKit.Stretch(name.rectTransform, 12, 20, 12, 0);

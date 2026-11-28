@@ -134,16 +134,16 @@ namespace BlackWhale.UI.View
             var known = (Store.View?.companies ?? Array.Empty<VisibleCompany>())
                 .Where(c => c.companyId == "FOOD" || c.companyId == "AUTO")
                 .SelectMany(c => (c.visibleWindows ?? Array.Empty<VisibleInformationWindow>())
-                    .Where(w => w.source == "DEALT" && w.startDay >= 6 && w.startDay <= 26 && w.dailyChangesBps?.Length == 5)
+                    .Where(w => w.source == "DEALT" && w.startDay >= 6 && w.startDay <= 21 && InformationWindowRules.IsSegmentCard(w))
                     .Select(w => new { Company = c.companyId, Start = w.startDay }))
                 .GroupBy(c => c.Company + ":" + c.Start).Select(g => g.First())
                 .OrderBy(c => c.Company).ThenBy(c => c.Start).ToArray();
             var knownSet = new System.Collections.Generic.HashSet<string>((Store.View?.companies ?? Array.Empty<VisibleCompany>())
                 .SelectMany(c => (c.visibleWindows ?? Array.Empty<VisibleInformationWindow>())
-                    .Where(w => w.dailyChangesBps?.Length == 5)
+                    .Where(w => InformationWindowRules.IsSegmentCard(w))
                     .Select(w => c.companyId + ":" + w.startDay)));
             var wanted = new[] { "FOOD", "AUTO" }
-                .SelectMany(comp => new[] { 6, 11, 16, 21, 26 }.Select(start => new { Company = comp, Start = start }))
+                .SelectMany(comp => new[] { 6, 11, 16, 21 }.Select(start => new { Company = comp, Start = start }))
                 .Where(c => !knownSet.Contains(c.Company + ":" + c.Start))
                 .ToArray();
             var panel = SocialFrame(_socialTarget + " · 정보 교환 요청", 540);
@@ -206,7 +206,7 @@ namespace BlackWhale.UI.View
 
         private void ShowIntentEditor()
         {
-            var ranges = Store.TradePlans.ToReservations().SelectMany(p => (p.intervals ?? Array.Empty<Interval>())
+            var ranges = Store.TradePlans.ToReservations().Where(p => StockRules.CanShareRumor(p.companyId)).SelectMany(p => (p.intervals ?? Array.Empty<Interval>())
                 .Select(i => new { Company = p.companyId, Interval = i })).ToArray();
             if (ranges.Length == 0) { ShowCustomIntentEditor(); return; }
             int selected = 0;
@@ -240,15 +240,16 @@ namespace BlackWhale.UI.View
 
         private void ShowCustomIntentEditor()
         {
-            string company = "FOOD"; int entry = 0, exit = 0;
-            var panel = SocialFrame(_socialTarget + " · 계획 통보", 440);
+            string[] rumorCompanies = { "AI", "BIO" };
+            string company = "AI"; int entry = 0, exit = 0;
+            var panel = SocialFrame(_socialTarget + " · 찌라시 교환", 440);
             SocialLabel(panel, "상대의 동의 없이 전달되는 계획입니다.\n자동 주문이 되지 않으며 실제 선택과 달라도 됩니다.", 48, 48);
-            var companyButtons = new Button[UiRules.CompanyIds.Length];
+            var companyButtons = new Button[rumorCompanies.Length];
             var entryButtons = new Button[6]; var exitButtons = new Button[6];
             Text preview = null;
             void RefreshIntent() {
-                for (int i = 0; i < companyButtons.Length; i++) UiKit.SetButton(companyButtons[i], UiRules.CompanyIds[i], !Store.Public.paused,
-                    company == UiRules.CompanyIds[i] ? Palette.Accent : Palette.AccentSoft, company == UiRules.CompanyIds[i] ? Palette.OnAccent : Palette.Text);
+                for (int i = 0; i < companyButtons.Length; i++) UiKit.SetButton(companyButtons[i], rumorCompanies[i], !Store.Public.paused,
+                    company == rumorCompanies[i] ? Palette.Accent : Palette.AccentSoft, company == rumorCompanies[i] ? Palette.OnAccent : Palette.Text);
                 for (int i = 0; i < 6; i++) {
                     UiKit.SetButton(entryButtons[i], (i * 5 + 1) + "일", !Store.Public.paused,
                         entry == i ? Palette.Accent : Palette.AccentSoft, entry == i ? Palette.OnAccent : Palette.Text);
@@ -264,8 +265,8 @@ namespace BlackWhale.UI.View
             }
             for (int i = 0; i < companyButtons.Length; i++) {
                 int index = i;
-                companyButtons[i] = UiKit.Button(panel, UiRules.CompanyIds[i], 12, Palette.Card, Palette.Text,
-                    () => { company = UiRules.CompanyIds[index]; RefreshIntent(); });
+                companyButtons[i] = UiKit.Button(panel, rumorCompanies[i], 12, Palette.Card, Palette.Text,
+                    () => { company = rumorCompanies[index]; RefreshIntent(); });
                 PlaceChoice(companyButtons[i], i, companyButtons.Length, 112);
             }
             SocialLabel(panel, "진입할 구간 시작일", 164, 24);
@@ -279,7 +280,7 @@ namespace BlackWhale.UI.View
             }
             SocialLabel(panel, "정산할 구간 마지막 날", 242, 24);
             preview = SocialLabel(panel, "", 324, 28, 14);
-            SocialButton(panel, "SendTradeIntent", "이 계획 보내기", 364, () => {
+            SocialButton(panel, "SendTradeIntent", "찌라시 보내기", 364, () => {
                 if (_c.SendTradeIntent(_socialTarget, company, entry * 5 + 1, exit * 5 + 5) == CommandStatus.Sent) {
                     CloseSocialPopup();
                 }

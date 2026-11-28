@@ -147,6 +147,8 @@ namespace BlackWhale.Shared
     {
         public string recordId, source, companyId;
         public int startDay, paidCoins;
+        // Direction cards carry no absolute prices. Zero means this is a price window.
+        public int direction;
         public int[] dailyChangesBps;
         public int[] dailyOpenBps;
     }

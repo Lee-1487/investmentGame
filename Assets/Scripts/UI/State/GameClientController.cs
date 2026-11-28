@@ -198,6 +198,7 @@ namespace BlackWhale.UI.State
         }
         public CommandStatus SendTradeIntent(string target, string company, int entryDay, int exitDay)
         {
+            if (!StockRules.CanShareRumor(company)) return Block("RUMOR_COMPANY_NOT_ALLOWED");
             if (!HasCurrentPlayerView || Store.Public?.stockSystem != true || Store.Public.phase != Protocol.Info || Store.Public.paused)
                 return Block(ErrorCodes.WrongPhase);
             if (Store.HasPending(StockRules.SendPlan)) return CommandStatus.AlreadyPending;
