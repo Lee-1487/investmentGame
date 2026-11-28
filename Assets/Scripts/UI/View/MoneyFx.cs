@@ -53,7 +53,7 @@ namespace BlackWhale.UI.View
                 for (int y = 0; y < h; y++) for (int x = 0; x < w; x++)
                 {
                     int d = Mathf.Min(Mathf.Min(x, w - 1 - x), Mathf.Min(y, h - 1 - y)); // 가장자리까지 칸 수
-                    byte a = d == 0 ? (byte)170 : d == 1 ? (byte)120 : d == 2 ? (byte)75 : d == 3 ? (byte)35 : (byte)0;
+                    byte a = d == 0 ? (byte)105 : d == 1 ? (byte)72 : d == 2 ? (byte)42 : d == 3 ? (byte)20 : (byte)0; // 연하게
                     if (d == 3 && ((x + y) & 1) == 1) a = 0; // 마지막 단계는 체크무늬로 흐리게
                     px[y * w + x] = new Color32(0xFF, 0x2A, 0x3A, a);
                 }
@@ -112,7 +112,7 @@ namespace BlackWhale.UI.View
                     float x = cell * i + cell * (0.15f + 0.7f * (float)rng.NextDouble());
                     float y = 0.1f + 0.55f * (float)rng.NextDouble();
                     rt.anchorMin = rt.anchorMax = new Vector2(x, y);
-                    float size = rng.NextDouble() < 0.5 ? 7f : 6f;          // 도트 한 칸 크기(px): 크게
+                    float size = 12f;                                         // 도트 한 칸 크기(px)
                     rt.sizeDelta = new Vector2(9 * size, 10 * size);
                     _start[i] = Vector2.zero;
                     _delay[i] = i * 0.08f + (float)rng.NextDouble() * 0.06f;
@@ -140,7 +140,7 @@ namespace BlackWhale.UI.View
         private sealed class LossFlash : MonoBehaviour
         {
             public const float Seconds = 0.6f;
-            private const float ShakeSeconds = 0.35f, ShakePx = 10f, ShakeStep = 0.08f; // 흔들림 위치를 0.08초마다만 바꿈(덜 정신없게)
+            private const float ShakeSeconds = 0.35f, ShakePx = 18f, ShakeStep = 0.08f; // 흔들림 위치를 0.08초마다만 바꿈(덜 정신없게)
             private RawImage _raw;
             private RectTransform _shake;
             private Vector2 _home;
