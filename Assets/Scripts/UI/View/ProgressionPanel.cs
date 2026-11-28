@@ -14,7 +14,7 @@ namespace BlackWhale.UI.View
         private enum Page { None, Board, Ability, Auction, Shop, Inventory }
         private GameClientController controller;
         private LobbyActions lobby;
-        private RectTransform modal, content;
+        private RectTransform modal, content, nav;
         private Text feedback;
         private Button close, complete;
         private Page page;
@@ -39,7 +39,7 @@ namespace BlackWhale.UI.View
         private void RequestRefresh() => refreshRequested = true;
         private void Build(RectTransform root)
         {
-            var nav = UiKit.Rect(root, "GameScreens");
+            nav = UiKit.Rect(root, "GameScreens");
             nav.anchorMin = new Vector2(0, 1); nav.anchorMax = Vector2.one;
             nav.offsetMin = new Vector2(148, -33); nav.offsetMax = new Vector2(-48, -2);
             // 아이템이 기획에서 빠져 '상점'·'보유 아이템' 탭은 두지 않는다.
@@ -89,6 +89,7 @@ namespace BlackWhale.UI.View
         private void Refresh()
         {
             var store = controller.Store; var state = store.Public;
+            nav.gameObject.SetActive(state != null && state.phase != Protocol.Lobby); // 대기실에서는 전광판·주식 현황·내 증강 탭 숨김
             if (state == null) { modal.gameObject.SetActive(false); return; }
             if (!ReferenceEquals(synced, state)) { synced = state; clock.Sync(state.serverElapsedSeconds, Time.realtimeSinceStartup); }
             if (!refreshRequested) return;

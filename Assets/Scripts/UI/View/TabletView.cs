@@ -442,7 +442,8 @@ namespace BlackWhale.UI.View
             bool stock = s?.stockSystem == true && s.phase != Protocol.Lobby;
             bool stockDraft = stock && s.phase == Protocol.Selection;
             UiKit.Stretch(_pageViewport, LeftEdge, stock ? 70 : 76, stockDraft ? 12 : stock ? 136 : 168, 10);
-            _rightColumn.gameObject.SetActive(!stockDraft);
+            bool lobby = s?.phase == Protocol.Lobby; // 대기실: 대기실 상자와 '방 나가기' 외 버튼은 숨김
+            _rightColumn.gameObject.SetActive(!stockDraft && !lobby);
             _pageHint.gameObject.SetActive(!stockDraft);
             _rightColumn.offsetMin = new Vector2(stock ? -140 : -160, 12);
             _rightColumn.offsetMax = new Vector2(stock ? -2 : -12, -76);
@@ -464,6 +465,7 @@ namespace BlackWhale.UI.View
             _pauseOverlay.gameObject.SetActive(paused);
             if (_pauseButton != null)
             {
+                _pauseButton.gameObject.SetActive(s?.phase != Protocol.Lobby);
                 bool can = s != null && s.phase != Protocol.Lobby && s.phase != Protocol.Ended && string.IsNullOrEmpty(Store.EndReason);
                 UiKit.SetButton(_pauseButton, paused ? "게임 재개" : "일시정지", can, paused ? Palette.AccentSoft : Palette.Card, Palette.Text);
             }
