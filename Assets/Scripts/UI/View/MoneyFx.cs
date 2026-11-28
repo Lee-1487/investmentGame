@@ -90,7 +90,7 @@ namespace BlackWhale.UI.View
         private sealed class GainArrows : MonoBehaviour
         {
             public const float Seconds = 1.1f;
-            private const float MaxAlpha = 0.55f; // 더 투명하게
+            private const float MaxAlpha = 0.4f; // 더 투명하게
             private RectTransform[] _arrows;
             private Image[] _images;
             private float[] _delay;
@@ -112,7 +112,7 @@ namespace BlackWhale.UI.View
                     float x = cell * i + cell * (0.15f + 0.7f * (float)rng.NextDouble());
                     float y = 0.1f + 0.55f * (float)rng.NextDouble();
                     rt.anchorMin = rt.anchorMax = new Vector2(x, y);
-                    float size = 12f;                                         // 도트 한 칸 크기(px)
+                    float size = 10f;                                         // 도트 한 칸 크기(px)
                     rt.sizeDelta = new Vector2(9 * size, 10 * size);
                     _start[i] = Vector2.zero;
                     _delay[i] = i * 0.08f + (float)rng.NextDouble() * 0.06f;

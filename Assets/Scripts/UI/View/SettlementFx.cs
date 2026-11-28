@@ -24,30 +24,26 @@ namespace BlackWhale.UI.View
             bool gain = turnReturnBps > 0, loss = turnReturnBps < 0;
             Color tone = gain ? Palette.Up : loss ? Palette.Down : Palette.SubText;
 
-            // 주변 테두리 번쩍임 효과는 쓰지 않음
-
-            // 네모 카드 대신 '결과 발표'와 같은 가로 띠 배경(화면 가로 전체, 테두리 없음)
-            var card = UiKit.Panel(root, "Card", new Color(0.06f, 0.06f, 0.06f, 0.94f));
-            card.raycastTarget = false;
-            card.rectTransform.anchorMin = new Vector2(0, .5f); card.rectTransform.anchorMax = new Vector2(1, .5f);
-            card.rectTransform.anchoredPosition = Vector2.zero; card.rectTransform.sizeDelta = new Vector2(0, 200);
-
+            // 도트 + 글리치 띠: 위에 'N턴 정산 · 순위', 가운데 수익률을 크게 세어 올리고, 아래 자산 변화
             string head = final ? "최종 정산" : turn + "턴 정산";
-            string rankText = rank > 0 ? (rank == 1 ? "<color=#F2E6CC><b>1위!</b></color>" : rank + "위") : "";
-            var title = UiKit.Label(card.transform, "<b>" + head + "</b>   <size=16>" + rankText + "</size>", 20, Color.white, TextAnchor.UpperCenter);
-            UiKit.Stretch(title.rectTransform, 10, 16, 10, 0);
+            string rankText = rank > 0 ? (rank == 1 ? "1위!" : rank + "위") : "";
+            var band = root.gameObject.AddComponent<GlitchBand>();
+            band.Build(root, head + (rankText.Length > 0 ? "  ·  " + rankText : ""), "", Seconds, 210f);
+            band.LayoutHead(18, 150, 24);
 
-            var pct = UiKit.Label(card.transform, "", 46, tone, TextAnchor.MiddleCenter, FontStyle.Bold);
-            UiKit.Stretch(pct.rectTransform, 10, 50, 10, 60);
-            UiAnim.Count(pct, 0, turnReturnBps, v => DisplayFormat.Percent((int)v), 1.2f, 0.25f);
+            var pct = UiKit.Label(band.Content, "", 52, tone, TextAnchor.MiddleCenter, FontStyle.Bold);
+            UiKit.Stretch(pct.rectTransform, 10, 50, 10, 54);
+            UiAnim.Count(pct, 0, turnReturnBps, v => DisplayFormat.Percent((int)v), 1.2f, 0.3f);
+            // 수익률 글자 뒤로 같은 색 도트 그림자(2칸 아래·오른쪽)
+            var pctShadow = UiKit.Label(band.Content, "", 52, new Color(0, 0, 0, 0.55f), TextAnchor.MiddleCenter, FontStyle.Bold);
+            UiKit.Stretch(pctShadow.rectTransform, 14, 50, 6, 58);
+            pctShadow.transform.SetSiblingIndex(pct.transform.GetSiblingIndex());
+            UiAnim.Count(pctShadow, 0, turnReturnBps, v => DisplayFormat.Percent((int)v), 1.2f, 0.3f);
 
-            var assets = UiKit.Label(card.transform, "", 18, new Color(0.9f, 0.9f, 0.9f), TextAnchor.LowerCenter);
-            UiKit.Stretch(assets.rectTransform, 10, 0, 10, 18);
-            UiAnim.Count(assets, prevAssets, nowAssets, v => "자산 " + DisplayFormat.Money(prevAssets) + "  →  <b>" + DisplayFormat.Money(v) + "</b>", 1.4f, 0.35f);
+            var assets = UiKit.Label(band.Content, "", 18, Palette.Text, TextAnchor.LowerCenter);
+            UiKit.Stretch(assets.rectTransform, 10, 0, 10, 20);
+            UiAnim.Count(assets, prevAssets, nowAssets, v => "자산 " + DisplayFormat.Money(prevAssets) + "  →  <b>" + DisplayFormat.Money(v) + "</b>", 1.4f, 0.4f);
 
-            // 흔들림·튀는 효과, 올라오는 움직임 없이 결과 발표 띠처럼 그 자리에 나타났다가 서서히 사라짐
-
-            UiAnim.FadeOut(card.rectTransform, Seconds - 0.5f, 0.5f);
             if (Application.isPlaying) Object.Destroy(root.gameObject, Seconds + 0.3f);
         }
     }
@@ -89,16 +85,8 @@ namespace BlackWhale.UI.View
             var root = UiKit.Rect(screen, "ResultAnnouncement");
             UiKit.Stretch(root);
 
-            var band = UiKit.Panel(root, "Band", new Color(0.06f, 0.06f, 0.06f, 0.94f));
-            band.raycastTarget = false;
-            band.rectTransform.anchorMin = new Vector2(0, .5f); band.rectTransform.anchorMax = new Vector2(1, .5f);
-            band.rectTransform.sizeDelta = new Vector2(0, 150);
-            var title = UiKit.Label(band.transform, (final ? "최종" : turn + "턴") + " 결과 발표", 54, new Color32(0xFF, 0xFF, 0xFF, 0xFF), TextAnchor.MiddleCenter, FontStyle.Bold);
-            UiKit.Stretch(title.rectTransform, 0, 0, 0, 34);
-            var sub = UiKit.Label(band.transform, "이번 턴 수익과 순위가 확정되었습니다", 18, Color.white, TextAnchor.LowerCenter);
-            UiKit.Stretch(sub.rectTransform, 0, 0, 0, 16);
-
-            UiAnim.FadeOut(band.rectTransform, 1.8f, 0.45f);
+            // 도트 + 글리치 띠(화면 전환과 같은 연출)
+            root.gameObject.AddComponent<GlitchBand>().Build(root, (final ? "최종" : turn + "턴") + " 결과 발표", "이번 턴 수익과 순위가 확정되었습니다", 2.4f);
             if (Application.isPlaying) Object.Destroy(root.gameObject, 2.6f);
         }
     }
@@ -127,11 +115,13 @@ namespace BlackWhale.UI.View
     /// <summary>도트 글리치 띠 연출(PhaseTransitionFx 전용).</summary>
     public sealed class GlitchBand : MonoBehaviour
     {
-        private const float Height = 150f, Open = 0.2f, Glitch = 0.5f, CloseAt = 1.2f, Close = 0.3f;
+        private const float Open = 0.2f, Glitch = 0.5f, Close = 0.3f;
+        private float Height = 150f, CloseAt = 1.2f;
         private static Texture2D _dither, _scan;
 
         private RectTransform _band;
         private Text _main, _red, _cyan, _sub;
+        private Vector2 _headBase; // 제목 기본 위치(떨림은 여기서 더함)
         private Image[] _slices;
         private CanvasGroup _group;
         private float _t, _nextJitter;
@@ -145,8 +135,23 @@ namespace BlackWhale.UI.View
             t.SetPixels32(px); t.Apply(); return t;
         }
 
-        public void Build(RectTransform root, string head, string sub)
+        /// <summary>띠 안의 추가 내용(숫자 등)을 넣을 곳. 주사선 아래에 깔린다.</summary>
+        public RectTransform Content { get; private set; }
+
+        /// <summary>큰 제목(빨강·청록 잔상 포함)의 위치·크기 바꾸기.</summary>
+        public void LayoutHead(float top, float bottom, int size)
         {
+            foreach (var t in new[] { _red, _cyan, _main })
+            {
+                t.fontSize = size;
+                t.rectTransform.offsetMin = new Vector2(0, bottom); t.rectTransform.offsetMax = new Vector2(0, -top);
+            }
+            _headBase = _main.rectTransform.anchoredPosition;
+        }
+
+        public void Build(RectTransform root, string head, string sub, float seconds = PhaseTransitionFx.Seconds, float height = 150f)
+        {
+            Height = height; CloseAt = seconds - 0.4f;
             if (_dither == null) _dither = Tex(2, 2, (x, y) => ((x + y) & 1) == 0 ? new Color32(255, 255, 255, 255) : new Color32(0, 0, 0, 0));
             if (_scan == null) _scan = Tex(1, 2, (x, y) => y == 0 ? new Color32(0, 0, 0, 90) : new Color32(0, 0, 0, 0));
 
@@ -187,6 +192,9 @@ namespace BlackWhale.UI.View
             _main = Title(head, Palette.Text);
             _sub = UiKit.Label(_band, sub, 18, Palette.Accent, TextAnchor.LowerCenter);
             UiKit.Stretch(_sub.rectTransform, 0, 0, 0, 18);
+            _headBase = _main.rectTransform.anchoredPosition;
+            Content = UiKit.Rect(_band, "Content");
+            UiKit.Stretch(Content);
             // 주사선
             var scan = UiKit.Rect(_band, "Scanlines");
             UiKit.Stretch(scan);
@@ -225,9 +233,9 @@ namespace BlackWhale.UI.View
             {
                 _nextJitter = t + 0.045f;
                 float k = glitching ? 1f : 0f;
-                _red.rectTransform.anchoredPosition = new Vector2(Snap(-6f * k + Rand(4f) * k), Snap(Rand(3f) * k));
-                _cyan.rectTransform.anchoredPosition = new Vector2(Snap(6f * k + Rand(4f) * k), Snap(Rand(3f) * k));
-                _main.rectTransform.anchoredPosition = new Vector2(Snap(Rand(3f) * k), 0);
+                _red.rectTransform.anchoredPosition = _headBase + new Vector2(Snap(-6f * k + Rand(4f) * k), Snap(Rand(3f) * k));
+                _cyan.rectTransform.anchoredPosition = _headBase + new Vector2(Snap(6f * k + Rand(4f) * k), Snap(Rand(3f) * k));
+                _main.rectTransform.anchoredPosition = _headBase + new Vector2(Snap(Rand(3f) * k), 0);
                 _red.enabled = _cyan.enabled = glitching;
                 for (int i = 0; i < _slices.Length; i++)
                 {

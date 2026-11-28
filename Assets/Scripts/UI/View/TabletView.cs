@@ -194,6 +194,17 @@ namespace BlackWhale.UI.View
 
         private RectTransform _fxLayer;
         /// <summary>연출을 그릴 곳: 항상 모든 창보다 위(맨 마지막 자식).</summary>
+        /// <summary>화면 가장자리까지 꽉 차는 효과층(띠가 양옆에서 끊기지 않게).</summary>
+        private RectTransform FullFxLayer
+        {
+            get
+            {
+                if (_edgeFxLayer == null) { _edgeFxLayer = UiKit.Rect(Root, "EdgeFxLayer"); UiKit.Stretch(_edgeFxLayer); }
+                _edgeFxLayer.SetAsLastSibling();
+                return _edgeFxLayer;
+            }
+        }
+
         private RectTransform FxLayer
         {
             get
@@ -228,9 +239,7 @@ namespace BlackWhale.UI.View
             if (delta > 0) MoneyFx.Gain(FxLayer);
             else if (delta < 0)
             {
-                if (_edgeFxLayer == null) { _edgeFxLayer = UiKit.Rect(Root, "EdgeFxLayer"); UiKit.Stretch(_edgeFxLayer); }
-                _edgeFxLayer.SetAsLastSibling();
-                MoneyFx.Loss(_edgeFxLayer, ScreenRect); // 바탕은 두고 화면 내용만 흔들림(가장자리에 기본 배경이 비치지 않게)
+                MoneyFx.Loss(FullFxLayer, ScreenRect); // 바탕은 두고 화면 내용만 흔들림(가장자리에 기본 배경이 비치지 않게)
             }
         }
 
@@ -547,7 +556,7 @@ namespace BlackWhale.UI.View
                     if (s.phase != Protocol.Lobby && s.phase != Protocol.Ended) UiSound.Play(UiSound.Kind.Turn); // 새 단계 시작음
                     // 화면 전환 효과: 결과 발표처럼 화면 가로 띠(대기실·종료·정산 결과는 제외: 정산은 '결과 발표'가 따로 나옴)
                     if (s.phase != Protocol.Lobby && s.phase != Protocol.Ended && s.phase != Protocol.Result)
-                        PhaseTransitionFx.Play(FxLayer, (s.stockSystem ? s.turn + "/" + s.totalTurns : s.turn.ToString()) + "턴", PhaseNames.ForState(s));
+                        PhaseTransitionFx.Play(FullFxLayer, (s.stockSystem ? s.turn + "/" + s.totalTurns : s.turn.ToString()) + "턴", PhaseNames.ForState(s));
                     if (s.phase == Protocol.Info || s.phase == Protocol.Reveal) ShowPage(1);
                     if (s.phase == Protocol.Lobby || s.phase == Protocol.Selection || s.phase == StockRules.AugmentPhase || s.phase == Protocol.Investment || s.phase == Protocol.Result) ShowPage(0);
                 }
@@ -605,13 +614,13 @@ namespace BlackWhale.UI.View
                 var mine = board.rows.FirstOrDefault(r => r.playerId == _c.LocalPlayerId);
                 // 차트(시장 공개)를 다 본 뒤 최종 결과가 나오는 순간: 매 턴 크게 '결과 발표' → 이어서 내 정산 카드·역전 표시
                 var fx = FxLayer;
-                ResultAnnouncement.Play(fx, board.turn, board.gameComplete);
+                ResultAnnouncement.Play(FullFxLayer, board.turn, board.gameComplete);
                 const float afterAnnouncement = 1.8f;
                 if (mine != null)
                 {
                     long before = _fxAssets.TryGetValue(mine.playerId, out var b) ? b : mine.totalAssets - mine.cumulativeProfit;
                     int turnNo = board.turn, rank = mine.rank, ret = mine.turnReturnBps; long now = mine.totalAssets; bool complete = board.gameComplete;
-                    DelayedAction.Run(fx, afterAnnouncement, () => SettlementFx.Play(FxLayer, turnNo, complete, rank, ret, before, now));
+                    DelayedAction.Run(fx, afterAnnouncement, () => SettlementFx.Play(FullFxLayer, turnNo, complete, rank, ret, before, now));
                 }
                 // 역전: 직전 순위와 비교해 누가 누구를 제쳤는지
                 var reversal = ReversalFx.Describe(_fxRanks, board.rows.Where(r => r != null).Select(r => new KeyValuePair<string, int>(r.playerId, r.rank)),
