@@ -24,26 +24,9 @@ namespace BlackWhale.UI.View
             bool gain = turnReturnBps > 0, loss = turnReturnBps < 0;
             Color tone = gain ? Palette.Up : loss ? Palette.Down : Palette.SubText;
 
-            // 도트 + 글리치 띠: 위에 'N턴 정산 · 순위', 가운데 수익률을 크게 세어 올리고, 아래 자산 변화
-            string head = final ? "최종 정산" : turn + "턴 정산";
-            string rankText = rank > 0 ? (rank == 1 ? "1위!" : rank + "위") : "";
-            var band = root.gameObject.AddComponent<GlitchBand>();
-            band.Build(root, head + (rankText.Length > 0 ? "  ·  " + rankText : ""), "", Seconds, 210f);
-            band.LayoutHead(18, 150, 24);
-
-            var pct = UiKit.Label(band.Content, "", 52, tone, TextAnchor.MiddleCenter, FontStyle.Bold);
-            UiKit.Stretch(pct.rectTransform, 10, 50, 10, 54);
-            UiAnim.Count(pct, 0, turnReturnBps, v => DisplayFormat.Percent((int)v), 1.2f, 0.3f);
-            // 수익률 글자 뒤로 같은 색 도트 그림자(2칸 아래·오른쪽)
-            var pctShadow = UiKit.Label(band.Content, "", 52, new Color(0, 0, 0, 0.55f), TextAnchor.MiddleCenter, FontStyle.Bold);
-            UiKit.Stretch(pctShadow.rectTransform, 14, 50, 6, 58);
-            pctShadow.transform.SetSiblingIndex(pct.transform.GetSiblingIndex());
-            UiAnim.Count(pctShadow, 0, turnReturnBps, v => DisplayFormat.Percent((int)v), 1.2f, 0.3f);
-
-            var assets = UiKit.Label(band.Content, "", 18, Palette.Text, TextAnchor.LowerCenter);
-            UiKit.Stretch(assets.rectTransform, 10, 0, 10, 20);
-            UiAnim.Count(assets, prevAssets, nowAssets, v => "자산 " + DisplayFormat.Money(prevAssets) + "  →  <b>" + DisplayFormat.Money(v) + "</b>", 1.4f, 0.4f);
-
+            // 화면 전환(글리치 띠)과 다른 연출: 가운데 도트 상자가 '도트 조각'으로 흩어져 나타나고(디졸브),
+            // 수익률이 세어 올라가며 이익이면 금빛 도트가 솟고 손실이면 파란 도트가 떨어진다. 끝날 때 다시 조각으로 흩어져 사라짐.
+            root.gameObject.AddComponent<SettlementPanel>().Build(root, final ? "최종 정산" : turn + "턴 정산", rank, turnReturnBps, prevAssets, nowAssets, tone);
             if (Application.isPlaying) Object.Destroy(root.gameObject, Seconds + 0.3f);
         }
     }
