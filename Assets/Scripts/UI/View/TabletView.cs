@@ -505,6 +505,9 @@ namespace BlackWhale.UI.View
                     else if (s.phase == Protocol.Ended && !string.IsNullOrEmpty(Store.EndReason)) ShowBanner(Palette.BadText(ErrorMessages.ToKorean(Store.EndReason)));
                     else if (s.phase != Protocol.Ended && !day.HasValue) ShowBanner("<b>" + s.turn + "턴 · " + PhaseNames.ForState(s) + "</b> 단계가 시작되었습니다.");
                     if (s.phase != Protocol.Lobby && s.phase != Protocol.Ended) UiSound.Play(UiSound.Kind.Turn); // 새 단계 시작음
+                    // 화면 전환 효과: 결과 발표처럼 화면 가로 띠(대기실·종료·정산 결과는 제외: 정산은 '결과 발표'가 따로 나옴)
+                    if (s.phase != Protocol.Lobby && s.phase != Protocol.Ended && s.phase != Protocol.Result)
+                        PhaseTransitionFx.Play(FxLayer, (s.stockSystem ? s.turn + "/" + s.totalTurns : s.turn.ToString()) + "턴", PhaseNames.ForState(s));
                     if (s.phase == Protocol.Info || s.phase == Protocol.Reveal) ShowPage(1);
                     if (s.phase == Protocol.Lobby || s.phase == Protocol.Selection || s.phase == StockRules.AugmentPhase || s.phase == Protocol.Investment || s.phase == Protocol.Result) ShowPage(0);
                 }

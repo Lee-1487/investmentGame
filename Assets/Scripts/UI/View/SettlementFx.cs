@@ -103,6 +103,36 @@ namespace BlackWhale.UI.View
         }
     }
 
+    /// <summary>
+    /// 화면 전환(턴·단계가 넘어갈 때): '결과 발표'와 같은 화면 가로 전체 띠가 나타나
+    /// "N턴 · 단계 이름"을 크게 보여 주고 서서히 사라진다.
+    /// </summary>
+    public static class PhaseTransitionFx
+    {
+        public const float Seconds = 1.6f;
+
+        public static void Play(RectTransform screen, string head, string sub)
+        {
+            if (screen == null) return;
+            var old = screen.Find("PhaseTransitionFx");
+            if (old != null) Object.Destroy(old.gameObject);
+            var root = UiKit.Rect(screen, "PhaseTransitionFx");
+            UiKit.Stretch(root);
+
+            var band = UiKit.Panel(root, "Band", new Color(0.06f, 0.06f, 0.06f, 0.94f));
+            band.raycastTarget = false;
+            band.rectTransform.anchorMin = new Vector2(0, .5f); band.rectTransform.anchorMax = new Vector2(1, .5f);
+            band.rectTransform.sizeDelta = new Vector2(0, 150);
+            var title = UiKit.Label(band.transform, head, 54, new Color32(0xFF, 0xFF, 0xFF, 0xFF), TextAnchor.MiddleCenter, FontStyle.Bold);
+            UiKit.Stretch(title.rectTransform, 0, 0, 0, 34);
+            var subLabel = UiKit.Label(band.transform, sub, 18, Color.white, TextAnchor.LowerCenter);
+            UiKit.Stretch(subLabel.rectTransform, 0, 0, 0, 16);
+
+            UiAnim.FadeOut(band.rectTransform, Seconds - 0.45f, 0.45f);
+            if (Application.isPlaying) Object.Destroy(root.gameObject, Seconds + 0.2f);
+        }
+    }
+
     /// <summary>역전 표시: 정산 결과 순위가 바뀌면 화면 위쪽에 '역전!' 띠가 내려와 누가 누구를 제쳤는지 알린다.</summary>
     public static class ReversalFx
     {
