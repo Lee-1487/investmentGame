@@ -158,6 +158,7 @@ namespace BlackWhale.UI.View
             var bg = UiKit.Panel(Root, "Background", Palette.Background);
             UiKit.Stretch(bg.rectTransform);
             PixelBackdrop.Create(bg.transform); // 도트 글리치 배경 효과
+            PixelClickSparks.Attach(Root);      // 클릭할 때 도트 파편
 
             BuildEdges();
 
