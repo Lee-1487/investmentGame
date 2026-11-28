@@ -9,8 +9,8 @@ namespace BlackWhale.UI.View
     {
         private const int Pool = 48;          // 동시에 보일 수 있는 파편 수
         private const int PerClick = 9;       // 한 번 클릭에 튀는 파편 수
-        private const float Life = 0.42f;     // 파편이 사라질 때까지(초)
-        private const float Gravity = -900f;  // 아래로 떨어지는 힘(캔버스 px/초²)
+        private const float Life = 0.95f;     // 파편이 사라질 때까지(초): 튀어 올랐다 떨어지는 게 보이게
+        private const float Gravity = -1100f; // 아래로 떨어지는 힘(캔버스 px/초²)
 
         private static readonly Color32[] Colors =
         {
@@ -21,7 +21,7 @@ namespace BlackWhale.UI.View
             new Color32(0x5C, 0xD1, 0x7A, 0xFF), // 초록
         };
 
-        private struct Spark { public RectTransform Rt; public Image Img; public Vector2 Vel; public float Age; public bool On; }
+        private struct Spark { public RectTransform Rt; public Image Img; public Vector2 Vel; public float Age, Floor; public int Bounces; public bool On; }
 
         private readonly Spark[] _sparks = new Spark[Pool];
         private RectTransform _layer;
@@ -70,9 +70,14 @@ namespace BlackWhale.UI.View
                 if (s.Age >= Life) { s.On = false; s.Rt.gameObject.SetActive(false); _sparks[i] = s; continue; }
                 s.Vel.y += Gravity * dt;
                 var p = s.Rt.anchoredPosition + s.Vel * dt;
+                if (p.y < s.Floor && s.Vel.y < 0 && s.Bounces < 2)
+                {
+                    // 바닥(클릭 지점 조금 아래)에 닿으면 통통 튄다
+                    p.y = s.Floor; s.Vel.y = -s.Vel.y * 0.45f; s.Vel.x *= 0.7f; s.Bounces++;
+                }
                 s.Rt.anchoredPosition = new Vector2(Mathf.Round(p.x / 2f) * 2f, Mathf.Round(p.y / 2f) * 2f); // 2px 격자에 맞춰 도트처럼
                 float t = s.Age / Life;
-                var c = s.Img.color; c.a = t < 0.6f ? 1f : 1f - (t - 0.6f) / 0.4f; s.Img.color = c;
+                var c = s.Img.color; c.a = t < 0.65f ? 1f : 1f - (t - 0.65f) / 0.35f; s.Img.color = c;
                 _sparks[i] = s;
             }
         }
@@ -86,11 +91,13 @@ namespace BlackWhale.UI.View
             for (int k = 0; k < PerClick; k++)
             {
                 var s = _sparks[_next]; _next = (_next + 1) % Pool;
-                float angle = (float)(_rng.NextDouble() * Mathf.PI * 2);
-                float speed = 120f + (float)_rng.NextDouble() * 200f;
-                s.Vel = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle) * 0.8f + 0.6f) * speed; // 살짝 위로 튐
-                s.Age = 0; s.On = true;
-                float size = _rng.NextDouble() < 0.3 ? 8f : 6f;
+                // 위로 톡 튀어 올랐다가 떨어지며 바닥에서 한두 번 통통
+                float vx = (float)(_rng.NextDouble() * 2 - 1) * 150f;
+                float vy = 220f + (float)_rng.NextDouble() * 200f;
+                s.Vel = new Vector2(vx, vy);
+                s.Age = 0; s.On = true; s.Bounces = 0;
+                s.Floor = local.y - 28f - (float)_rng.NextDouble() * 24f;
+                float size = _rng.NextDouble() < 0.35 ? 2f : 4f; // 작게
                 s.Rt.sizeDelta = new Vector2(size, size);
                 s.Rt.anchoredPosition = local;
                 s.Img.color = Colors[_rng.Next(Colors.Length)];
