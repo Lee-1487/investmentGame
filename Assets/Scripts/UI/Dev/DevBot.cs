@@ -122,6 +122,8 @@ namespace BlackWhale.UI.Dev
                 if (boardAllocationKey != allocationKey) {
                     boardAllocationKey = allocationKey;
                     boardAllocation = strategy.AllocateBoardTokens(view, s);
+                    foreach (var holding in view.portfolio.holdings.Where(h => !h.canBuy))
+                        boardAllocation[holding.companyId] = Math.Min(boardAllocation[holding.companyId], holding.shares);
                 }
                 // Release excess tokens before moving them to another company.
                 var change = view.portfolio.holdings.Where(h => h.shares != boardAllocation[h.companyId])

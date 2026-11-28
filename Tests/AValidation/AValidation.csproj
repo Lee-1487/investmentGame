@@ -18,6 +18,8 @@
     <Compile Include="../../Assets/Scripts/UI/Presentation/FeatureRules.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/ScreenModels.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/DisplayFormat.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Presentation/DailyBarModel.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Presentation/GraphSeriesBuilder.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/InvestmentDraft.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/BoardChartAnnotations.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/ChartRangeSelection.cs" />

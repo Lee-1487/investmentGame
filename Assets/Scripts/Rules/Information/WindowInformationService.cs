@@ -55,7 +55,7 @@ namespace BlackWhale.Rules.Information
                 foreach (string company in new[] { "FOOD", "AUTO" })
                 {
                     AddWindow(c, company, 1, "PUBLIC", 0, true);
-                    for (int segment = 1; segment < 6; segment++) {
+                    for (int segment = 1; segment < 5; segment++) {
                         // P1..P4 receive roles A/B/C/D, then B/C/D/A: role A moves to P4 next round.
                         int seat = (segment - 1 + (company == "AUTO" ? 1 : 0) - (c.Turn - 1) % players.Length + players.Length) % players.Length;
                         AddWindow(new RequestContext(c.RoomId, c.Turn, c.Phase, players[seat]), company, 1 + segment * 5, "DEALT", 0, true);
@@ -155,11 +155,11 @@ namespace BlackWhale.Rules.Information
         }
         private RuleResult WindowResult(RequestContext c, WindowRecord record)
         {
+            var visible = VisibleWindow(c, record);
             return new RuleResult(payload: new ResultPayload { companyId = record.Company, startDay = record.Start,
                 recordId = record.Id, source = record.Source, paidCoins = record.Paid, automatic = record.Automatic,
                 remainingCoins = rooms[c.RoomId].Service.GetCoins(c.PlayerId),
-                dailyChangesBps = ((IWindowMarketDataSource)source).GetWindow(c.Turn, record.Company, record.Start, record.Length),
-                dailyOpenBps = ((IWindowMarketDataSource)source).GetOpenWindow(c.Turn, record.Company, record.Start, record.Length) });
+                dailyChangesBps = visible.dailyChangesBps, dailyOpenBps = visible.dailyOpenBps });
         }
         public RuleResult RevealWindow(RequestContext c, string company, int start, bool automatic)
             => RevealPublicDays(c, company, start >= 1 && start <= 26 ? Enumerable.Range(start, 5).ToArray() : Array.Empty<int>(), automatic, start);
@@ -234,7 +234,7 @@ namespace BlackWhale.Rules.Information
                 var state = Windows(c);
                 var result = new List<SegmentKnowledge>();
                 foreach (string company in new[] { "FOOD", "AUTO" })
-                    for (int start = 1; start <= 26; start += 5) {
+                    for (int start = 1; start <= 21; start += 5) {
                         var records = state.Records.Where(r => r.Company == company && r.Start == start && r.Length == 5 && r.HiddenUntil == 0).ToArray();
                         string[] owners = records.Any(r => r.Source == "PUBLIC")
                             ? new[] { "ALL" }
@@ -261,13 +261,28 @@ namespace BlackWhale.Rules.Information
                 company.visibleBundles = Array.Empty<VisibleBundle>();
                 // Keep every independent proof. Hiding one paid record cannot remove another proof.
                 company.visibleWindows = state.Records.Where(r => r.Company == company.companyId && Accessible(r, c.PlayerId) && r.HiddenUntil == 0)
-                    .Select(r => new VisibleInformationWindow { recordId = r.Id, startDay = r.Start, source = r.Source, paidCoins = r.Paid,
-                        dailyChangesBps = (int[])r.Closes?.Clone() ?? ((IWindowMarketDataSource)source).GetWindow(c.Turn, r.Company, r.Start, r.Length),
-                        dailyOpenBps = (int[])r.Opens?.Clone() ?? ((IWindowMarketDataSource)source).GetOpenWindow(c.Turn, r.Company, r.Start, r.Length) }).ToArray();
+                    .Select(r => VisibleWindow(c, r)).ToArray();
             }
             view.receivedTradeIntents = state.Intents.Where(i => i.targetPlayerId == c.PlayerId).Select(CopyIntent).ToArray();
             if (c.Phase != Protocol.Info) foreach (var request in state.Exchanges.Where(e => e.status == "PENDING")) request.status = "EXPIRED";
             view.informationExchanges = state.Exchanges.Where(e => e.senderId == c.PlayerId || e.targetPlayerId == c.PlayerId).Select(e => e.Copy()).ToArray();
+        }
+
+        private VisibleInformationWindow VisibleWindow(RequestContext c, WindowRecord record)
+        {
+            var result = new VisibleInformationWindow { recordId = record.Id, companyId = record.Company,
+                startDay = record.Start, source = record.Source, paidCoins = record.Paid };
+            var closes = record.Closes ?? ((IWindowMarketDataSource)source).GetWindow(c.Turn, record.Company, record.Start, record.Length);
+            var opens = record.Opens ?? ((IWindowMarketDataSource)source).GetOpenWindow(c.Turn, record.Company, record.Start, record.Length);
+            if (RandomInformation && (record.Company == "FOOD" || record.Company == "AUTO")) {
+                result.direction = Math.Sign(closes[closes.Length - 1] - opens[0]);
+                result.dailyChangesBps = Array.Empty<int>();
+                result.dailyOpenBps = Array.Empty<int>();
+            } else {
+                result.dailyChangesBps = (int[])closes.Clone();
+                result.dailyOpenBps = (int[])opens.Clone();
+            }
+            return result;
         }
 
         private static TradeIntent CopyIntent(TradeIntent i) => new TradeIntent { senderId = i.senderId, targetPlayerId = i.targetPlayerId,
@@ -283,6 +298,7 @@ namespace BlackWhale.Rules.Information
             lock (gate) return WindowRequest(c, "intent|" + targetPlayerId + "|" + companyId + "|" + entryDay + "|" + exitDay, () => {
                 string error = ValidateWindow(c, companyId, 1);
                 if (error != "") return new RuleResult(error);
+                if (!StockRules.CanShareRumor(companyId)) return new RuleResult("RUMOR_COMPANY_NOT_ALLOWED");
                 if (!RandomInformation || targetPlayerId == c.PlayerId || !rooms[c.RoomId].Players.Contains(targetPlayerId)) return new RuleResult("INVALID_TARGET");
                 if (entryDay < 1 || exitDay > 30 || entryDay > exitDay) return new RuleResult("INVALID_DAY");
                 var state = Windows(c);

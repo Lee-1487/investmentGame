@@ -17,8 +17,8 @@ namespace BlackWhale.UI.Presentation
         public const int TotalWeightBps = 10000;
         public static readonly int[] FirstCompanyWeightOptionsBps = { 5000, 6000, 7000 };
 
-        /// <summary>표시 순서: 위 AI·FOOD, 아래 AUTO·BIO의 2×2 배치.</summary>
-        public static readonly string[] CompanyIds = { "AI", "FOOD", "AUTO", "BIO" };
+        /// <summary>표시 순서: 위 AUTO·FOOD, 아래 AI·BIO의 2×2 배치.</summary>
+        public static readonly string[] CompanyIds = { "AUTO", "FOOD", "AI", "BIO" };
 
         /// <summary>기존 v2 규칙의 0일차 대비 변화율 상한(bps). 현재 차트의 표시 범위에는 사용하지 않는다.</summary>
         public static int AbsoluteChangeCapBps(string companyId)

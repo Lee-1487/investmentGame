@@ -8,9 +8,30 @@ namespace BlackWhale.Rules
     public sealed partial class MarketService
     {
         public bool DecisionOpen { get; private set; }
-        private int aiFallChanceBps, bioExpectationBps;
-        private bool bioOccurred;
-        private int[] foodBase;
+        private int aiRiseStreak, bioExpectationBps;
+        private int aiUpProbabilityBps = 5000, pendingAiUpProbabilityBps = 5000;
+        private int pendingBioExpectationBps;
+        private bool bioOccurred, pendingBioOccurred;
+        private static readonly int[] AiUp = { 5, 8, 12, 16, 22, 30 };
+        private static readonly int[] AiDown = { 8, 12, 18, 25, 35, 45 };
+
+        public static int AccumulateAiUpChance(int previousBps, int investors, bool fell = false)
+        {
+            if (investors < 0 || investors > 4) throw new ArgumentOutOfRangeException(nameof(investors));
+            int[] changes = { 500, -1000, 500, 1000, 1500 };
+            int bonus = fell ? 1000 : 0;
+            return Math.Max(500, Math.Min(9000, previousBps + changes[investors] + bonus));
+        }
+
+        public static int AiSegmentReturnBps(int streak, int tokens, bool rising)
+        {
+            if (tokens < 0 || tokens > 12) throw new ArgumentOutOfRangeException(nameof(tokens));
+            if (tokens == 0) return 0;
+            int index = Math.Max(0, Math.Min(5, streak));
+            int magnitude = (rising ? AiUp[index] : AiDown[index]) * 100 * (10 + (tokens - 1) * 2) / 10;
+            return rising ? magnitude : -Math.Min(9500, magnitude);
+        }
+
         private readonly List<StockSegmentRecord> segmentHistory = new List<StockSegmentRecord>();
         private CompanyShareState[] publicShares;
 
@@ -25,8 +46,9 @@ namespace BlackWhale.Rules
 
         private void BeginBoardTurn()
         {
-            DecisionOpen = false; aiFallChanceBps = bioExpectationBps = 0; bioOccurred = false;
-            foodBase = market.AllDays("FOOD"); segmentHistory.Clear();
+            DecisionOpen = false; aiRiseStreak = bioExpectationBps = 0; bioOccurred = pendingBioOccurred = false;
+            aiUpProbabilityBps = pendingAiUpProbabilityBps = 5000; pendingBioExpectationBps = 0;
+            segmentHistory.Clear();
             publicShares = CurrentShareMarket();
         }
 
@@ -53,26 +75,22 @@ namespace BlackWhale.Rules
             publicShares = CurrentShareMarket();
             segmentHistory.Add(new StockSegmentRecord { segmentIndex = segment, companies = CopyShares(publicShares) });
 
-            int foodReaction = Math.Min(2000, Count("FOOD") * 200);
-            int foodValue = market.ChangeBps("FOOD", start - 1);
-            var food = new int[5];
-            for (int i = 0; i < 5; i++) {
-                int move = foodBase[start + i] - foodBase[start + i - 1];
-                foodValue += move + Math.Sign(move) * foodReaction;
-                food[i] = foodValue;
-            }
-            market.SetSegment("FOOD", start, food);
-
-            int aiCount = Count("AI");
             int aiInvestors = stockPlayers.Values.Count(p => p.Shares["AI"] > 0);
-            // An empty segment breaks the rising streak before this segment's draw.
-            if (aiCount == 0) aiFallChanceBps = 0;
-            bool falling = aiInvestors >= 3 || SegmentRandom(segment, 11).Next(10000) < aiFallChanceBps;
-            int aiMove = falling ? -3000 : 1500;
             int aiStart = market.ChangeBps("AI", start - 1);
-            // 15/30 percentage points are the total move of one five-day segment.
-            market.SetSegment("AI", start, Enumerable.Range(1, 5).Select(i => aiStart + aiMove * i / 5).ToArray());
-            aiFallChanceBps = falling || aiCount == 0 ? 0 : Math.Min(10000, aiFallChanceBps + aiCount * 500);
+            // Without investors the price/streak stay unchanged; next rise probability still accumulates.
+            if (aiInvestors == 0) {
+                market.SetSegment("AI", start, Enumerable.Repeat(aiStart, 5).ToArray());
+                pendingAiUpProbabilityBps = AccumulateAiUpChance(aiUpProbabilityBps, 0, false);
+            }
+            else {
+                int streak = Math.Min(5, aiRiseStreak);
+                bool rising = SegmentRandom(segment, 11).Next(10000) < aiUpProbabilityBps;
+                int rate = AiSegmentReturnBps(streak, Count("AI"), rising);
+                int target = (int)Math.Round((10000m + aiStart) * (1m + rate / 10000m), MidpointRounding.AwayFromZero) - 10000;
+                market.SetSegment("AI", start, Enumerable.Range(1, 5).Select(i => aiStart + (target - aiStart) * i / 5).ToArray());
+                aiRiseStreak = rising ? aiRiseStreak + 1 : 0;
+                pendingAiUpProbabilityBps = AccumulateAiUpChance(aiUpProbabilityBps, aiInvestors, !rising);
+            }
 
             var bioRandom = SegmentRandom(segment, 23);
             bool lightning = !bioOccurred && bioRandom.Next(10000) < 500 + bioExpectationBps;
@@ -85,27 +103,39 @@ namespace BlackWhale.Rules
                 bio[i] = bioValue;
             }
             market.SetSegment("BIO", start, bio);
-            bioOccurred |= lightning;
+            pendingBioOccurred = bioOccurred || lightning;
             int bioCount = Count("BIO");
-            bioExpectationBps = bioOccurred ? 0 : bioCount == 0 ? bioExpectationBps / 2
+            pendingBioExpectationBps = pendingBioOccurred ? 0 : bioCount == 0 ? bioExpectationBps / 2
                 : Math.Min(3500, bioExpectationBps + (bioCount == 1 ? 500 : bioCount == 2 ? 800 : 1000));
         }
 
+        private void CompleteSegmentProbability()
+        {
+            aiUpProbabilityBps = pendingAiUpProbabilityBps;
+            bioExpectationBps = pendingBioExpectationBps;
+            bioOccurred = pendingBioOccurred;
+        }
+
         private StockInsight[] BoardInsights() => new[] {
-            new StockInsight { companyId = "AI", probabilityBps = aiFallChanceBps,
-                message = "하락 확률 " + (aiFallChanceBps / 100m).ToString("0.##") + "% · 투자 플레이어 3명 이상이면 무조건 하락 · 상승 시 투자말당 5% 누적 · 미투자 구간 0% 초기화 · 상승 +15%p / 하락 −30%p" },
-            new StockInsight { companyId = "BIO", probabilityBps = bioOccurred ? 0 : 500 + bioExpectationBps,
-                message = bioOccurred ? "Lightening 발생 완료 · 남은 구간 확률 0%" : "Lightening 확률 " + ((500 + bioExpectationBps) / 100m).ToString("0.##") + "% · 최대 40% · 발생 시 +200%p" }
+            new StockInsight { companyId = "AI", probabilityBps = 10000 - aiUpProbabilityBps, message = "",
+                upProbabilityBps = aiUpProbabilityBps, downProbabilityBps = 10000 - aiUpProbabilityBps,
+                probabilitySegment = ProcessedDay / 5 },
+            new StockInsight { companyId = "BIO", probabilityBps = bioOccurred ? 0 : 500 + bioExpectationBps, message = "",
+                upProbabilityBps = bioOccurred ? 0 : 500 + bioExpectationBps,
+                downProbabilityBps = bioOccurred ? 10000 : 9500 - bioExpectationBps,
+                probabilitySegment = ProcessedDay / 5 }
         };
 
         private Action CaptureBoardCheckpoint()
         {
-            bool decision = DecisionOpen, occurred = bioOccurred;
-            int ai = aiFallChanceBps, bio = bioExpectationBps;
+            bool decision = DecisionOpen, occurred = bioOccurred, pendingOccurred = pendingBioOccurred;
+            int ai = aiRiseStreak, bio = bioExpectationBps;
+            int savedAiUp = aiUpProbabilityBps, savedPendingAiUp = pendingAiUpProbabilityBps, savedPendingBio = pendingBioExpectationBps;
             var shares = CopyShares(publicShares); var records = SegmentHistory();
             var prices = InvestmentRules.CompanyIds.ToDictionary(id => id, id => market.AllDays(id));
             return () => {
-                DecisionOpen = decision; bioOccurred = occurred; aiFallChanceBps = ai; bioExpectationBps = bio;
+                aiUpProbabilityBps = savedAiUp; pendingAiUpProbabilityBps = savedPendingAiUp; pendingBioExpectationBps = savedPendingBio;
+                DecisionOpen = decision; bioOccurred = occurred; pendingBioOccurred = pendingOccurred; aiRiseStreak = ai; bioExpectationBps = bio;
                 publicShares = CopyShares(shares); segmentHistory.Clear();
                 segmentHistory.AddRange(records.Select(r => new StockSegmentRecord { segmentIndex = r.segmentIndex, companies = CopyShares(r.companies) }));
                 foreach (var price in prices) for (int start = 1; start <= 26; start += 5)

@@ -6,6 +6,11 @@ namespace BlackWhale.Shared
     public static class InformationWindowRules
     {
         public const int Length = 5, MaxStartDay = 26;
+        public static bool IsSegmentCard(VisibleInformationWindow window) =>
+            window != null && (window.direction != 0 || window.dailyChangesBps?.Length == Length);
+        public static int SegmentDirection(VisibleCompany company, int startDay) =>
+            (company?.visibleWindows ?? Array.Empty<VisibleInformationWindow>())
+                .FirstOrDefault(w => w.startDay == startDay && w.direction != 0)?.direction ?? 0;
         public static int[] PublicDays(PublicInformationChoice choice) => choice.days ?? Enumerable.Range(choice.startDay, Length).ToArray();
         public static string PublicChoiceLabel(PublicInformationChoice choice)
         {

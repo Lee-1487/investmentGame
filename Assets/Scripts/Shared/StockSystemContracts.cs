@@ -5,6 +5,7 @@ namespace BlackWhale.Shared
 {
     public static class StockRules
     {
+        public static bool CanShareRumor(string company) => company == "AI" || company == "BIO";
         public const int Turns = 6, Supply = 20, Slots = 3, PersonalLimit = 3;
         public const long InitialAssets = 100000000;
         public const int DecisionSeconds = 10, SegmentRevealSeconds = 2;
@@ -21,7 +22,6 @@ namespace BlackWhale.Shared
         public static readonly string[] Augments = { "ANALYST", "BIO_RESEARCH", "DIVERSIFY", "LONG_TERM", "HIDDEN_LOSS_CONTROL", "CONCENTRATION" };
         public static int ShareLimit(string[] augments, string company)
         {
-
             if (company == "BIO" && augments?.Contains("BIO_RESEARCH") == true) return 15;
             return augments?.Contains("CONCENTRATION") == true ? 12 : PersonalLimit;
         }
@@ -58,8 +58,12 @@ namespace BlackWhale.Shared
         public ShareOwner[] owners;
         public StockFill[] fills;
     }
-    [Serializable] public sealed class PortfolioHolding { public string companyId; public int shares, activeShares, consecutiveTurns; }
-    [Serializable] public sealed class StockInsight { public string companyId, message; public int probabilityBps; }
+    [Serializable] public sealed class PortfolioHolding {
+        public string companyId;
+        public int shares, activeShares, consecutiveTurns, marketReturnBps, returnBps;
+        public bool canBuy = true;
+    }
+    [Serializable] public sealed class StockInsight { public string companyId, message; public int probabilityBps; public int upProbabilityBps = -1, downProbabilityBps = -1, probabilitySegment = -1; }
     [Serializable] public sealed class TradeIntent
     {
         public string senderId, targetPlayerId, companyId;
@@ -79,6 +83,7 @@ namespace BlackWhale.Shared
     [Serializable] public sealed class PortfolioState
     {
         public int processedDay;
+        public int totalReturnBps;
         public int capacity = StockRules.Slots, usedSlots, informationDiscount;
         public int draftSharesRemaining = StockRules.SharesPerPick;
         public PortfolioHolding[] holdings;
@@ -90,6 +95,7 @@ namespace BlackWhale.Shared
         public int AvailableToBuy(CompanyShareState market)
         {
             if (market == null) return 0;
+            if (holdings?.FirstOrDefault(h => h.companyId == market.companyId)?.canBuy == false) return 0;
             int mine = holdings?.FirstOrDefault(h => h.companyId == market.companyId)?.activeShares ?? 0;
             int supply = market.totalShares - (market.owners?.Sum(o => o.shares) ?? 0);
             return Math.Max(0, Math.Min(CashSlots, Math.Min(LimitFor(market.companyId) - mine, supply)));

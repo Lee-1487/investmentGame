@@ -46,8 +46,9 @@ namespace BlackWhale.Tests
         {
             var passed = new List<string>();
             InformationAndPrivacy(); passed.Add("BOARD initial card ownership, exchange restrictions, intents, privacy, defensive DTO copies");
+            DirectionCardsAndAiBuys(); passed.Add("BOARD AI late entry/top-ups, direction-only cards, exchanges, partial price reveal");
             SegmentsAndSettlement(); passed.Add("BOARD 120/10/2 second timing, six segments, stale requests, settlement and rotation");
-            Reactions(); passed.Add("BOARD FOOD cap, AUTO independence, AI accumulation/forced decline/reset, BIO one-shot probabilities across 300 seeds");
+            Reactions(); passed.Add("BOARD five-day parity patterns, AI probability table/compounding/withdrawals, cumulative returns, BIO across 300 seeds");
             DeveloperRewind(); passed.Add("BOARD developer rewind restores prices, allocations and probability state");
             ReservationAndRumorOverlays(); passed.Add("BOARD saved daily ranges, rumor selection/visibility, reconnect restoration, fixed probabilities and 100 million starting assets");
             using (var batch = new BotExperimentBatch(new BotExperimentSettings { repetitions = 3 }, StockPatternLibrary.CreateDefault())) {
@@ -117,14 +118,26 @@ namespace BlackWhale.Tests
         private static void InformationAndPrivacy()
         {
             var h = new Harness();
+            foreach (string company in new[] { "AUTO", "FOOD" })
+                Check(h.Send(1, StockRules.SendPlan, new CommandPayload { targetPlayerId = "P2", companyId = company, startDay = 1, endDay = 5 }).errorCode == "RUMOR_COMPANY_NOT_ALLOWED", "server blocks rumors on information-card companies");
             Check(h.View(1).assets == StockRules.InitialAssets && h.View(1).assets == 100000000, "one hundred million starting assets");
             var s = h.Room.Snapshot();
             Check(s.phase == Protocol.Info && s.phaseEndsAtServerSeconds == 120, "120 seconds and no augment stage");
             Check(s.publicInformation.Length == 2 && s.publicInformation.All(c => c.startDay == 1 && c.days.SequenceEqual(new[] { 1, 2, 3, 4, 5 })), "first FOOD/AUTO cards public");
-            Check(h.View(1).companies.Single(c => c.companyId == "FOOD").visibleWindows.Select(w => w.startDay).OrderBy(d => d).SequenceEqual(new[] { 1, 6, 26 }), "P1 FOOD segments 2 and 6");
-            Check(h.View(2).companies.Single(c => c.companyId == "AUTO").visibleWindows.Select(w => w.startDay).OrderBy(d => d).SequenceEqual(new[] { 1, 6, 26 }), "P2 AUTO segments 2 and 6");
+            Check(h.View(1).companies.Single(c => c.companyId == "FOOD").visibleWindows.Select(w => w.startDay).OrderBy(d => d).SequenceEqual(new[] { 1, 6 }), "P1 FOOD second segment; sixth stays hidden");
+            Check(h.View(2).companies.Single(c => c.companyId == "AUTO").visibleWindows.Select(w => w.startDay).OrderBy(d => d).SequenceEqual(new[] { 1, 6 }), "P2 AUTO second segment; sixth stays hidden");
             Check(Players.All(p => h.View(int.Parse(p.Substring(1))).companies.Where(c => c.companyId == "AI" || c.companyId == "BIO").All(c => c.visibleWindows.Length == 0)), "no reactive future cards");
             Check(h.Send(1, "BUY_INFORMATION_WINDOW", new CommandPayload { companyId = "FOOD" }).errorCode == "INFORMATION_IS_DEALT", "no random purchases");
+            foreach (int player in Enumerable.Range(1, 4))
+                foreach (var company in h.View(player).companies.Where(c => c.companyId == "AUTO" || c.companyId == "FOOD")) {
+                    Check(company.visibleWindows.All(w => w.startDay < 26), "no player receives hidden direction card");
+                    Check(BoardChartAnnotations.HiddenFinalSegment(company), "sixth segment uses HIDDEN presentation");
+                }
+            Check(h.Room.Snapshot().segmentKnowledge.All(k => k.startDay < 26), "no sixth-segment card ownership advertised");
+            Check(h.Send(1, StockRules.ShareInformation, new CommandPayload { targetPlayerId = "P2", companyId = "FOOD",
+                startDay = 6, requestedCompanyId = "FOOD", requestedStartDay = 26 }).errorCode == "INVALID_WINDOW", "cannot request HIDDEN through exchange");
+            Check(h.Send(1, StockRules.ShareInformation, new CommandPayload { targetPlayerId = "P2", companyId = "FOOD",
+                startDay = 26, requestedCompanyId = "FOOD", requestedStartDay = 11 }).errorCode == "INVALID_WINDOW", "cannot offer HIDDEN through exchange");
             var crossCompany = h.Send(1, StockRules.ShareInformation, new CommandPayload { targetPlayerId = "P2", companyId = "FOOD", startDay = 6, requestedCompanyId = "AUTO", requestedStartDay = 6 });
             Check(!crossCompany.success && crossCompany.errorCode == "EXCHANGE_SAME_COMPANY", "cross-company exchange rejected");
             var share = new CommandPayload { targetPlayerId = "P2", companyId = "FOOD", startDay = 6, requestedCompanyId = "FOOD", requestedStartDay = 11 };
@@ -137,9 +150,9 @@ namespace BlackWhale.Tests
             Check(h.Send(2, StockRules.RespondExchange, new CommandPayload { exchangeId = shareRes.payload.exchangeId, acceptExchange = true }, "accept-once").success, "accept exchange");
             Check(h.View(2).companies.Single(c => c.companyId == "FOOD").visibleWindows.Count(w => w.startDay == 6) == 1, "recipient receives offered card");
             Check(h.View(1).companies.Single(c => c.companyId == "FOOD").visibleWindows.Count(w => w.startDay == 11) == 1, "sender receives requested card");
-            var rejectReq = h.Send(1, StockRules.ShareInformation, new CommandPayload { targetPlayerId = "P3", companyId = "FOOD", startDay = 26, requestedCompanyId = "FOOD", requestedStartDay = 16 });
+            var rejectReq = h.Send(1, StockRules.ShareInformation, new CommandPayload { targetPlayerId = "P3", companyId = "FOOD", startDay = 6, requestedCompanyId = "FOOD", requestedStartDay = 16 });
             Check(rejectReq.success && h.Send(3, StockRules.RespondExchange, new CommandPayload { exchangeId = rejectReq.payload.exchangeId, acceptExchange = false }).success, "reject exchange");
-            Check(h.View(3).companies.Single(c => c.companyId == "FOOD").visibleWindows.Count(w => w.startDay == 26) == 0, "rejected exchange transfers nothing");
+            Check(h.View(3).companies.Single(c => c.companyId == "FOOD").visibleWindows.Count(w => w.startDay == 6) == 0, "rejected exchange transfers nothing");
             Check(!h.Send(1, StockRules.ShareInformation, new CommandPayload { targetPlayerId = "P4", companyId = "FOOD", startDay = 16, requestedCompanyId = "FOOD", requestedStartDay = 21 }).success, "cannot forge unknown card");
             var forward = h.Send(1, StockRules.ShareInformation, new CommandPayload { targetPlayerId = "P4", companyId = "FOOD", startDay = 11, requestedCompanyId = "FOOD", requestedStartDay = 21 });
             Check(!forward.success && forward.errorCode == "INFORMATION_NOT_KNOWN", "exchanged information cannot be offered again");
@@ -152,6 +165,11 @@ namespace BlackWhale.Tests
             Check(originalAgain.success && h.Send(4, StockRules.RespondExchange, new CommandPayload { exchangeId = originalAgain.payload.exchangeId, acceptExchange = true }).success, "original owner can exchange initially dealt information again");
             Check(h.Send(1, StockRules.SendPlan, new CommandPayload { targetPlayerId = "P2", companyId = "BIO", startDay = 6, endDay = 15 }).success, "send intent without exchange");
             Check(h.View(2).receivedTradeIntents.Single().senderId == "P1" && h.View(3).receivedTradeIntents.Length == 0, "intent recipient privacy");
+            var annotations = BoardChartAnnotations.RumorKnowledge(h.View(2), h.Room.Snapshot(), true);
+            Check(annotations.Single(k => k.companyId == "BIO" && k.startDay == 6).playerIds.SequenceEqual(new[] { "P1" }), "rumor sender appears in entry segment");
+            Check(annotations.Single(k => k.companyId == "BIO" && k.startDay == 11).playerIds.Length == 0, "sender appears only in entry segment");
+            Check(BoardChartAnnotations.RumorKnowledge(h.View(3), h.Room.Snapshot(), true).Where(k => k.companyId == "BIO").All(k => k.playerIds.Length == 0), "rumor names remain recipient-private");
+            Check(BoardChartAnnotations.RumorKnowledge(h.View(2), h.Room.Snapshot(), false).Where(k => k.companyId == "BIO").All(k => k.playerIds.Length == 0), "rumor toggle hides sender names");
             var copy = DtoCopy.Copy(h.View(2)); copy.receivedTradeIntents[0].entryDay = 26;
             Check(h.View(2).receivedTradeIntents.Single().entryDay == 6, "intent defensive copy");
             h.FinishInfo(); h.Room.DrainMessages();
@@ -160,6 +178,54 @@ namespace BlackWhale.Tests
             Check(h.Room.DrainMessages().Where(d => d.Message.type == "PLAYER_VIEW").All(d => d.PlayerId == "P1"), "only actor receives private placement update");
             Check(h.Market.GetPortfolio("P1").usedSlots == 3 && h.Market.ProcessedDay == 0, "decision cannot advance market");
             Check(!h.Send(1, StockRules.SendPlan, new CommandPayload { targetPlayerId = "P2", companyId = "AI", startDay = 1, endDay = 5 }).success, "social closes with info phase");
+        }
+
+        private static void DirectionCardsAndAiBuys()
+        {
+            var h = new Harness();
+            foreach (var company in h.View(1).companies)
+                foreach (var card in company.visibleWindows) {
+                    Check(card.direction == 1 || card.direction == -1, "known cards expose direction");
+                    Check(card.dailyChangesBps.Length == 0 && card.dailyOpenBps.Length == 0, "no absolute close or open leaks");
+                    Check(DtoCopy.Copy(card).direction == card.direction, "direction survives DTO copies");
+                }
+            var request = h.Send(1, StockRules.ShareInformation, new CommandPayload {
+                targetPlayerId = "P2", companyId = "FOOD", startDay = 6, requestedCompanyId = "FOOD", requestedStartDay = 11 });
+            Check(request.success && h.Send(2, StockRules.RespondExchange, new CommandPayload { exchangeId = request.payload.exchangeId, acceptExchange = true }).success, "direction cards exchange normally");
+            var food = h.View(1).companies.Single(c => c.companyId == "FOOD");
+            var separated = new VisibleCompany { companyId = "FOOD", visibleWindows = food.visibleWindows.Where(w => w.startDay == 1 || w.startDay == 11).ToArray() };
+            var bars = DailyBarModel.Build(separated);
+            Check(bars.Skip(1).All(b => !b.Bps.HasValue && !b.OpenBps.HasValue), "first and third cards cannot reveal middle absolute prices");
+            Check(bars[1].SegmentDirection != 0 && bars[11].SegmentDirection != 0 && bars.Skip(6).Take(5).All(b => b.SegmentDirection == 0), "middle direction remains unknown");
+            Check(!DailyBarModel.Tooltip(bars[11]).Contains("%"), "card tooltip contains no numerical price");
+            h.FinishInfo();
+            Check(h.Position(1, "AI", 1).success, "AI initial buy");
+            h.Deadline(); h.Deadline();
+            Check(h.Market.ProcessedDay == 5 && !h.Room.Snapshot().stockSegmentRevealing, "next decision");
+            var view = h.Room.DrainMessages().Where(d => d.PlayerId == "P1" && d.Message.type == "PLAYER_VIEW").Last().Message.playerView;
+            bars = DailyBarModel.Build(view.companies.Single(c => c.companyId == "FOOD"));
+            Check(bars.Skip(1).Take(5).All(b => b.Bps.HasValue && b.OpenBps.HasValue), "actual prices replace first card progressively");
+            Check(bars.Skip(6).All(b => !b.Bps.HasValue), "future cards retain hidden prices");
+            Check(view.portfolio.AvailableToBuy(h.Room.Snapshot().shareMarket.Single(c => c.companyId == "AI")) > 0, "AI BUY enabled after day five");
+            Check(h.Position(1, "AI", 2).success && h.Position(2, "AI", 1).success, "AI later top-up and first entry accepted");
+            Check(h.Position(1, "AI", 1).success && h.Market.GetPortfolio("P1").holdings.Single(v => v.companyId == "AI").canBuy, "partial withdrawal keeps BUY available");
+            Check(h.Position(1, "AI", 2).success, "same-decision AI reinvestment allowed");
+            h.Deadline(); h.Deadline();
+            view = h.Room.DrainMessages().Where(d => d.PlayerId == "P1" && d.Message.type == "PLAYER_VIEW").Last().Message.playerView;
+            bars = DailyBarModel.Build(view.companies.Single(c => c.companyId == "FOOD"));
+            int aiEntry = h.Market.GetWindow(1, "AI", 5, 1)[0], aiExit = h.Market.GetWindow(1, "AI", 10, 1)[0];
+            int laterReturn = h.Market.GetPortfolio("P2").holdings.Single(v => v.companyId == "AI").returnBps;
+            Check(Math.Abs(laterReturn - 10000m * (aiExit - aiEntry) / (10000m + aiEntry)) <= 1, "later AI entry earns return from its entry price");
+            Check(bars[6].OpenBps == bars[5].Bps && bars.Skip(1).Take(10).All(b => b.Bps.HasValue), "next segment joins previous public close");
+            Check(bars[11].SegmentDirection != 0 && !bars[11].Bps.HasValue, "exchanged third card stays direction-only until reveal");
+            var upPreview = DailyBarModel.DirectionPreview(1); var downPreview = DailyBarModel.DirectionPreview(-1);
+            Check(upPreview.Length == 6 && downPreview.Length == 6, "five preview candles");
+            Check(Enumerable.Range(1, 5).All(i => upPreview[i] > upPreview[i - 1] && downPreview[i] < downPreview[i - 1]), "preview draws known direction");
+            Check(upPreview.All(v => v >= 0 && v <= 1) && downPreview.All(v => v >= 0 && v <= 1), "preview uses independent normalized scale");
+            Check(upPreview.Zip(downPreview, (u, d) => Math.Abs(u + d - 1f)).All(error => error < .0001f), "both directions use the same isolated scale");
+            var finalPrices = h.Market.GetWindow(1, "FOOD", 0, 31);
+            bars = DailyBarModel.Build(separated, new RevealedCompany { companyId = "FOOD", dailyChangesBps = finalPrices });
+            Check(bars.Select(b => b.Bps.Value).SequenceEqual(finalPrices), "full reveal uses actual prices");
         }
 
         private static void SegmentsAndSettlement()
@@ -171,12 +237,21 @@ namespace BlackWhale.Tests
                 Check(h.Room.Snapshot().stockSegmentIndex == segment && !h.Room.Snapshot().stockSegmentRevealing, "decision starts");
                 double end = h.Room.Snapshot().phaseEndsAtServerSeconds;
                 h.Time.Seconds = end - .1; h.Room.Tick(); Check(h.Market.ProcessedDay == segment * 5, "no close before decision deadline");
+                foreach (string company in new[] { "AUTO", "FOOD" }) {
+                    var before = h.Room.DrainMessages().Where(d => d.PlayerId == "P1" && d.Message.type == "PLAYER_VIEW").Select(d => d.Message.playerView).LastOrDefault();
+                    if (before != null && segment < 5)
+                        Check(BoardChartAnnotations.HiddenFinalSegment(before.companies.Single(c => c.companyId == company)), "HIDDEN remains before final reveal");
+                }
                 h.Deadline();
                 Check(h.Room.Snapshot().stockSegmentRevealing && h.Market.ProcessedDay == segment * 5, "reveal begins at decision deadline");
                 Check(h.Room.Snapshot().shareMarket.Single(c => c.companyId == "AUTO").owners.Single(o => o.playerId == "P1").shares == 3, "placement visible on reveal");
                 Check(!h.Position(1, "AUTO", 0).success, "placement locked while revealing");
                 h.Time.Seconds += 1; h.Room.Tick(); Check(h.Market.ProcessedDay == segment * 5 + 2, "two closes at reveal midpoint");
                 h.Deadline(); Check(h.Market.ProcessedDay == (segment + 1) * 5, "five closes completed in two seconds");
+                var latest = h.Room.DrainMessages().Where(d => d.PlayerId == "P1" && d.Message.type == "PLAYER_VIEW").Select(d => d.Message.playerView).Last();
+                foreach (string company in new[] { "AUTO", "FOOD" })
+                    Check(BoardChartAnnotations.HiddenFinalSegment(latest.companies.Single(c => c.companyId == company)) == (segment < 5), "HIDDEN opens only during final segment");
+
                 if (segment < 5) Check(h.Send(1, StockRules.Position, new CommandPayload { startDay = segment * 5 + 1,
                     shareOrders = new[] { new ShareOrder { companyId = "AUTO", targetShares = 0 } } }).errorCode == "STALE_SEGMENT", "reject delayed previous-segment order");
             }
@@ -203,33 +278,99 @@ namespace BlackWhale.Tests
 
         private static void Reactions()
         {
-            var food = Market(44); var baseline = food.GetWindow(1, "FOOD", 0, 31); var auto = food.GetWindow(1, "AUTO", 0, 31);
-            for (int p = 1; p <= 4; p++) Place(food, p, "FOOD", 3);
-            Reveal(food);
-            var actual = food.GetWindow(1, "FOOD", 0, 6);
-            for (int day = 1; day <= 5; day++) { int move = baseline[day] - baseline[day - 1]; Check(actual[day] - actual[day - 1] == move + Math.Sign(move) * 2000, "FOOD +20 point cap"); }
-            Check(food.GetWindow(1, "AUTO", 0, 31).SequenceEqual(auto), "AUTO unchanged");
-            var twoInvestors = Market(55); Place(twoInvestors, 1, "AI", 3); Place(twoInvestors, 2, "AI", 3); Reveal(twoInvestors);
-            Check(twoInvestors.GetWindow(1, "AI", 5, 1)[0] == 1500 && Chance(twoInvestors, "AI") == 3000, "two players with six tokens do not force a fall; next risk is 30 percent");
-            var threeInvestors = Market(55);
-            for (int p = 1; p <= 3; p++) Place(threeInvestors, p, "AI", 1);
-            Reveal(threeInvestors);
-            Check(threeInvestors.GetWindow(1, "AI", 5, 1)[0] == -3000 && Chance(threeInvestors, "AI") == 0, "three players with three tokens force a fall and reset");
-            int rises = 0, falls = 0;
-            for (int seed = 0; seed < 100; seed++) {
-                var ai = Market(seed); Place(ai, 1, "AI", 3); Reveal(ai);
-                Check(ai.GetWindow(1, "AI", 5, 1)[0] == 1500 && Chance(ai, "AI") == 1500, "three tokens from one player add only 15 percent risk");
-                Place(ai, 2, "AI", 1); Reveal(ai);
-                int move = ai.GetWindow(1, "AI", 10, 1)[0] - ai.GetWindow(1, "AI", 5, 1)[0];
-                Check(move == 1500 || move == -3000, "AI keeps segment rise and fall sizes");
-                if (move == 1500) { rises++; Check(Chance(ai, "AI") == 3500, "consecutive rise adds four tokens times five percent to prior 15 percent"); }
-                else { falls++; Check(Chance(ai, "AI") == 0, "random fall resets accumulated risk"); }
-                Place(ai, 1, "AI", 0); Place(ai, 2, "AI", 0); Reveal(ai);
-                Check(Chance(ai, "AI") == 0 && ai.GetWindow(1, "AI", 15, 1)[0] - ai.GetWindow(1, "AI", 10, 1)[0] == 1500, "empty segment resets risk before drawing, even after a rising streak");
-                Place(ai, 1, "AI", 1); Reveal(ai);
-                Check(Chance(ai, "AI") == 500 && ai.GetWindow(1, "AI", 20, 1)[0] - ai.GetWindow(1, "AI", 15, 1)[0] == 1500, "investment after empty segment restarts at five percent");
+            Check(InvestmentRules.CompanyIds.SequenceEqual(new[] { "AUTO", "FOOD", "AI", "BIO" })
+                && UiRules.CompanyIds.SequenceEqual(InvestmentRules.CompanyIds), "company order consistent");
+            int[] up = { 5, 8, 12, 16, 22, 30 }, down = { 8, 12, 18, 25, 35, 45 };
+            int[] deltas = { 500, -1000, 500, 1000, 1500 };
+            for (int chance = 500; chance <= 9000; chance += 100)
+                for (int investors = 0; investors <= 4; investors++) {
+                    Check(MarketService.AccumulateAiUpChance(chance, investors, false) == Math.Max(500, Math.Min(9000, chance + deltas[investors])), "participant-only probability accumulation and limits");
+                    Check(MarketService.AccumulateAiUpChance(chance, investors, true) == Math.Max(500, Math.Min(9000, chance + deltas[investors] + 1000)), "fall bonus accumulation and limits");
+                }
+            for (int streak = 0; streak < 6; streak++) for (int tokens = 1; tokens <= 12; tokens++) {
+                Check(MarketService.AiSegmentReturnBps(streak, tokens, true) == up[streak] * 100 * (10 + (tokens - 1) * 2) / 10, "AI upside scales with tokens and streak");
+                Check(MarketService.AiSegmentReturnBps(streak, tokens, false) == -Math.Min(9500, down[streak] * 100 * (10 + (tokens - 1) * 2) / 10), "AI downside scales with tokens and streak");
             }
-            Check(rises > 0 && falls > 0, "accumulated risk permits both rising and falling paths");
+            Check(MarketService.AccumulateAiUpChance(5000, 0) == 5500 && MarketService.AccumulateAiUpChance(9000, 0) == 9000, "empty AI gains five points up to cap");
+            int rises = 0, falls = 0, consecutiveFalls = 0;
+            for (int seed = 0; seed < 300; seed++) {
+                var ai = Market(seed);
+                foreach (string company in new[] { "AUTO", "FOOD" }) {
+                    var prices = ai.GetWindow(1, company, 0, 31);
+                    int rising = 0;
+                    for (int segment = 0; segment < 6; segment++) {
+                        int start = segment * 5, sign = Math.Sign(prices[start + 5] - prices[start]);
+                        Check(sign != 0 && Enumerable.Range(1, 5).All(d => Math.Sign(prices[start + d] - prices[start + d - 1]) == sign), "one direction per five-day pattern");
+                        if (segment == 5) {
+                            Check(sign == (rising % 2 == 0 ? -1 : 1), "HIDDEN direction follows preceding five segments");
+                            if (rising == 4) Check(sign == -1, "four rises and one fall finish with a fall");
+                            if (rising == 3) Check(sign == 1, "three rises and two falls finish with a rise");
+                        }
+                        if (sign > 0) rising++;
+                    }
+                    Check(rising % 2 == 0 && (6 - rising) % 2 == 0, "hidden completes even counts");
+                }
+                for (int player = 1; player <= 4; player++) Place(ai, player, "AI", 1);
+                int streakCount = 0, previous = 0, cumulativeUp = 5000; bool previousFall = false;
+                for (int segment = 0; segment < 6; segment++) {
+                    if (segment == 1) Place(ai, 4, "AI", 0);
+                    int investors = segment == 0 ? 4 : 3;
+                    var random = new Random(unchecked(seed * 397 ^ 7919 ^ segment * 104729 ^ 11));
+                    bool rising = random.Next(10000) < cumulativeUp;
+                    if (!rising && previousFall) consecutiveFalls++;
+                    previousFall = !rising;
+                    int target = (int)Math.Round((10000m + previous) * (1m + ((rising ? up[streakCount] : -down[streakCount]) * (10 + (investors - 1) * 2) / 10m) / 100m), MidpointRounding.AwayFromZero) - 10000;
+                    var before = ai.GetPortfolio("P1").insights.Single(i => i.companyId == "AI");
+                    Check(before.upProbabilityBps == cumulativeUp && before.probabilitySegment == segment, "next segment uses previously accumulated probability");
+                    ai.RevealSegment();
+                    Check(ai.GetPortfolio("P1").insights.Single(i => i.companyId == "AI").upProbabilityBps == cumulativeUp, "no probability update before five closes");
+                    for (int day = 0; day < 5; day++) ai.SimulateDay();
+                    ai.BeginDecision();
+                    cumulativeUp = Math.Max(500, Math.Min(9000, cumulativeUp + deltas[investors] + (rising ? 0 : 1000)));
+                    Check(ai.GetWindow(1, "AI", segment * 5 + 5, 1)[0] == target, "AI compounded endpoint, streak and withdrawal shock");
+                    var portfolio = ai.GetPortfolio("P1");
+                    Check(portfolio.holdings.Single(h => h.companyId == "AI").returnBps == target, "held AI return compounds like chart");
+                    Check(Math.Abs(portfolio.totalReturnBps - target / 3m) <= 1, "overall return weighted by one of three slots");
+                    Check(portfolio.insights.Single(i => i.companyId == "AI").upProbabilityBps == cumulativeUp, "displayed AI probability accumulates for next draw");
+                    Check(portfolio.insights.Single(i => i.companyId == "AI").upProbabilityBps + portfolio.insights.Single(i => i.companyId == "AI").downProbabilityBps == 10000, "AI probabilities sum to 100 percent");
+                    var copy = DtoCopy.Copy(portfolio);
+                    Check(copy.totalReturnBps == portfolio.totalReturnBps && copy.holdings.Single(h => h.companyId == "AI").marketReturnBps == target, "return fields copied");
+                    previous = target; streakCount = rising ? streakCount + 1 : 0;
+                    if (rising) rises++; else falls++;
+                }
+            }
+            Check(rises > 0 && falls > 0 && consecutiveFalls > 0, "AI permits repeated and consecutive falls");
+            var oneToken = Market(27); var threeTokens = Market(27);
+            Place(oneToken, 1, "AI", 1); Place(threeTokens, 1, "AI", 3);
+            for (int segment = 0; segment < 6; segment++) {
+                Reveal(oneToken); Reveal(threeTokens);
+                if (segment == 0) {
+                    int small = oneToken.GetWindow(1, "AI", 5, 1)[0], large = threeTokens.GetWindow(1, "AI", 5, 1)[0];
+                    Check(large == small * 14 / 10, "three tokens increase the first segment move to 1.4 times");
+                }
+                Check(Chance(oneToken, "AI") == Chance(threeTokens, "AI"), "token count does not affect accumulated probability");
+            }
+            var withdrawn = Market(44); Place(withdrawn, 1, "AI", 3); Reveal(withdrawn);
+            int locked = withdrawn.GetPortfolio("P1").totalReturnBps;
+            int beforeEmptyChance = Chance(withdrawn, "AI");
+            Place(withdrawn, 1, "AI", 0); Reveal(withdrawn);
+            Check(Chance(withdrawn, "AI") == Math.Max(1000, beforeEmptyChance - 500), "uninvested AI still accumulates rise probability");
+            Check(withdrawn.GetPortfolio("P1").totalReturnBps == locked, "withdrawal preserves realized profit");
+            Check(withdrawn.GetWindow(1, "AI", 5, 6).Distinct().Count() == 1, "uninvested AI stays flat");
+            Place(withdrawn, 1, "AI", 3);
+            Check(withdrawn.GetPortfolio("P1").holdings.Single(h => h.companyId == "AI").canBuy, "BUY available after full withdrawal");
+            int entryPrice = withdrawn.GetWindow(1, "AI", 10, 1)[0];
+            Reveal(withdrawn);
+            int exitPrice = withdrawn.GetWindow(1, "AI", 15, 1)[0];
+            decimal reinvestment = 10000m * (exitPrice - entryPrice) / (10000m + entryPrice);
+            Check(Math.Abs(withdrawn.GetPortfolio("P1").totalReturnBps - locked - reinvestment) <= 1, "reinvestment adds entry-relative profit while preserving realized gain");
+            var mixed = Market(19); Place(mixed, 1, "AUTO", 1); Place(mixed, 1, "FOOD", 2); Reveal(mixed);
+            var combined = mixed.GetPortfolio("P1");
+            Check(Math.Abs(combined.totalReturnBps - combined.holdings.Sum(h => h.returnBps * h.shares) / 3m) <= 1, "mixed company returns weighted by investment");
+            mixed.LockPortfolios();
+            int preview = mixed.GetPortfolio("P1").totalReturnBps;
+            var final = mixed.SettleTurn(new RequestContext("R", 1, Protocol.Result));
+            Check(final.rows.Single(r => r.playerId == "P1").turnReturnBps == preview, "live cumulative return matches settlement");
             int occurredGames = 0, missedGames = 0;
             for (int seed = 0; seed < 300; seed++) {
                 var bio = Market(seed); bool occurred = false; int expectation = 0, events = 0;
@@ -244,6 +385,9 @@ namespace BlackWhale.Tests
                     events += spikes; occurred |= spikes > 0;
                     expectation = occurred ? 0 : count == 0 ? expectation / 2 : Math.Min(3500, expectation + (count == 1 ? 500 : count == 2 ? 800 : 1000));
                     Check(Chance(bio, "BIO") == (occurred ? 0 : 500 + expectation) && Chance(bio, "BIO") <= 4000, "BIO cap/halving/zero after event");
+                    var bioInsight = bio.GetPortfolio("P1").insights.Single(i => i.companyId == "BIO");
+                    Check(bioInsight.upProbabilityBps == Chance(bio, "BIO") && bioInsight.downProbabilityBps == 10000 - Chance(bio, "BIO")
+                        && bioInsight.probabilitySegment == segment + 1, "BIO display reflects next accumulated event probability");
                 }
                 Check(events <= 1, "at most one lightning in thirty days");
                 if (occurred) occurredGames++; else missedGames++;
@@ -259,8 +403,8 @@ namespace BlackWhale.Tests
             int[] prices = h.Market.GetWindow(1, "AI", 1, 5);
             Check(h.Send(1, "DEV_NEXT").success && h.Market.ProcessedDay == 5, "developer next decision");
             Check(h.Send(1, "DEV_PREVIOUS").success && h.Market.ProcessedDay == 0 && h.Room.Snapshot().stockSegmentRevealing, "rewind reveal");
-            Check(h.Market.GetWindow(1, "AI", 1, 5).SequenceEqual(prices) && Chance(h.Market, "AI") == 1500, "restore committed prices and probabilities");
-            Check(h.Send(1, "DEV_PREVIOUS").success && h.Market.DecisionOpen && Chance(h.Market, "AI") == 0, "rewind decision");
+            Check(h.Market.GetWindow(1, "AI", 1, 5).SequenceEqual(prices) && Chance(h.Market, "AI") == 5000, "restore committed prices and probabilities");
+            Check(h.Send(1, "DEV_PREVIOUS").success && h.Market.DecisionOpen && Chance(h.Market, "AI") == 5000, "rewind decision");
             Check(h.Room.Snapshot().stockSegmentHistory.Length == 0 && h.Market.GetWindow(1, "AI", 1, 5).All(v => v == 0), "clear future reveal and prices");
         }
 
@@ -323,11 +467,11 @@ namespace BlackWhale.Tests
             var range = new ChartRangeSelection { MinimumDay = 1 }; range.SetRange(0, 0);
             Check(range.Start == 1 && range.End == 1, "board reservations start at day one");
             var state = new PublicState { phase = Protocol.Investment, stockSegmentIndex = 1 };
-            var portfolio = new PortfolioState { insights = new[] { new StockInsight { companyId = "AI", probabilityBps = 3000 }, new StockInsight { companyId = "BIO", probabilityBps = 1300 } } };
-            Check(BoardChartAnnotations.ProbabilityLabel(state, portfolio, "AI").Contains("2구간 하락 30%"), "current AI probability and target segment");
-            Check(BoardChartAnnotations.ProbabilityLabel(state, portfolio, "BIO").Contains("2구간 Lightening 13%"), "current BIO probability and target segment");
+            var portfolio = new PortfolioState { insights = new[] { new StockInsight { companyId = "AI", upProbabilityBps = 7000, downProbabilityBps = 3000, probabilitySegment = 1 }, new StockInsight { companyId = "BIO", upProbabilityBps = 1300, downProbabilityBps = 8700, probabilitySegment = 1 } } };
+            Check(BoardChartAnnotations.ProbabilityLabel(state, portfolio, "AI").Contains("상승 70%") && BoardChartAnnotations.ProbabilityLabel(state, portfolio, "AI").Contains("하락 30%"), "AI rise and fall highlighted");
+            Check(BoardChartAnnotations.ProbabilityLabel(state, portfolio, "BIO").Contains("급등 13%") && BoardChartAnnotations.ProbabilityLabel(state, portfolio, "BIO").Contains("미발생 87%"), "BIO rise and fall highlighted");
             state.stockSegmentRevealing = true;
-            Check(BoardChartAnnotations.ProbabilityLabel(state, portfolio, "BIO").Contains("3구간"), "reveal labels already calculated next probability");
+            Check(BoardChartAnnotations.ProbabilityLabel(state, portfolio, "BIO").Contains("다음 2구간"), "probability label identifies next segment");
         }
     }
 }

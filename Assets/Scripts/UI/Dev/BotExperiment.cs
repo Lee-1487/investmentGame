@@ -203,8 +203,11 @@ namespace BlackWhale.UI.Dev
                 clock.Seconds = steps * (double)experiment.stepSeconds;
                 room.Tick(); RouteAndPump();
                 // Rotate update priority so simultaneous ticks do not always favor P1.
-                for (int i = 0; i < 4; i++) bots[(steps + i) % 4].Update((float)clock.Seconds);
-                RouteAndPump();
+                for (int i = 0; i < 4; i++) {
+                    bots[(steps + i) % 4].Update((float)clock.Seconds);
+                    // Deliver accepted exchanges before the next client decides to finish information sharing.
+                    RouteAndPump();
+                }
                 if (Result.turns.Count == StockRules.Turns) return true;
                 if (CurrentPhase == Protocol.Ended) throw new InvalidOperationException("정산을 완료하기 전에 게임이 종료됐습니다.");
                 return false;

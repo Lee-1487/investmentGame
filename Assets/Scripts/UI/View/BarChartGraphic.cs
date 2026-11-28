@@ -69,7 +69,7 @@ namespace BlackWhale.UI.View
             _hiddenTail = visible;
             if (visible && _hiddenTailLabel == null)
             {
-                _hiddenTailLabel = UiKit.Label(transform, "hidden", 14, Palette.SubText, TextAnchor.MiddleCenter, FontStyle.Bold);
+                _hiddenTailLabel = UiKit.Label(transform, "HIDDEN", 14, Palette.SubText, TextAnchor.MiddleCenter, FontStyle.Bold);
                 _hiddenTailLabel.name = "HiddenTailLabel";
                 _hiddenTailLabel.raycastTarget = false;
                 _hiddenTailLabel.resizeTextForBestFit = true;
@@ -136,7 +136,7 @@ namespace BlackWhale.UI.View
                 SetVerticesDirty();
             }
         }
-        public void SetSegmentKnowledge(SegmentKnowledge[] knowledge, string companyId)
+        public void SetSegmentKnowledge(SegmentKnowledge[] knowledge, string companyId, Player[] players = null)
         {
             var entries = (knowledge ?? System.Array.Empty<SegmentKnowledge>()).Where(k => k.companyId == companyId).ToArray();
             if (entries.Length == 0) {
@@ -160,6 +160,7 @@ namespace BlackWhale.UI.View
             }
             _segmentKnowledgeRoot.gameObject.SetActive(true);
             string key = companyId + "|" + string.Join("|", entries.OrderBy(e => e.startDay).Select(e => e.startDay + ":" + string.Join(",", e.playerIds ?? System.Array.Empty<string>())));
+            key += "|" + string.Join(",", (players ?? System.Array.Empty<Player>()).Select(p => p.playerId + ":" + p.displayName));
             if (key == _segmentKnowledgeKey) return;
             _segmentKnowledgeKey = key;
             for (int segment = 0; segment < 6; segment++) {
@@ -168,7 +169,14 @@ namespace BlackWhale.UI.View
                 var ids = entry?.playerIds ?? System.Array.Empty<string>();
                 if (ids.Length == 0) _segmentKnowledgeLabels[segment].text = "";
                 else if (ids.Contains("ALL")) _segmentKnowledgeLabels[segment].text = "공용";
-                else _segmentKnowledgeLabels[segment].text = string.Join(" ", ids.Select(id => "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(id)) + ">" + id + "</color>"));
+                else _segmentKnowledgeLabels[segment].text = string.Join(StockRules.CanShareRumor(companyId) ? "\n" : " ", ids.Select(id => {
+                    string name = players?.FirstOrDefault(p => p.playerId == id)?.displayName;
+                    return "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(id)) + ">" + (string.IsNullOrEmpty(name) ? id : name) + "</color>";
+                }));
+                var label = _segmentKnowledgeLabels[segment];
+                label.resizeTextForBestFit = StockRules.CanShareRumor(companyId);
+                label.resizeTextMinSize = 7; label.resizeTextMaxSize = 9;
+                label.rectTransform.offsetMax = new Vector2(-1, StockRules.CanShareRumor(companyId) ? 38 : 15);
             }
         }
         private readonly List<Vector2Int> _bands = new List<Vector2Int>();
@@ -234,11 +242,65 @@ namespace BlackWhale.UI.View
         public void SetData(DayBar[] bars)
         {
             _bars = bars ?? new DayBar[0];
+            RefreshDirectionCards();
             NoteReveal();
             _verticalRange = _bioFixedAxis ? ChartVerticalRange.BioFixed : ChartVerticalRange.FromVisibleValues(_bars.Where(b => b.Bps.HasValue).Select(b => b.Bps.Value)
                 .Concat(_bars.Where(b => b.Bps.HasValue && b.OpenBps.HasValue).Select(b => b.OpenBps.Value)));
             RefreshAxisLabels();
             SetVerticesDirty();
+        }
+
+        private Image[] _directionCards;
+        private Text[] _directionLabels;
+        private Image[][] _directionCandles;
+        private string _directionCardKey;
+        private void RefreshDirectionCards()
+        {
+            string key = string.Join(",", _bars.Select(b => b.Day + ":" + (b.Bps.HasValue ? 0 : b.SegmentDirection)));
+            if (_directionCardKey == key) return;
+            _directionCardKey = key;
+            if (_directionCards == null && !_bars.Any(b => !b.Bps.HasValue && b.SegmentDirection != 0)) return;
+            if (_directionCards == null) {
+                var root = UiKit.Rect(transform, "DirectionCards"); UiKit.Stretch(root);
+                _directionCards = new Image[6]; _directionLabels = new Text[6]; _directionCandles = new Image[6][];
+                for (int segment = 0; segment < 6; segment++) {
+                    var panel = UiKit.Panel(root, "DirectionCard_" + segment, Palette.Card, rounded: true);
+                    panel.raycastTarget = false;
+                    var label = UiKit.Label(panel.transform, "", 12, Palette.Text, TextAnchor.LowerCenter, FontStyle.Bold);
+                    label.raycastTarget = false;
+                    label.resizeTextForBestFit = true; label.resizeTextMinSize = 8; label.resizeTextMaxSize = 12;
+                    UiKit.Stretch(label.rectTransform, 1, 2, 1, 2);
+                    _directionCandles[segment] = new Image[5];
+                    for (int day = 0; day < 5; day++) {
+                        var candle = UiKit.Panel(panel.transform, "PreviewCandle_" + day, Palette.Text);
+                        candle.raycastTarget = false; _directionCandles[segment][day] = candle;
+                    }
+                    _directionCards[segment] = panel; _directionLabels[segment] = label;
+                }
+            }
+            for (int segment = 0; segment < 6; segment++) {
+                int start = 1 + segment * 5, end = start + 4;
+                var unknown = _bars.Where(b => b.Day >= start && b.Day <= end && !b.Bps.HasValue && b.SegmentDirection != 0).ToArray();
+                var card = _directionCards[segment]; card.gameObject.SetActive(unknown.Length > 0);
+                if (unknown.Length == 0) continue;
+                bool up = unknown[0].SegmentDirection > 0;
+                card.color = up ? new Color32(0x55, 0x24, 0x28, 0xF5) : new Color32(0x20, 0x35, 0x55, 0xF5);
+                card.rectTransform.anchorMin = new Vector2(unknown[0].Day / 31f, .25f);
+                card.rectTransform.anchorMax = new Vector2((end + 1) / 31f, .78f);
+                card.rectTransform.offsetMin = new Vector2(2, 0); card.rectTransform.offsetMax = new Vector2(-2, 0);
+                _directionLabels[segment].text = (segment + 1) + "구간";
+                _directionLabels[segment].color = Palette.SubText;
+                _directionLabels[segment].rectTransform.anchorMax = new Vector2(1, .2f);
+                var preview = DailyBarModel.DirectionPreview(up ? 1 : -1);
+                for (int day = 0; day < 5; day++) {
+                    var candle = _directionCandles[segment][day];
+                    float y0 = .22f + preview[day] * .72f, y1 = .22f + preview[day + 1] * .72f;
+                    candle.color = up ? (Color)UpColor : (Color)DownColor;
+                    candle.rectTransform.anchorMin = new Vector2(.1f + day * .16f, Mathf.Min(y0, y1));
+                    candle.rectTransform.anchorMax = new Vector2(.2f + day * .16f, Mathf.Max(y0, y1));
+                    candle.rectTransform.offsetMin = Vector2.zero; candle.rectTransform.offsetMax = Vector2.zero;
+                }
+            }
         }
 
         // 세로축 % 눈금: 가로 보조선 위치에 '+2%', '0%', '-1%'처럼 0일차 대비 수익률을 글자로 붙인다.
@@ -618,8 +680,16 @@ namespace BlackWhale.UI.View
                 Quad(vh, cx - bodyW * 0.5f, y0, cx + bodyW * 0.5f, y1, color);
             }
 
-            // 주가 캔들 자체가 흐름을 보여 주므로 종가를 연결하는 보조 추세선은 그리지 않는다.
-            // _trendThroughDay 값은 기존 호출부 호환을 위해 유지하지만 화면에는 영향을 주지 않는다.
+            // Connect actual, consecutive public closes only. Direction cards never enter the price axis.
+            if (_trendThroughDay.HasValue)
+                for (int i = 1; i < _bars.Length; i++) {
+                    var previous = _bars[i - 1]; var current = _bars[i];
+                    if (current.Day > _trendThroughDay.Value || current.Day > sweep || !previous.Bps.HasValue || !current.Bps.HasValue) continue;
+                    OutlineSegment(vh,
+                        new Vector3(DayAxis.CenterX(previous.Day, r.xMin, r.width), ValueY(r, previous.Bps.Value)),
+                        new Vector3(DayAxis.CenterX(current.Day, r.xMin, r.width), ValueY(r, current.Bps.Value)),
+                        1.4f, new Color32(0xFF, 0xFF, 0xFF, 0x90));
+                }
 
             // 공개 선(지나가는 동안만)
             if (sweep < DayAxis.Count)

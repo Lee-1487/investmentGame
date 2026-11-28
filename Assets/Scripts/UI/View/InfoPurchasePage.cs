@@ -308,6 +308,7 @@ namespace BlackWhale.UI.View
             _zoomProbability.gameObject.SetActive(stockSystem);
             _zoomProbability.rectTransform.offsetMin = new Vector2(24, stockSystem && store.Public?.phase == Protocol.Info && !_showInformationItems ? 100 : 214);
             _zoomProbability.rectTransform.offsetMax = new Vector2(-24, stockSystem && store.Public?.phase == Protocol.Info && !_showInformationItems ? 128 : 248);
+            _zoomProbability.fontSize = 16; _zoomProbability.alignment = TextAnchor.MiddleCenter;
             _zoomProbability.text = BoardChartAnnotations.ProbabilityLabel(store.Public, store.View?.portfolio, _zoomCompany);
             _zoomChart.rectTransform.offsetMin = new Vector2(24, stockSystem && store.Public?.phase == Protocol.Info && !_showInformationItems ? 150 : stockSystem ? 260 : 228);
             _favorite.gameObject.SetActive(!stockSystem);
@@ -336,10 +337,10 @@ namespace BlackWhale.UI.View
             var revealed = store.RevealedTurn == store.CurrentTurn ? store.Revealed?.FirstOrDefault(c => c.companyId == _zoomCompany) : null;
             _zoomBars = DailyBarModel.Build(company, revealed);
             _zoomChart.SetCompany(_zoomCompany);
-            _zoomChart.SetSegmentKnowledge(store.Public?.segmentKnowledge, _zoomCompany);
+            _zoomChart.SetSegmentKnowledge(BoardChartAnnotations.RumorKnowledge(store.View, store.Public, store.RumorsVisible), _zoomCompany, store.Public?.players);
             _zoomChart.SetData(_zoomBars);
             _zoomChart.SetTrendThroughDay(revealed != null ? 30 : store.Public?.stockSystem == true && store.Public.phase == Protocol.Investment ? store.View?.portfolio?.processedDay : (int?)null);
-            _zoomChart.SetHiddenTail(!stockSystem && store.Public?.phase == Protocol.Info);
+            _zoomChart.SetHiddenTail(stockSystem ? BoardChartAnnotations.HiddenFinalSegment(company, revealed) : store.Public?.phase == Protocol.Info);
             _zoomChart.SetCurrentDay(StockRules.CurrentDay(store.Public, store.View?.portfolio));
             var intervals = store.TradePlans.ChartIntervals(store.View, store.CurrentTurn, _zoomCompany, store.OrderLocked);
             _zoomChart.ShowTradeLabels = false; // 예약·진입청산 구간은 띠만(시가·종가 글자 없음)
@@ -556,9 +557,9 @@ namespace BlackWhale.UI.View
                      : state?.stockSystem == true ? "" : "   ·   구매는 정보 탐색 단계에서만");
             if (state?.stockSystem == true && !showingResults && !state.publicSelectionActive)
                 _publicHistory.text = phase == Protocol.Info
-                    ? "FOOD·AUTO 1~5일 공통 공개 · 나머지 카드 자동 배정 · 그래프에서 정보 교환 / 예약 구간에서 찌라시 보내기\n"
+                    ? "FOOD·AUTO 1~5일 공통 방향 카드 · 실제 주가는 5일씩 공개 · AUTO·FOOD 정보 교환 / AI·BIO 찌라시 교환\n"
                       + string.Join(" / ", (v?.receivedTradeIntents ?? Array.Empty<TradeIntent>()).Select(i => i.senderId + "의 계획: " + i.companyId + " " + i.entryDay + "일 진입 → " + i.exitDay + "일 정산"))
-                    : string.Join(" / ", (v?.portfolio?.insights ?? Array.Empty<StockInsight>()).Select(i => i.companyId + " " + i.message));
+                    : "";
             if (state?.stockSystem == true) {
                 _coinBadge.SetVisible(false);
                 _header.text = v == null ? "개인 정보 수신 대기" : "자산 " + DisplayFormat.Money(v.assets) + " · 투자말 3개";
@@ -602,13 +603,13 @@ namespace BlackWhale.UI.View
         public int? ExchangeReceiveStart => IncomingExchange?.offeredStartDay ?? (_exchangeMode ? _exchangeReceiveStart : OutgoingExchange?.requestedStartDay);
         private bool IsExchangePhase => _c.Store.Public?.stockSystem == true && _c.Store.Public.phase == Protocol.Info;
         private bool CanSend(int start) => (_c.Store.View?.companies?.FirstOrDefault(c => c.companyId == _companyId)?.visibleWindows
-            ?? Array.Empty<VisibleInformationWindow>()).Any(w => w.startDay == start && w.source == "DEALT" && w.dailyChangesBps?.Length == 5);
+            ?? Array.Empty<VisibleInformationWindow>()).Any(w => w.startDay == start && w.source == "DEALT" && InformationWindowRules.IsSegmentCard(w));
         private string ReceiveTarget(int start)
         {
-            if (start < 6 || start > 26 || (_companyId != "FOOD" && _companyId != "AUTO")) return null;
+            if (start < 6 || start > 21 || (_companyId != "FOOD" && _companyId != "AUTO")) return null;
             var company = _c.Store.View?.companies?.FirstOrDefault(c => c.companyId == _companyId);
             var known = InformationWindowRules.KnownDays(company);
-            if (Enumerable.Range(start, 5).All(day => known[day].HasValue)) return null;
+            if (InformationWindowRules.SegmentDirection(company, start) != 0 || Enumerable.Range(start, 5).All(day => known[day].HasValue)) return null;
             var owners = (_c.Store.Public?.segmentKnowledge ?? Array.Empty<SegmentKnowledge>())
                 .FirstOrDefault(k => k.companyId == _companyId && k.startDay == start)?.playerIds
                 ?.Where(id => id != "ALL" && id != _c.LocalPlayerId).ToArray() ?? Array.Empty<string>();
@@ -849,6 +850,7 @@ namespace BlackWhale.UI.View
             _expand.interactable = _c.Store.View != null;
             bool board = _c.Store.Public?.stockSystem == true;
             _probability.gameObject.SetActive(board);
+            _probability.fontSize = 13; _probability.alignment = TextAnchor.MiddleCenter;
             _probability.text = BoardChartAnnotations.ProbabilityLabel(_c.Store.Public, _c.Store.View?.portfolio, _companyId);
             var intervals = _c.Store.TradePlans.ChartIntervals(_c.Store.View, _c.Store.CurrentTurn, _companyId, _c.Store.OrderLocked);
             _planLabel.text = _c.Store.OrderLocked ? (intervals.Length == 0 ? "" : "확정: " + string.Join(", ", intervals.Select(i => i.entryDay + "→" + i.exitDay + "일"))) : _c.Store.TradePlans.Summary(_companyId);
@@ -877,10 +879,10 @@ namespace BlackWhale.UI.View
             // 시장 공개(주문 잠금) 이후에만 31일 전체, 그 전에는 열람한 날짜만.
             _bars = DailyBarModel.Build(company, revealed);
             _chart.SetCompany(_companyId);
-            _chart.SetSegmentKnowledge(_c.Store.Public?.segmentKnowledge, _companyId);
+            _chart.SetSegmentKnowledge(BoardChartAnnotations.RumorKnowledge(_c.Store.View, _c.Store.Public, _c.Store.RumorsVisible), _companyId, _c.Store.Public?.players);
             _chart.SetData(_bars);
             _chart.SetTrendThroughDay(revealed != null ? 30 : _c.Store.Public?.stockSystem == true && _c.Store.Public.phase == Protocol.Investment ? _c.Store.View?.portfolio?.processedDay : (int?)null);
-            _chart.SetHiddenTail(_c.Store.Public?.stockSystem != true && _c.Store.Public?.phase == Protocol.Info);
+            _chart.SetHiddenTail(_c.Store.Public?.stockSystem == true ? BoardChartAnnotations.HiddenFinalSegment(company, revealed) : _c.Store.Public?.phase == Protocol.Info);
             _chart.SetCurrentDay(StockRules.CurrentDay(_c.Store.Public, _c.Store.View?.portfolio));
             _chart.SetFills(null); // 진입·청산 체결 막대는 그래프에 그리지 않음
             _chart.ShowTradeLabels = false; // 예약·진입청산 구간은 띠만(시가·종가 글자 없음)

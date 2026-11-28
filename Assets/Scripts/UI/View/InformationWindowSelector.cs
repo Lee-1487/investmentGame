@@ -53,8 +53,8 @@ namespace BlackWhale.UI.View
                 if (controller.Store.Public?.stockSystem == true) {
                     if (HasIncomingExchange) AcceptExchange?.Invoke();
                     else if (InExchangeMode) RequestExchange?.Invoke();
-                    else if (Selection.SelectedIndex >= 0) {
-                        if (!IsSavedReservation()) return;
+                    else if (StockRules.CanShareRumor(companyId())) {
+                        if (!Selection.HasSelection) return;
                         ChoosingRecipient = !ChoosingRecipient;
                         recipientSelectionKey = ReservationKey();
                         Refresh(); ControlsChanged?.Invoke();
@@ -93,6 +93,7 @@ namespace BlackWhale.UI.View
         }
         private bool IsSavedReservation()
         {
+            if (StockRules.CanShareRumor(companyId())) return Selection.HasSelection && StartDay >= 1 && EndDay <= 30;
             var intervals = controller.Store.TradePlans.Get(companyId()).Intervals;
             int index = Selection.SelectedIndex;
             return Selection.HasSelection && index >= 0 && index < intervals.Length
@@ -104,7 +105,7 @@ namespace BlackWhale.UI.View
         {
             var state = controller.Store.Public;
             string target = recipientIds[index];
-            if (!ChoosingRecipient || recipientSelectionKey != ReservationKey() || !IsSavedReservation()
+            if (!StockRules.CanShareRumor(companyId()) || !ChoosingRecipient || recipientSelectionKey != ReservationKey() || !IsSavedReservation()
                 || state?.stockSystem != true || state.phase != Protocol.Info || state.paused
                 || !string.IsNullOrEmpty(controller.Store.EndReason) || HasIncomingExchange || InExchangeMode
                 || string.IsNullOrEmpty(target) || target == controller.LocalPlayerId
@@ -115,7 +116,7 @@ namespace BlackWhale.UI.View
         }
         private void RefreshRecipients(bool active)
         {
-            if (!active || !IsSavedReservation() || recipientSelectionKey != ReservationKey()) ChoosingRecipient = false;
+            if (!StockRules.CanShareRumor(companyId()) || !active || !IsSavedReservation() || recipientSelectionKey != ReservationKey()) ChoosingRecipient = false;
             recipientRow.gameObject.SetActive(ChoosingRecipient);
             if (!ChoosingRecipient) return;
             var players = (controller.Store.Public?.players ?? Array.Empty<Player>())
@@ -185,8 +186,9 @@ namespace BlackWhale.UI.View
                 status.text = !string.IsNullOrEmpty(ExchangeStatus) ? ExchangeStatus : Selection.HasSelection ? StartDay + "~" + EndDay + "일" : "";
                 SetButtonStable(reserve, selected ? "예약 취소" : "구간 예약", canReserve,
                     canReserve ? Palette.AccentSoft : Palette.Disabled, canReserve ? Palette.Accent : Palette.DisabledText);
-                bool canConfirm = selected ? infoActive && IsSavedReservation() && (ChoosingRecipient || !controller.Store.HasPending(StockRules.SendPlan)) : canExchange;
-                SetButtonStable(confirm, selected ? ChoosingRecipient ? "취소" : "찌라시 보내기" : "정보 교환", canConfirm,
+                bool rumorCompany = StockRules.CanShareRumor(companyId());
+                bool canConfirm = rumorCompany ? infoActive && Selection.HasSelection && (ChoosingRecipient || !controller.Store.HasPending(StockRules.SendPlan)) : canExchange;
+                SetButtonStable(confirm, rumorCompany ? ChoosingRecipient ? "취소" : "찌라시 교환" : "정보 교환", canConfirm,
                     canConfirm ? Palette.Accent : Palette.Disabled, canConfirm ? Color.white : Palette.DisabledText);
                 return;
             }

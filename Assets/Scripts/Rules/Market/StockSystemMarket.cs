@@ -11,6 +11,7 @@ namespace BlackWhale.Rules
         {
             public string Claim;
             public bool Active;
+            public decimal AiValue = 1m;
             public Interval[] Plan = Array.Empty<Interval>();
         }
         private readonly Dictionary<string, List<StockFill>> fills = InvestmentRules.CompanyIds.ToDictionary(id => id, id => new List<StockFill>());
@@ -49,6 +50,7 @@ namespace BlackWhale.Rules
             for (int i = 0; i < original.Slots.Length; i++) {
                 copy.Slots[i].Claim = original.Slots[i].Claim; copy.Slots[i].Active = original.Slots[i].Active;
                 copy.Slots[i].Plan = Copy(original.Slots[i].Plan);
+                copy.Slots[i].AiValue = original.Slots[i].AiValue;
             }
             return copy;
         }
@@ -90,7 +92,19 @@ namespace BlackWhale.Rules
             var data = new MarketData { turn = turn, companies = InvestmentRules.CompanyIds.Select(id =>
                 new CompanyMarketData { companyId = id, dailyChangesBps = new int[31], publicBundleIndices = Array.Empty<int>() }).ToArray() };
             foreach (var company in data.companies.Where(c => c.companyId == "FOOD" || c.companyId == "AUTO"))
-                library.Apply(company, seed, turn);
+            {
+                var random = new Random(unchecked(seed * 397 ^ turn * 7919 ^ (company.companyId == "AUTO" ? 31 : 37)));
+                int rises = 0;
+                for (int segment = 0; segment < 6; segment++) {
+                    // HIDDEN makes both rise and fall counts even across all six segments.
+                    bool up = segment == 5 ? rises % 2 != 0 : random.Next(2) == 0;
+                    if (up) rises++;
+                    int start = segment * 5, from = company.dailyChangesBps[start];
+                    int magnitude = Math.Min(9000, library.volatility.DailyLimitBps(company.companyId) * 5);
+                    int move = (int)Math.Round((10000m + from) * magnitude / 10000m) * (up ? 1 : -1);
+                    for (int day = 1; day <= 5; day++) company.dailyChangesBps[start + day] = from + move * day / 5;
+                }
+            }
             return data;
         }
         private Dictionary<string, int> StockHoldings(string player)
@@ -108,7 +122,7 @@ namespace BlackWhale.Rules
                 p.Augments.Clear();
                 // The previous turn's profit is already in assets/history. Each new turn
                 // starts with all thirty slots in cash and every company supply unclaimed.
-                foreach (var slot in p.Slots) { slot.Claim = null; slot.Active = false; slot.Plan = Array.Empty<Interval>(); }
+                foreach (var slot in p.Slots) { slot.Claim = null; slot.Active = false; slot.AiValue = 1m; slot.Plan = Array.Empty<Interval>(); }
                 foreach (string company in InvestmentRules.CompanyIds) {
                     p.Shares[company] = 0;
                     Array.Clear(p.DailyQuantity[company], 0, 31); p.Gain[company] = 0;
@@ -166,6 +180,7 @@ namespace BlackWhale.Rules
             var slots = delta > 0 ? p.Slots.Where(s => s.Claim == null).Take(delta)
                 : p.Slots.Where(s => s.Claim == company).Skip(target);
             foreach (var slot in slots) {
+                if (delta > 0) slot.AiValue = 1m;
                 slot.Active = delta > 0;
                 slot.Claim = slot.Active ? company : null;
             }
@@ -176,10 +191,14 @@ namespace BlackWhale.Rules
         public PortfolioState GetPortfolio(string playerId)
         {
             if (!stockPlayers.TryGetValue(playerId, out var p)) return new PortfolioState { holdings = new PortfolioHolding[0], augments = new string[0], candidates = new string[0], insights = new StockInsight[0] };
-            return new PortfolioState { processedDay = ProcessedDay, usedSlots = p.Shares.Values.Sum(), informationDiscount = p.Discount, augmentChosen = p.Chosen,
+            var current = SettleStockPlayer(playerId);
+            return new PortfolioState { totalReturnBps = current.turnReturnBps, processedDay = ProcessedDay, usedSlots = p.Shares.Values.Sum(), informationDiscount = p.Discount, augmentChosen = p.Chosen,
                 draftSharesRemaining = p.DraftSharesRemaining,
                 priorityUsed = p.PriorityUsed, concentrationCompany = p.Focus, augments = p.Augments.ToArray(), candidates = (string[])p.Candidates.Clone(),
-                holdings = p.Shares.Select(v => new PortfolioHolding { companyId = v.Key, shares = v.Value, activeShares = ActiveShares(p, v.Key), consecutiveTurns = p.Streak[v.Key] }).ToArray(),
+                holdings = p.Shares.Select(v => new PortfolioHolding { companyId = v.Key, shares = v.Value, activeShares = ActiveShares(p, v.Key), consecutiveTurns = p.Streak[v.Key],
+                    marketReturnBps = market.ChangeBps(v.Key, ProcessedDay),
+                    returnBps = current.companyProfits.FirstOrDefault(c => c.companyId == v.Key)?.returnBps ?? 0,
+                    canBuy = true }).ToArray(),
                 insights = BoardInsights() };
         }
         public RuleResult TradeShares(RequestContext c, ShareOrder[] requested)
@@ -275,12 +294,17 @@ namespace BlackWhale.Rules
                 {
                     string company = liveTrading ? slot.Active ? slot.Claim : null : Invested(slot, day) ? slot.Claim : null;
                     if (company == null) continue; // Uninvested cash has no market return.
-                    // Each slot represents a fixed share of the turn's starting capital.
-                    // Sum chart percentage-point differences across held days, without price ratios or compounding.
+                    // Each slot starts with an equal share of capital. AI compounds its held value;
+                    // the other companies retain their chart percentage-point settlement.
                     decimal change = (market.ChangeBps(company, day) - market.ChangeBps(company, day - 1)) / 10000m;
+                    if (company == "AI") {
+                        decimal previousPrice = 10000m + market.ChangeBps(company, day - 1);
+                        change = slot.AiValue * (market.ChangeBps(company, day) - market.ChangeBps(company, day - 1)) / previousPrice;
+                    }
                     // Hidden protection changes the holder's daily return, never the shared chart or its prelude.
                     if (day >= 26 && p.Augments.Contains("HIDDEN_LOSS_CONTROL"))
                         change *= change < 0 ? .2m : .5m;
+                    if (company == "AI") slot.AiValue += change;
                     p.Gain[company] += change;
                     p.DailyQuantity[company][day]++;
                     if (!liveTrading && slot.Claim != null && slot.Plan.Length > 0 && slot.Plan.Max(i => i.exitDay) == day)
@@ -292,6 +316,7 @@ namespace BlackWhale.Rules
                     }
                 }
             }
+            if (liveTrading && day % 5 == 0) CompleteSegmentProbability();
         }
         private static Interval[] HeldIntervals(int[] quantities)
         {

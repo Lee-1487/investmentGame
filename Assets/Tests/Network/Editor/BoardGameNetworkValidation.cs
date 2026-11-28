@@ -55,6 +55,8 @@ namespace BlackWhale.Tests
                     Send(2, StockRules.RespondExchange, "accept", new CommandPayload { exchangeId = exId, acceptExchange = true });
                     await Until(() => Result(2, "accept") && View(2).companies.Single(c => c.companyId == "FOOD").visibleWindows.Any(w => w.source == "EXCHANGED"));
                     Check(View(1).companies.Single(c => c.companyId == "FOOD").visibleWindows.Any(w => w.source == "EXCHANGED" && w.startDay == 11), "TCP sender receives requested card");
+                    Check(View(1).companies.SelectMany(c => c.visibleWindows).All(w => Math.Abs(w.direction) == 1
+                        && w.dailyChangesBps.Length == 0 && w.dailyOpenBps.Length == 0), "TCP cards carry direction without actual prices");
                     Check(View(3).companies.Single(c => c.companyId == "FOOD").visibleWindows.All(w => w.source != "EXCHANGED"), "TCP exchanged card private");
                     Send(1, StockRules.SendPlan, "intent", new CommandPayload { targetPlayerId = "P3", companyId = "BIO", startDay = 6, endDay = 15 });
                     await Until(() => Result(1, "intent") && View(3).receivedTradeIntents?.Length == 1);
@@ -75,6 +77,9 @@ namespace BlackWhale.Tests
                     returning.MessageReceived += restored.Add; clients[2] = returning;
                     await Until(() => restored.Any(m => m.type == "PLAYER_VIEW"));
                     var restoredView = restored.Last(m => m.type == "PLAYER_VIEW").playerView;
+                    Check(restoredView.companies.SelectMany(c => c.visibleWindows).All(w => Math.Abs(w.direction) == 1
+                        && w.dailyChangesBps.Length == 0 && w.dailyOpenBps.Length == 0), "TCP reconnect preserves direction cards without prices");
+                    Check(restoredView.companies.SelectMany(c => c.visibleWindows).All(w => w.startDay < 26), "TCP reconnect never reveals HIDDEN card");
                     Check(restoredView.recipientPlayerId == "P3" && restoredView.receivedTradeIntents.Single().companyId == "BIO", "TCP reconnect restores private inbox");
                     var reserved = restoredView.reservedInvestments.Single(i => i.companyId == "AUTO").intervals.Single();
                     Check(reserved.entryDay == 3 && reserved.exitDay == 9, "TCP reconnect preserves own daily reservation during investment");
