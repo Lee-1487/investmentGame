@@ -104,8 +104,9 @@ namespace BlackWhale.UI.View
     }
 
     /// <summary>
-    /// 화면 전환(턴·단계가 넘어갈 때): '결과 발표'와 같은 화면 가로 전체 띠가 나타나
-    /// "N턴 · 단계 이름"을 크게 보여 주고 서서히 사라진다.
+    /// 화면 전환(턴·단계가 넘어갈 때): 도트 + 글리치 띠.
+    /// 띠가 계단식(도트처럼 끊어지며)으로 펼쳐지고, 글자가 빨강·청록으로 갈라져 떨리다가 자리를 잡은 뒤,
+    /// 띠가 조각나며 계단식으로 접혀 사라진다. 위아래에는 체크무늬 도트 테두리, 띠 위에는 주사선.
     /// </summary>
     public static class PhaseTransitionFx
     {
@@ -118,19 +119,132 @@ namespace BlackWhale.UI.View
             if (old != null) Object.Destroy(old.gameObject);
             var root = UiKit.Rect(screen, "PhaseTransitionFx");
             UiKit.Stretch(root);
-
-            var band = UiKit.Panel(root, "Band", new Color(0.06f, 0.06f, 0.06f, 0.94f));
-            band.raycastTarget = false;
-            band.rectTransform.anchorMin = new Vector2(0, .5f); band.rectTransform.anchorMax = new Vector2(1, .5f);
-            band.rectTransform.sizeDelta = new Vector2(0, 150);
-            var title = UiKit.Label(band.transform, head, 54, new Color32(0xFF, 0xFF, 0xFF, 0xFF), TextAnchor.MiddleCenter, FontStyle.Bold);
-            UiKit.Stretch(title.rectTransform, 0, 0, 0, 34);
-            var subLabel = UiKit.Label(band.transform, sub, 18, Color.white, TextAnchor.LowerCenter);
-            UiKit.Stretch(subLabel.rectTransform, 0, 0, 0, 16);
-
-            UiAnim.FadeOut(band.rectTransform, Seconds - 0.45f, 0.45f);
+            root.gameObject.AddComponent<GlitchBand>().Build(root, head, sub);
             if (Application.isPlaying) Object.Destroy(root.gameObject, Seconds + 0.2f);
         }
+    }
+
+    /// <summary>도트 글리치 띠 연출(PhaseTransitionFx 전용).</summary>
+    public sealed class GlitchBand : MonoBehaviour
+    {
+        private const float Height = 150f, Open = 0.2f, Glitch = 0.5f, CloseAt = 1.2f, Close = 0.3f;
+        private static Texture2D _dither, _scan;
+
+        private RectTransform _band;
+        private Text _main, _red, _cyan, _sub;
+        private Image[] _slices;
+        private CanvasGroup _group;
+        private float _t, _nextJitter;
+        private readonly System.Random _rng = new System.Random();
+
+        private static Texture2D Tex(int w, int h, System.Func<int, int, Color32> f)
+        {
+            var t = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Repeat, hideFlags = HideFlags.DontSave };
+            var px = new Color32[w * h];
+            for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) px[y * w + x] = f(x, y);
+            t.SetPixels32(px); t.Apply(); return t;
+        }
+
+        public void Build(RectTransform root, string head, string sub)
+        {
+            if (_dither == null) _dither = Tex(2, 2, (x, y) => ((x + y) & 1) == 0 ? new Color32(255, 255, 255, 255) : new Color32(0, 0, 0, 0));
+            if (_scan == null) _scan = Tex(1, 2, (x, y) => y == 0 ? new Color32(0, 0, 0, 90) : new Color32(0, 0, 0, 0));
+
+            _band = UiKit.Rect(root, "Band");
+            _band.anchorMin = new Vector2(0, .5f); _band.anchorMax = new Vector2(1, .5f);
+            _band.sizeDelta = new Vector2(0, 0);
+            _group = _band.gameObject.AddComponent<CanvasGroup>();
+            _group.blocksRaycasts = false; _group.interactable = false;
+            _band.gameObject.AddComponent<RectMask2D>(); // 띠 높이 밖은 잘라서, 열리고 닫힐 때 글자가 띠 안에서만 보이게
+
+            var bg = UiKit.Panel(_band, "Bg", new Color32(0x1A, 0x12, 0x0C, 0xF2)); UiKit.Stretch(bg.rectTransform);
+            // 위·아래 체크무늬 도트 테두리(자주색)
+            for (int i = 0; i < 2; i++)
+            {
+                var edge = UiKit.Rect(_band, i == 0 ? "TopDither" : "BottomDither");
+                var raw = edge.gameObject.AddComponent<RawImage>();
+                raw.texture = _dither; raw.color = Palette.MaroonBorder; raw.raycastTarget = false;
+                edge.anchorMin = new Vector2(0, i == 0 ? 1 : 0); edge.anchorMax = new Vector2(1, i == 0 ? 1 : 0);
+                edge.pivot = new Vector2(.5f, i == 0 ? 1 : 0); edge.sizeDelta = new Vector2(0, 8); edge.anchoredPosition = Vector2.zero;
+                raw.uvRect = new UnityEngine.Rect(0, 0, 2048f / 4f, 2f); // 한 칸 = 4px
+                var line = UiKit.Panel(_band, "Line", Palette.Accent);
+                line.rectTransform.anchorMin = new Vector2(0, i == 0 ? 1 : 0); line.rectTransform.anchorMax = new Vector2(1, i == 0 ? 1 : 0);
+                line.rectTransform.pivot = new Vector2(.5f, i == 0 ? 1 : 0); line.rectTransform.sizeDelta = new Vector2(0, 2);
+                line.rectTransform.anchoredPosition = new Vector2(0, i == 0 ? -8 : 8);
+            }
+            // 글리치 조각(가로로 밀린 얇은 띠들)
+            _slices = new Image[6];
+            for (int i = 0; i < _slices.Length; i++)
+            {
+                var sl = UiKit.Panel(_band, "Slice" + i, i % 2 == 0 ? new Color32(0x4A, 0x16, 0x22, 0xE0) : new Color32(0x2E, 0x6E, 0x6E, 0xC0));
+                sl.rectTransform.anchorMin = sl.rectTransform.anchorMax = new Vector2(.5f, .5f);
+                sl.gameObject.SetActive(false);
+                _slices[i] = sl;
+            }
+            // 글자: 빨강·청록 잔상 + 본 글자(크림)
+            _red = Title(head, new Color32(0xFF, 0x3B, 0x5C, 0xC8));
+            _cyan = Title(head, new Color32(0x3B, 0xE8, 0xFF, 0xC8));
+            _main = Title(head, Palette.Text);
+            _sub = UiKit.Label(_band, sub, 18, Palette.Accent, TextAnchor.LowerCenter);
+            UiKit.Stretch(_sub.rectTransform, 0, 0, 0, 18);
+            // 주사선
+            var scan = UiKit.Rect(_band, "Scanlines");
+            UiKit.Stretch(scan);
+            var sr = scan.gameObject.AddComponent<RawImage>();
+            sr.texture = _scan; sr.raycastTarget = false; sr.uvRect = new UnityEngine.Rect(0, 0, 1, Height / 4f); // 2px마다 한 줄
+            Step(0f);
+        }
+
+        private Text Title(string head, Color color)
+        {
+            var t = UiKit.Label(_band, head, 54, color, TextAnchor.MiddleCenter, FontStyle.Bold);
+            UiKit.Stretch(t.rectTransform, 0, 0, 0, 34);
+            return t;
+        }
+
+        private void Update()
+        {
+            _t += Time.unscaledDeltaTime;
+            Step(_t);
+        }
+
+        private static float Steps(float v, int n) => Mathf.Floor(Mathf.Clamp01(v) * n) / n; // 계단식(도트처럼 끊어지게)
+
+        private void Step(float t)
+        {
+            // 열기·닫기: 높이를 계단식으로
+            float open = Steps(t / Open, 5);
+            float close = t > CloseAt ? 1f - Steps((t - CloseAt) / Close, 5) : 1f;
+            float h = Height * Mathf.Min(open, close);
+            _band.sizeDelta = new Vector2(0, Mathf.Round(h / 4f) * 4f);
+            _group.alpha = t > CloseAt + Close ? 0f : 1f;
+
+            // 글리치: 처음 0.5초 + 사라지기 직전 잠깐 + 가운데 한 번 툭
+            bool glitching = t < Glitch || (t > CloseAt - 0.08f && t < CloseAt + Close) || (t > 0.82f && t < 0.88f);
+            if (t >= _nextJitter)
+            {
+                _nextJitter = t + 0.045f;
+                float k = glitching ? 1f : 0f;
+                _red.rectTransform.anchoredPosition = new Vector2(Snap(-6f * k + Rand(4f) * k), Snap(Rand(3f) * k));
+                _cyan.rectTransform.anchoredPosition = new Vector2(Snap(6f * k + Rand(4f) * k), Snap(Rand(3f) * k));
+                _main.rectTransform.anchoredPosition = new Vector2(Snap(Rand(3f) * k), 0);
+                _red.enabled = _cyan.enabled = glitching;
+                for (int i = 0; i < _slices.Length; i++)
+                {
+                    bool on = glitching && _rng.NextDouble() < 0.6;
+                    var sl = _slices[i];
+                    sl.gameObject.SetActive(on);
+                    if (!on) continue;
+                    float w = 80f + (float)_rng.NextDouble() * 520f;
+                    float hh = 4f * (1 + _rng.Next(4));
+                    sl.rectTransform.sizeDelta = new Vector2(Snap(w), hh);
+                    sl.rectTransform.anchoredPosition = new Vector2(Snap(Rand(420f)), Snap(Rand(Height * 0.45f)));
+                }
+            }
+        }
+
+        private float Rand(float r) => (float)(_rng.NextDouble() * 2 - 1) * r;
+        private static float Snap(float v) => Mathf.Round(v / 2f) * 2f; // 2px 칸에 맞춤
     }
 
     /// <summary>역전 표시: 정산 결과 순위가 바뀌면 화면 위쪽에 '역전!' 띠가 내려와 누가 누구를 제쳤는지 알린다.</summary>
