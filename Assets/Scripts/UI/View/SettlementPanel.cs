@@ -124,26 +124,64 @@ namespace BlackWhale.UI.View
             if (_t >= OutStart + Out && _box.gameObject.activeSelf) _box.gameObject.SetActive(false);
             if (_star != null) _star.enabled = ((int)(_t * 4f) & 1) == 0;
 
-            // 입자: 이익 → 금빛 도트가 상자 아래에서 솟음 / 손실 → 파란 도트가 상자에서 떨어짐
-            if ((_gain || _loss) && _t > In && _t < OutStart && _t >= _nextParticle)
+            // 이익이면 화면 전체 위에서 도트 동전이 쏟아진다(손실이면 아무 효과 없음)
+            if (_gain && _t > In * 0.5f && _t < OutStart && _t >= _nextParticle)
             {
-                _nextParticle = _t + 0.06f;
+                _nextParticle = _t + 0.05f;
                 Spawn();
+            }
+        }
+
+        private static Sprite _coin;
+        /// <summary>도트 동전(10x10): 금색 몸통, 진한 테두리, 밝은 반짝임, 가운데 홈.</summary>
+        private static Sprite Coin
+        {
+            get
+            {
+                if (_coin != null) return _coin;
+                string[] art =
+                {
+                    "...####...",
+                    "..#yyyy#..",
+                    ".#yhhyyy#.",
+                    "#yhyyddyy#",
+                    "#yhyyddyy#",
+                    "#yyyyddyy#",
+                    "#yyyyddyy#",
+                    ".#yyyyyy#.",
+                    "..#yyyy#..",
+                    "...####...",
+                };
+                const int n = 10;
+                var tex = new Texture2D(n, n, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.DontSave };
+                var px = new Color32[n * n];
+                for (int y = 0; y < n; y++) for (int x = 0; x < n; x++)
+                {
+                    char c = art[n - 1 - y][x];
+                    px[y * n + x] = c == '#' ? new Color32(0x8A, 0x5A, 0x12, 255)
+                        : c == 'y' ? new Color32(0xF5, 0xC2, 0x3A, 255)
+                        : c == 'h' ? new Color32(0xFF, 0xF1, 0xA8, 255)
+                        : c == 'd' ? new Color32(0xC8, 0x8E, 0x1E, 255)
+                        : new Color32(0, 0, 0, 0);
+                }
+                tex.SetPixels32(px); tex.Apply();
+                _coin = Sprite.Create(tex, new UnityEngine.Rect(0, 0, n, n), new Vector2(.5f, .5f), 100f);
+                _coin.hideFlags = HideFlags.DontSave;
+                return _coin;
             }
         }
 
         private void Spawn()
         {
-            var img = UiKit.Panel(_particles, "P", _gain ? new Color32(0xFF, 0xD2, 0x4A, 0xFF) : new Color32(0x3D, 0x8B, 0xFF, 0xFF));
-            img.raycastTarget = false;
+            var img = UiKit.Panel(_particles, "Coin", Color.white);
+            img.sprite = Coin; img.raycastTarget = false;
             var rt = img.rectTransform;
-            rt.anchorMin = rt.anchorMax = new Vector2(.5f, .5f);
-            float size = _rng.NextDouble() < 0.5 ? 6f : 4f;
+            rt.anchorMin = rt.anchorMax = new Vector2((float)_rng.NextDouble(), 1f); // 화면 위쪽 아무 곳에서
+            float size = _rng.NextDouble() < 0.5 ? 30f : 20f;                      // 도트 한 칸 3px 또는 2px
             rt.sizeDelta = new Vector2(size, size);
-            float x = (float)(_rng.NextDouble() * 2 - 1) * 260f;
-            rt.anchoredPosition = new Vector2(Mathf.Round(x / 2f) * 2f, _gain ? -110f : -100f);
-            var vel = new Vector2((float)(_rng.NextDouble() * 2 - 1) * 40f, _gain ? 260f + (float)_rng.NextDouble() * 140f : -60f);
-            img.gameObject.AddComponent<PixelParticle>().Init(vel, _gain ? -420f : -520f, 0.9f);
+            rt.anchoredPosition = new Vector2(0, 20f);
+            var vel = new Vector2((float)(_rng.NextDouble() * 2 - 1) * 60f, -120f - (float)_rng.NextDouble() * 120f);
+            img.gameObject.AddComponent<PixelParticle>().Init(vel, -900f, 1.6f, spin: true);
         }
     }
 
@@ -151,12 +189,13 @@ namespace BlackWhale.UI.View
     public sealed class PixelParticle : MonoBehaviour
     {
         private Vector2 _vel, _pos;
-        private float _gravity, _life, _t;
+        private float _gravity, _life, _t, _spinPhase;
+        private bool _spin;
         private Image _img;
 
-        public void Init(Vector2 velocity, float gravity, float life)
+        public void Init(Vector2 velocity, float gravity, float life, bool spin = false)
         {
-            _vel = velocity; _gravity = gravity; _life = life;
+            _vel = velocity; _gravity = gravity; _life = life; _spin = spin; _spinPhase = Random.value * 4f;
             _img = GetComponent<Image>();
             _pos = ((RectTransform)transform).anchoredPosition;
         }
@@ -169,7 +208,14 @@ namespace BlackWhale.UI.View
             _vel.y += _gravity * dt;
             _pos += _vel * dt;
             ((RectTransform)transform).anchoredPosition = new Vector2(Mathf.Round(_pos.x / 2f) * 2f, Mathf.Round(_pos.y / 2f) * 2f);
-            var c = _img.color; c.a = Mathf.Floor((1f - _t / _life) * 4f) / 4f; _img.color = c;
+            var c = _img.color; c.a = _spin ? 1f : Mathf.Floor((1f - _t / _life) * 4f) / 4f; _img.color = c;
+            if (_spin)
+            {
+                // 동전이 도는 것처럼 가로 폭을 계단식으로 1 → 0.5 → 0.2 → 0.5 → 1
+                int step = (int)((_t * 10f + _spinPhase)) % 4;
+                float sx = step == 0 ? 1f : step == 1 ? 0.55f : step == 2 ? 0.2f : 0.55f;
+                transform.localScale = new Vector3(sx, 1f, 1f);
+            }
         }
     }
 }

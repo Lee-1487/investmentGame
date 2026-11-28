@@ -27,7 +27,7 @@ namespace BlackWhale.UI.View
             // 화면 전환(글리치 띠)과 다른 연출: 가운데 도트 상자가 '도트 조각'으로 흩어져 나타나고(디졸브),
             // 수익률이 세어 올라가며 이익이면 금빛 도트가 솟고 손실이면 파란 도트가 떨어진다. 끝날 때 다시 조각으로 흩어져 사라짐.
             root.gameObject.AddComponent<SettlementPanel>().Build(root, final ? "최종 정산" : turn + "턴 정산", rank, turnReturnBps, prevAssets, nowAssets, tone);
-            if (Application.isPlaying) Object.Destroy(root.gameObject, Seconds + 0.3f);
+            if (Application.isPlaying) Object.Destroy(root.gameObject, Seconds + 1.7f); // 마지막에 떨어지는 동전까지 다 떨어진 뒤
         }
     }
 
