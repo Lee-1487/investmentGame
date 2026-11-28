@@ -40,6 +40,8 @@ namespace BlackWhale.UI.State
     {
         public BlackWhale.UI.Presentation.TradePlanBook TradePlans { get; } = new BlackWhale.UI.Presentation.TradePlanBook();
         public ClientStateStore() { TradePlans.Changed += Raise; }
+        public bool RumorsVisible { get; private set; } = true;
+        public void ToggleRumors() { RumorsVisible = !RumorsVisible; Raise(); }
         private sealed class PendingRequest
         {
             public string Type;
@@ -162,11 +164,19 @@ namespace BlackWhale.UI.State
         {
             if (state == null) return ApplyOutcome.NoState;
             if (state.turn < CurrentTurn) return ApplyOutcome.Stale;
+            if (Public != null && state.turn == Public.turn && state.developerRevision < Public.developerRevision) return ApplyOutcome.Stale;
             if (Public != null && state.turn == Public.turn && state.turn > 0
                 && state.serverElapsedSeconds < Public.serverElapsedSeconds)
                 return ApplyOutcome.Stale;
 
             BeginTurnIfNewer(state.turn);
+            if (Public != null && state.developerMode && state.developerRevision != Public.developerRevision)
+            {
+                _pending.Clear(); _applied.Clear(); _completedPhases.Clear(); _completeRequestPhase.Clear(); _ownSelections.Clear();
+                View = null; Revealed = null; RevealedTurn = 0; Scoreboard = null; History = null;
+                OrderLockedByResult = false; LastError = null;
+                TradePlans.ResetForDeveloper();
+            }
             Public = DtoCopy.Copy(state);
             SelectionOrder.Observe(Public); // 선택 차례 기록(몇 번째 = 누구)
             Raise();
@@ -183,6 +193,7 @@ namespace BlackWhale.UI.State
 
             BeginTurnIfNewer(view.turn);
             View = DtoCopy.Copy(view);
+            if (view.informationExchanges?.Any(e => e.status == "PENDING") == true) _completedPhases.Remove(view.turn + "|" + Protocol.Info);
             TradePlans.EntryAtOpen = view.entryAtOpen;
             TradePlans.RestoreReservations(view.reservedInvestments);
             if (string.IsNullOrEmpty(LocalPlayerId)) LocalPlayerId = view.recipientPlayerId ?? "";

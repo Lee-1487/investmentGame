@@ -43,18 +43,18 @@ namespace BlackWhale.Rules
         /// Normal v3 play: one seeded pattern market per turn and movable information windows.
         /// Same seed + turn = same market, so a test or replay can fix the seed.
         /// </summary>
-        public static MarketService CreateRandom(int seed, InvestmentRules rules = null)
+        public static MarketService CreateRandom(int seed, InvestmentRules rules = null, StockPatternLibrary library = null)
         {
             var liveRules = (rules ?? new InvestmentRules()).Copy(); liveRules.entryAtOpen = true;
             liveRules.minHoldingDays = 1; liveRules.maxHoldingDays = 30; liveRules.maxIntervalsPerCompany = 0;
-            return new MarketService(new PatternMarketGenerator(seed, liveRules).ForTurn, liveRules) { UsesWindowInformation = true };
+            return new MarketService(new PatternMarketGenerator(seed, liveRules, library).ForTurn, liveRules) { UsesWindowInformation = true };
         }
 
         public bool UsesWindowInformation { get; private set; }
 
         public int[] GetWindow(int requestedTurn, string companyId, int startDay, int length = 5)
         {
-            if (startDay < 1 || length < 1 || startDay > 30 || length > 31 - startDay) throw new ArgumentOutOfRangeException(nameof(startDay));
+            if (startDay < 0 || length < 1 || startDay > 30 || length > 31 - startDay) throw new ArgumentOutOfRangeException(nameof(startDay));
             if (!markets.TryGetValue(requestedTurn, out var book) || !book.HasCompany(companyId))
                 throw new ArgumentException("Unknown market or company.");
             return Enumerable.Range(startDay, length).Select(d => book.ChangeBps(companyId, d)).ToArray();
@@ -62,7 +62,7 @@ namespace BlackWhale.Rules
         public int[] GetOpenWindow(int requestedTurn, string companyId, int startDay, int length = 5)
         {
             GetWindow(requestedTurn, companyId, startDay, length); // validate the same range
-            return Enumerable.Range(startDay, length).Select(d => markets[requestedTurn].ChangeBps(companyId, d - 1)).ToArray();
+            return Enumerable.Range(startDay, length).Select(d => markets[requestedTurn].ChangeBps(companyId, Math.Max(0, d - 1))).ToArray();
         }
 
         /// <summary>Provider mode: one market per turn, e.g. <see cref="RandomMarketGenerator.ForTurn"/>.</summary>
@@ -172,7 +172,7 @@ namespace BlackWhale.Rules
             if (input == null || input.Length > InvestmentRules.CompanyIds.Length || input.Any(i => i == null || !market.HasCompany(i.companyId)))
                 return new RuleResult(ErrorCodes.InvalidCompany);
             if (input.Select(i => i.companyId).Distinct().Count() != input.Length) return new RuleResult(ErrorCodes.DuplicateCompany);
-            if (StockEnabled && input.Any(i => i.companyId != "BANK" && context.Phase == Protocol.Investment && StockHoldings(context.PlayerId)[i.companyId] == 0))
+            if (StockEnabled && input.Any(i => context.Phase == Protocol.Investment && StockHoldings(context.PlayerId)[i.companyId] == 0))
                 return new RuleResult(ErrorCodes.InvalidCompany);
             foreach (var i in input)
             {
@@ -264,7 +264,7 @@ namespace BlackWhale.Rules
                         playerId = p.player, returnBps = StockEnabled ? StockHistoryRate(p.player, id, context.Turn) : Settlement.CompanyReturnBps(book, i, rules),
                         shares = StockEnabled ? StockSharesForHistory(p.player, id, context.Turn) : 0,
                         intervals = i.intervals.Select(v => new RevealedTrade { entryDay = v.entryDay, exitDay = v.exitDay,
-                            returnBps = StockEnabled ? Settlement.ReturnBps(10000 + book.ChangeBps(id, Math.Max(0, v.entryDay - 1)), 10000 + book.ChangeBps(id, v.exitDay)) : book.ChangeBps(id, v.exitDay) - book.ChangeBps(id, rules.entryAtOpen ? Math.Max(0, v.entryDay - 1) : v.entryDay) }).ToArray()
+                            returnBps = book.ChangeBps(id, v.exitDay) - book.ChangeBps(id, StockEnabled || rules.entryAtOpen ? Math.Max(0, v.entryDay - 1) : v.entryDay) }).ToArray()
                     })).ToArray() }).ToArray();
         }
 

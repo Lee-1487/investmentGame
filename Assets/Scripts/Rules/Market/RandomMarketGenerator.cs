@@ -20,13 +20,13 @@ namespace BlackWhale.Rules
         /// <summary>Base daily change limit in bps (turn 1).</summary>
         public static readonly IReadOnlyDictionary<string, int> BaseDailyLimitBps = new Dictionary<string, int>
         {
-            { "BANK", 80 }, { "FOOD", 120 }, { "AUTO", 350 }, { "AI", 800 }, { "SPACE", 800 }, { "BIO", 1500 }
+            { "FOOD", 120 }, { "AUTO", 350 }, { "AI", 800 }, { "BIO", 1500 }
         };
 
         /// <summary>Clamp for the change vs day 0 in bps. Does not grow with the turn.</summary>
         public static readonly IReadOnlyDictionary<string, int> AbsoluteCapBps = new Dictionary<string, int>
         {
-            { "BANK", 600 }, { "FOOD", 800 }, { "AUTO", 2000 }, { "AI", 5000 }, { "SPACE", 5000 }, { "BIO", 8000 }
+            { "FOOD", 800 }, { "AUTO", 2000 }, { "AI", 5000 }, { "BIO", 8000 }
         };
 
         private readonly InvestmentRules rules;

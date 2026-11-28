@@ -105,7 +105,7 @@ namespace BlackWhale.UI.Presentation
             new AbilityDef { Id = "RAIDER", Name = "기업사냥꾼", Short = "파쇄기 성공 시 상대 수익 감산",
                 Effect = "하락 파쇄기로 떨어진 기업에서 이익을 내면, 같은 기업에서 이익을 본 상대 1명의 수익을 깎고 깎은 금액의 50%를 가져온다." },
             new AbilityDef { Id = "GAMBLER", Name = "도박사", Short = "고변동 기업 손익 ×1.2",
-                Effect = "AI·SPACE·BIO 투자의 수익률과 손실률이 1.2배. 증폭기와 함께면 2.4배, 대폭발 보너스는 +60%p." }
+                Effect = "AI·BIO 투자의 수익률과 손실률이 1.2배. 증폭기와 함께면 2.4배, 대폭발 보너스는 +60%p." }
         };
 
         public static AbilityDef Get(string id) => All.FirstOrDefault(a => a.Id == id);
@@ -149,9 +149,9 @@ namespace BlackWhale.UI.Presentation
         {
             switch (d)
             {
-                case BotDifficulty.Easy: return "정보를 턴당 최대 1묶음 산다. 알려진 값으로 오르는 구간 중 하나를 무작위로 고른다.";
-                case BotDifficulty.Normal: return "정보를 턴당 최대 2묶음 산다. 알려진 값으로 가능한 구간을 모두 비교해 좋은 기업·구간을 고른다.";
-                default: return "정보를 턴당 최대 3묶음 산다. 구간 1~2개와 투자 비율(5:5/6:4/7:3)까지 비교해 고른다.";
+                case BotDifficulty.Easy: return "예측 오차가 크고 진입·청산 시점이 최대 3일 흔들립니다. 반응 지연 최대 4초.";
+                case BotDifficulty.Normal: return "예측·경쟁 판단 오차가 중간이며 시점이 최대 1일 흔들립니다. 반응 지연 최대 1.5초.";
+                default: return "예측·경쟁 판단 오차가 작고 시점 오차가 없습니다. 반응 지연 최대 0.3초.";
             }
         }
     }

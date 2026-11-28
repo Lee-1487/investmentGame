@@ -135,25 +135,22 @@ namespace BlackWhale.Tests
                     await until(() => logs.All(l => l.Any(m => m.type == "PLAYER_VIEW" && m.playerView.turn == 1)));
                     RoomValidation.Check(logs.All(l => l.Last(m => m.type == "PLAYER_VIEW").playerView.coins == 12), "TCP configured coin grants reach every human");
                     room.AdvanceManualPhase();
-                    await until(() => logs.All(l => l.Any(m => m.state?.publicSelectionActive == true)));
-                    for (int pick = 0; pick < 4; pick++) {
-                        int player = int.Parse(room.Snapshot().publicSelectionPlayerId.Substring(1)) - 1;
-                        clients[player].SendCommand(RoomValidation.Command("REVEAL_INFORMATION_WINDOW", "options-pick-" + pick, 1, new CommandPayload { companyId = "AI" }));
-                        int count = pick + 1;
-                        await until(() => logs.All(l => l.LastOrDefault(m => m.type == "PUBLIC_STATE")?.state.publicInformation?.Length == count));
-                    }
-                    var selected = room.Snapshot().publicInformation.SelectMany(c => c.days).OrderBy(d => d).ToArray();
-                    RoomValidation.Check(selected.Length == 24 && selected.Distinct().Count() == 24, "TCP public choices preserve exact count and unique days");
-                    await until(() => logs.All(l => l.Last(m => m.type == "PLAYER_VIEW").playerView.companies.Single(c => c.companyId == "AI")
-                        .visibleWindows.Where(w => w.source == "PUBLIC").Sum(w => w.dailyChangesBps.Length) == 24));
+                    await until(() => logs.All(l => l.Any(m => m.type == "PUBLIC_STATE" && m.state.phase == Protocol.Info && !m.state.publicSelectionActive)));
+                    var selected = room.Snapshot().publicInformation;
+                    RoomValidation.Check(selected.Length == 6 && selected.Where(c => c.companyId != "BANK").All(c => c.days.Length == 6 && c.days.Distinct().Count() == 6 && c.days.All(d => d >= 1 && d <= 25)), "TCP prepares random public dates for all five companies");
+                    RoomValidation.Check(selected.Single(c => c.companyId == "BANK").days.SequenceEqual(Enumerable.Range(0, 31)), "TCP BANK is fully public");
+                    await until(() => logs.All(l => l.Last(m => m.type == "PLAYER_VIEW").playerView.phase == Protocol.Info && l.Last(m => m.type == "PLAYER_VIEW").playerView.companies.Single(c => c.companyId == "AI")
+                        .visibleWindows.Where(w => w.source == "PUBLIC").Sum(w => w.dailyChangesBps.Length) == 6));
                     foreach (var log in logs) {
                         var state = log.Last(m => m.type == "PUBLIC_STATE").state;
-                        RoomValidation.Check(options.SameAs(state.lobbySettings) && selected.SequenceEqual(state.publicInformation.SelectMany(c => c.days).OrderBy(d => d)), "TCP settings and scattered dates are identical for all humans");
+                        RoomValidation.Check(options.SameAs(state.lobbySettings) && selected.All(c => c.days.SequenceEqual(state.publicInformation.Single(other => other.companyId == c.companyId).days)), "TCP settings and random dates are identical for all humans");
                     }
-                    clients[0].SendCommand(RoomValidation.Command("BUY_INFORMATION_WINDOW", "options-buy", 1, new CommandPayload { companyId = "AI", startDay = 1, endDay = 30 }));
+                    var coins = logs.Select(l => l.Last(m => m.type == "PLAYER_VIEW").playerView.coins).ToArray();
+                    clients[0].SendCommand(RoomValidation.Command("BUY_INFORMATION_WINDOW", "options-buy", 1, new CommandPayload { companyId = "AI", startDay = 30, endDay = 30, informationDays = 3 }));
                     await until(() => logs[0].Any(m => m.response?.requestId == "options-buy"));
-                    RoomValidation.Check(logs[0].Last(m => m.response?.requestId == "options-buy").response.success && logs[0].Last(m => m.type == "PLAYER_VIEW").playerView.coins == 6, "TCP private buy charges only six unrevealed dates");
-                    RoomValidation.Check(logs.Skip(1).All(l => l.Last(m => m.type == "PLAYER_VIEW").playerView.coins == 12), "TCP private purchase does not alter other humans' coins");
+                    RoomValidation.Check(logs[0].Last(m => m.response?.requestId == "options-buy").response.success && logs[0].Last(m => m.type == "PLAYER_VIEW").playerView.coins == coins[0] - 3, "TCP random buy charges three new dates independently of requested range");
+                    RoomValidation.Check(logs[0].Last(m => m.type == "PLAYER_VIEW").playerView.companies.Single(c => c.companyId == "AI").visibleWindows.Where(w => w.source == "PURCHASED").All(w => w.startDay <= 25), "TCP cannot purchase hidden information");
+                    RoomValidation.Check(logs.Skip(1).Select((l, index) => l.Last(m => m.type == "PLAYER_VIEW").playerView.coins == coins[index + 1]).All(same => same), "TCP private purchase does not alter other humans' coins");
                 }
                 finally { foreach (var client in clients) client.Dispose(); }
             }

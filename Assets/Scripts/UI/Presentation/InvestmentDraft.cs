@@ -153,6 +153,8 @@ namespace BlackWhale.UI.Presentation
             WeightedCompanies = saved.Where(i => i.weightBps != 0).Select(DtoCopy.Copy).ToArray();
             HasLocalReservations = true;
         }
+        public void ResetForDeveloper()
+        { companies.Clear(); HasLocalReservations = false; WeightedCompanies = Array.Empty<Investment>(); }
         // The investment page already refreshes itself; do not rebuild the UI inside its input callbacks.
         public void SetDraft(Investment[] draft)
         {
@@ -233,7 +235,7 @@ namespace BlackWhale.UI.Presentation
             if (plan.Favorite) parts.Add("★ 찜");
             if (plan.Rank > 0) parts.Add(plan.Rank + "순위");
             if (plan.Intervals.Length > 0) parts.Add(string.Join(", ", plan.Intervals.Select(i => i.entryDay + "→" + i.exitDay + "일")));
-            return parts.Count == 0 ? "개인 계획 없음" : string.Join(" · ", parts);
+            return parts.Count == 0 ? "" : string.Join(" · ", parts); // 계획이 없으면 '개인 계획 없음' 대신 빈칸
         }
         public Interval[] ChartIntervals(PlayerView view, int currentTurn, string companyId, bool orderLocked)
         {

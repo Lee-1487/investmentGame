@@ -28,6 +28,93 @@ namespace BlackWhale.UI.Tests
     public class NetworkGameUiTests
     {
         [UnityTest]
+        public IEnumerator BotReadyDropdownsBuildWithInactiveTemplatesAndOpenOptions()
+        {
+            var client = new PlanningClient(); var controller = new GameClientController(client);
+            var canvas = new GameObject("Bot ready UI", typeof(RectTransform), typeof(Canvas), typeof(GraphicRaycaster));
+            canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            var events = EventSystem.current == null ? new GameObject("Bot ready events", typeof(EventSystem)) : null;
+            try
+            {
+                client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+                controller.Store.SetPublicState(new PublicState { phase = Protocol.Lobby, stockSystem = true, windowInformation = true,
+                    players = new[] {
+                        new Player { playerId = "P1", displayName = "Host", connected = true },
+                        new Player { playerId = "P2", displayName = "BOT 1", connected = true, ready = true, isBot = true,
+                            botPersonality = "Adventurous", botDifficulty = "Normal" }
+                    } });
+                int profileChanges = 0;
+                var lobby = new LobbyActions { SetBotProfile = (id, level, style) => { profileChanges++; return true; } };
+                var page = new InvestmentPage(UiKit.Rect(canvas.transform, "Ready page"), controller, lobby);
+                Assert.DoesNotThrow(() => page.Refresh(), "building the inactive option template must not throw");
+                var dropdowns = canvas.GetComponentsInChildren<Dropdown>();
+                Assert.AreEqual(2, dropdowns.Length);
+                foreach (var dropdown in dropdowns)
+                {
+                    Canvas.ForceUpdateCanvases();
+                    Assert.IsFalse(string.IsNullOrEmpty(dropdown.captionText.text));
+                    Assert.GreaterOrEqual(dropdown.captionText.rectTransform.rect.height, dropdown.captionText.preferredHeight,
+                        "the closed selector must have room to draw its Korean selection");
+                    Assert.IsFalse(dropdown.template.gameObject.activeSelf);
+                    Assert.IsNotNull(dropdown.itemText.GetComponentInParent<Toggle>(true));
+                    Assert.IsTrue(dropdown.interactable);
+                    dropdown.Show();
+                    var list = dropdown.transform.Find("Dropdown List");
+                    Assert.IsNotNull(list, "the selector opens its options");
+                    Assert.AreEqual(3, list.GetComponentsInChildren<Toggle>().Length);
+                    dropdown.Hide();
+                    yield return new WaitForSecondsRealtime(.2f);
+                }
+                Assert.AreEqual(0, profileChanges, "building and opening do not change the bot profile");
+                dropdowns.Single(d => d.name == "BotDifficulty_P2").value = 2;
+                Assert.AreEqual(1, profileChanges);
+            }
+            finally
+            {
+                controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas);
+                if (events != null) UnityEngine.Object.DestroyImmediate(events);
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator DeveloperStockControlsAndPublicAugmentPopupUseServerState()
+        {
+            var client = new PlanningClient(); var controller = new GameClientController(client);
+            var canvas = new GameObject("Developer stock UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.GetComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvas.GetComponent<CanvasScaler>().referenceResolution = new Vector2(1280, 720);
+            try
+            {
+                client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+                var state = new PublicState { turn = 1, phase = Protocol.Investment, totalTurns = 6, stockSystem = true,
+                    windowInformation = true, developerMode = true, developerCanGoBack = true, developerRevision = 2,
+                    players = new[] { "P1", "P2", "P3", "P4" }.Select(id => new Player { playerId = id, displayName = id,
+                        augments = id == "P2" ? new[] { "BIO_RESEARCH", "HIDDEN_LOSS_CONTROL" } : Array.Empty<string>() }).ToArray(),
+                    shareMarket = UiRules.CompanyIds.Select(id => new CompanyShareState { companyId = id, owners = new ShareOwner[0] }).ToArray() };
+                var view = new PlayerView { turn = 1, phase = Protocol.Investment, recipientPlayerId = "P1", assets = 10000,
+                    companies = UiRules.CompanyIds.Select(id => new VisibleCompany { companyId = id, visibleWindows = new VisibleInformationWindow[0] }).ToArray(),
+                    portfolio = new PortfolioState { processedDay = 7, holdings = UiRules.CompanyIds.Select(id => new PortfolioHolding { companyId = id }).ToArray(),
+                        augments = new string[0], candidates = new string[0] } };
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state }); client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                TabletView.Create((RectTransform)canvas.transform, controller);
+                yield return null; Canvas.ForceUpdateCanvases();
+                ClickPlanning(canvas, "DeveloperNext");
+                Assert.AreEqual("DEV_NEXT", client.Sent.Last().type); Assert.AreEqual(2, client.Sent.Last().developerRevision);
+                ClickPlanning(canvas, "DeveloperTimer"); Assert.AreEqual("DEV_TIMER", client.Sent.Last().type);
+                ClickPlanning(canvas, "DeveloperPrevious"); Assert.AreEqual("DEV_PREVIOUS", client.Sent.Last().type);
+                ClickPlanning(canvas, "DeveloperReset"); Assert.AreEqual("DEV_RESET", client.Sent.Last().type);
+                var icon = canvas.GetComponentsInChildren<ClickRelay>().Single(c => c.name == "RankSlot2");
+                icon.OnPointerClick(new PointerEventData(null));
+                string popup = string.Join("\n", canvas.GetComponentsInChildren<Text>().Select(t => t.text));
+                StringAssert.Contains(StockRules.Name("BIO_RESEARCH"), popup);
+                StringAssert.Contains("HIDDEN 손실 제어", popup);
+                StringAssert.Contains(StockRules.Description("HIDDEN_LOSS_CONTROL"), popup);
+            }
+            finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); }
+        }
+
+        [UnityTest]
         public IEnumerator LobbySettingsAreEditableByHostAndVisibleToGuests()
         {
             foreach (string player in new[] { "P1", "P2" }) {
@@ -45,7 +132,7 @@ namespace BlackWhale.UI.Tests
                     TabletView.Create((RectTransform)canvas.transform, controller);
                     yield return null; Canvas.ForceUpdateCanvases();
                     var fields = canvas.GetComponentsInChildren<InputField>();
-                    Assert.AreEqual(4, fields.Length);
+                    Assert.AreEqual(6, fields.Length);
                     Assert.IsTrue(fields.All(f => f.interactable == (player == "P1")));
                     Assert.AreEqual("15", fields.Single(f => f.name == "EarlyTurnCoins").text);
                     Assert.AreEqual("25", fields.Single(f => f.name == "LateTurnCoins").text);
@@ -58,7 +145,8 @@ namespace BlackWhale.UI.Tests
                         fields.Single(f => f.name == "PublicRevealDays").text = "8";
                         fields.Single(f => f.name == "DaySeconds").text = "5";
                         Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Single(b => b.name == "StartGame").interactable, "unapplied settings cannot accidentally start the old rules");
-                        ClickPlanning(canvas, "PublicRevealScattered");
+                        Assert.AreEqual("0", fields.Single(f => f.name == "InformationStartDay").text);
+                        Assert.AreEqual("25", fields.Single(f => f.name == "InformationEndDay").text);
                         Assert.AreEqual("7", canvas.GetComponentsInChildren<InputField>().Single(f => f.name == "EarlyTurnCoins").text, "mode change preserves numeric draft");
                         ClickPlanning(canvas, "ApplyLobbySettings");
                         var command = client.Sent.Single(c => c.type == CommandTypes.SetLobbySettings);
@@ -70,7 +158,8 @@ namespace BlackWhale.UI.Tests
                     }
                     else {
                         Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Any(b => b.name == "ApplyLobbySettings"));
-                        Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Single(b => b.name == "PublicRevealScattered").interactable);
+                        Assert.IsFalse(canvas.GetComponentsInChildren<InputField>().Single(f => f.name == "InformationStartDay").interactable);
+                        Assert.IsFalse(canvas.GetComponentsInChildren<InputField>().Single(f => f.name == "InformationEndDay").interactable);
                         state.lobbySettings = new LobbySettings { earlyTurnCoins = 7, lateTurnCoins = 11, publicRevealDays = 8, scatteredPublicDays = true, daySeconds = 5 };
                     }
                     client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
@@ -154,16 +243,16 @@ namespace BlackWhale.UI.Tests
                 Assert.IsTrue(canvas.GetComponentsInChildren<Slider>().Single(s => s.name == "ShareSlider_BIO").interactable);
                 Assert.GreaterOrEqual(canvas.GetComponentsInChildren<Text>().Single(t => t.name == "StockDraftPlayer_4").fontSize, 20);
                 CapturePlanningScreen(canvas.GetComponent<Canvas>(), "stock-system-second-round");
-                state.phase = StockRules.AugmentPhase; state.turn = 3; state.phaseEndsAtServerSeconds = 20;
-                view.turn = 3; view.phase = StockRules.AugmentPhase; portfolio.augmentChosen = false;
+                state.phase = StockRules.AugmentPhase; state.turn = 4; state.phaseEndsAtServerSeconds = 20;
+                view.turn = 4; view.phase = StockRules.AugmentPhase; portfolio.augmentChosen = false;
                 portfolio.candidates = new[] { "CONCENTRATION", "DIVERSIFY", "ANALYST" };
                 client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state }); client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
                 yield return null; Canvas.ForceUpdateCanvases();
                 Assert.AreEqual(3, canvas.GetComponentsInChildren<Button>().Count(b => b.name.StartsWith("ChooseAugment_")));
-                ClickPlanning(canvas, "FocusCompany_FOOD");
+                Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Any(b => b.name.StartsWith("FocusCompany_")));
                 CapturePlanningScreen(canvas.GetComponent<Canvas>(), "stock-system-augment-choice");
                 ClickPlanning(canvas, "ChooseAugment_CONCENTRATION");
-                Assert.AreEqual(StockRules.Choose, client.Sent.Last().type); Assert.AreEqual("FOOD", client.Sent.Last().payload.companyId);
+                Assert.AreEqual(StockRules.Choose, client.Sent.Last().type); Assert.AreEqual("CONCENTRATION", client.Sent.Last().payload.augmentId);
             }
             finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); }
         }
@@ -299,7 +388,7 @@ namespace BlackWhale.UI.Tests
         }
 
         [UnityTest]
-        public IEnumerator StockPublicInformationNeedsOnlyACompany()
+        public IEnumerator StockRandomInformationPurchaseNeedsOnlyACompany()
         {
             var client = new PlanningClient(); var controller = new GameClientController(client);
             var events = new GameObject("Stock reservation events", typeof(EventSystem));
@@ -310,7 +399,7 @@ namespace BlackWhale.UI.Tests
             try
             {
                 client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
-                var state = new PublicState { turn = 1, totalTurns = 6, phase = Protocol.Info, stockSystem = true, windowInformation = true, publicSelectionActive = true, publicSelectionPlayerId = "P1", phaseEndsAtServerSeconds = 30,
+                var state = new PublicState { turn = 1, totalTurns = 6, phase = Protocol.Info, stockSystem = true, windowInformation = true, phaseEndsAtServerSeconds = 30,
                     draftOrder = new[] { "P1", "P2", "P3", "P4", "P1", "P2", "P3", "P4" },
                     players = new[] { "P1", "P2", "P3", "P4" }.Select(id => new Player { playerId = id, displayName = id }).ToArray(),
                     shareMarket = UiRules.CompanyIds.Select(id => new CompanyShareState { companyId = id, totalShares = id == "BANK" ? 120 : 20,
@@ -322,9 +411,10 @@ namespace BlackWhale.UI.Tests
                 var tablet = TabletView.Create((RectTransform)canvas.transform, controller); tablet.ShowPage(1);
                 yield return new WaitForSecondsRealtime(.4f); ClickPlanning(canvas, "Expand_AI"); Canvas.ForceUpdateCanvases();
                 ClickPlanning(canvas, "ConfirmInformationWindow");
-                var reveal = client.Sent.Single(c => c.type == CommandTypes.RevealInformationWindow);
+                var reveal = client.Sent.Single(c => c.type == CommandTypes.BuyInformationWindow);
                 Assert.AreEqual("AI", reveal.payload.companyId);
                 Assert.AreEqual(0, reveal.payload.startDay);
+                Assert.AreEqual(1, reveal.payload.informationDays);
             }
             finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); UnityEngine.Object.DestroyImmediate(events); }
         }
@@ -389,21 +479,35 @@ namespace BlackWhale.UI.Tests
                 }
                 var liveChart = canvas.GetComponentsInChildren<BarChartGraphic>().Single(c => c.name == "TradeChart_AI");
                 liveChart.SetInformationRange(new Vector2Int(4, 9));
+                tablet.ShowBanner("지난 일차의 대기 알림");
                 view.portfolio.processedDay = 14;
+                foreach (var company in view.companies)
+                    company.visibleWindows = new[] { new VisibleInformationWindow { startDay = 1, source = "PUBLIC",
+                        dailyChangesBps = Enumerable.Range(1, 14).Select(d => (int)(System.Math.Sin(d * .7) * 500 + d * 75)).ToArray() } };
                 client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
                 Assert.AreEqual(15, liveChart.CurrentDay);
+                Assert.AreEqual(14, Field<int?>(liveChart, "_trendThroughDay"));
                 Assert.AreEqual(new Vector2Int(4, 9), Field<Vector2Int?>(liveChart, "_informationRange"), "current day does not replace the user's selected range");
-                StringAssert.Contains("15일차", liveChart.GetComponentsInChildren<Text>().Single(t => t.name == "CurrentDayLabel").text);
+                Assert.IsFalse(canvas.GetComponentsInChildren<Text>().Any(t => t.name == "CurrentDayLabel"), "day labels must not cover charts");
+                Assert.IsFalse(Field<Queue<string>>(tablet, "_bannerQueue").Any(m => m.Contains("지난 일차")), "pending notices expire when the day advances");
+                Assert.AreEqual("", Field<Text>(tablet, "_bannerText").text, "the previous visible notice expires immediately");
+                yield return null;
+                StringAssert.Contains("15일차", Field<Text>(tablet, "_bannerText").text);
+                tablet.ShowBanner("같은 일차의 안내");
+                client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                Assert.IsTrue(Field<Queue<string>>(tablet, "_bannerQueue").Contains("같은 일차의 안내"), "same-day refreshes preserve pending notices");
                 CapturePlanningScreen(canvas.GetComponent<Canvas>(), "stock-live-current-day");
                 ClickPlanning(canvas, "ExpandShare_AI");
                 yield return null; Canvas.ForceUpdateCanvases();
                 var zoom = canvas.GetComponentsInChildren<BarChartGraphic>().Single(c => c.name == "ZoomChart_AI");
                 Assert.AreEqual(15, zoom.CurrentDay, "zoom and trading charts share the current day");
+                Assert.AreEqual(14, Field<int?>(zoom, "_trendThroughDay"), "zoom shares the last publicly closed day");
                 CapturePlanningScreen(canvas.GetComponent<Canvas>(), "stock-live-current-day-zoom");
                 view.portfolio.processedDay = 29;
                 client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
                 Assert.AreEqual(30, zoom.CurrentDay);
                 Assert.AreEqual(30, liveChart.CurrentDay);
+                Assert.AreEqual(29, Field<int?>(liveChart, "_trendThroughDay"));
                 state.paused = true; client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
                 Assert.AreEqual(30, zoom.CurrentDay, "pause retains the active day");
                 state.paused = false; state.phase = Protocol.Reveal; view.phase = Protocol.Reveal;
@@ -447,12 +551,12 @@ namespace BlackWhale.UI.Tests
                     investments = id == "AI" ? positions : new RevealedInvestment[0] }).ToArray() });
                 yield return new WaitForSecondsRealtime(.4f); Canvas.ForceUpdateCanvases();
                 var badge = canvas.GetComponentsInChildren<Text>().Single(t => t.name == "PlanBadge_AI").text;
-                StringAssert.Contains("P1", badge); StringAssert.Contains("P2", badge);
+                Assert.AreEqual("", badge, "market reveal cards show prices only, no per-player returns");
                 CapturePlanningScreen(canvas.GetComponent<Canvas>(), "trading-reveal-all-companies");
                 ClickPlanning(canvas, "Expand_AI"); Canvas.ForceUpdateCanvases();
                 var chart = canvas.GetComponentsInChildren<BarChartGraphic>().Single(c => c.name == "ZoomChart_AI");
-                Assert.AreEqual(2, Field<RevealedInvestment[]>(chart, "_revealedInvestments").Length);
-                Assert.AreEqual(Palette.Player("P2"), chart.GetComponentsInChildren<Text>().Single(t => t.name == "RevealedPlayer_P2").color);
+                Assert.AreEqual(0, Field<RevealedInvestment[]>(chart, "_revealedInvestments").Length, "market reveal chart has no entry/exit overlays");
+                Assert.IsFalse(chart.GetComponentsInChildren<Text>().Any(t => t.name.StartsWith("RevealedPlayer_")), "market reveal chart has no return labels");
                 var rows = canvas.GetComponentsInChildren<RectTransform>().Single(r => r.name == "PlannedIntervals");
                 var labels = rows.GetComponentsInChildren<Text>();
                 Assert.AreEqual(7, labels.Length, "both player totals and all five trades are accessible");
@@ -678,6 +782,131 @@ namespace BlackWhale.UI.Tests
             }
             finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); }
         }
+        [UnityTest]
+        public IEnumerator InformationExchange_CompactSelectionAndResponses_WorkWithoutZoom()
+        {
+            var client = new PlanningClient(); var controller = new GameClientController(client);
+            var events = new GameObject("Exchange events", typeof(EventSystem));
+            var canvas = new GameObject("Compact exchange UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.GetComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvas.GetComponent<CanvasScaler>().referenceResolution = new Vector2(1280, 720);
+            try
+            {
+                client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+                var state = new PublicState { turn = 1, phase = Protocol.Info, stockSystem = true, windowInformation = true,
+                    players = new[] { new Player { playerId = "P1", connected = true }, new Player { playerId = "P2", connected = true } },
+                    segmentKnowledge = new[] { new SegmentKnowledge { companyId = "FOOD", startDay = 11, playerIds = new[] { "P2" } } } };
+                VisibleInformationWindow Window(int day, string source) => new VisibleInformationWindow {
+                    startDay = day, source = source, dailyChangesBps = new[] { 100, 200, 300, 400, 500 }, dailyOpenBps = new[] { 0, 100, 200, 300, 400 } };
+                var view = new PlayerView { turn = 1, phase = Protocol.Info, recipientPlayerId = "P1", assets = 100000000,
+                    companies = UiRules.CompanyIds.Select(id => new VisibleCompany { companyId = id, visibleWindows = id == "FOOD"
+                        ? new[] { Window(1, "PUBLIC"), Window(6, "DEALT"), Window(16, "ITEM"), Window(21, "EXCHANGED") } : new VisibleInformationWindow[0] }).ToArray() };
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                var page = new InfoPurchasePage((RectTransform)canvas.transform, controller); page.Refresh();
+                yield return null; Canvas.ForceUpdateCanvases();
+                var card = canvas.GetComponentsInChildren<RectTransform>().Single(r => r.name == "Card_FOOD");
+                var pointer = card.GetComponentInChildren<ChartPointerLayer>();
+                Button Button(string name) => card.GetComponentsInChildren<Button>().Single(b => b.name == name);
+                var exchange = Button("ConfirmInformationWindow");
+                Assert.IsFalse(exchange.interactable, "select a hidden segment before exchanging");
+                Assert.AreEqual(82, pointer.GetComponent<RectTransform>().offsetMin.y, "compact chart reclaims unused reservation row");
+                DragChart(pointer, 11, 11);
+                Assert.IsTrue(exchange.interactable); exchange.onClick.Invoke();
+                Assert.AreEqual("\uBCF4\uB0B4\uAE30", exchange.GetComponentInChildren<Text>().text);
+                Assert.IsFalse(exchange.interactable, "sending requires an owned received card");
+                Assert.AreEqual(11, Field<int?>(pointer.GetComponent<BarChartGraphic>(), "_exchangeReceiveStart"));
+                DragChart(pointer, 1, 1); Assert.IsFalse(exchange.interactable, "public information is not sendable");
+                DragChart(pointer, 16, 16); Assert.IsFalse(exchange.interactable, "item information is not a received card");
+                DragChart(pointer, 21, 21); Assert.IsFalse(exchange.interactable, "exchanged information cannot be offered again");
+                // A draft survives changing chart size, and uses the same received/send selections.
+                page.OpenCompany("FOOD"); Canvas.ForceUpdateCanvases();
+                var zoom = canvas.GetComponentsInChildren<ChartPointerLayer>().Single(p => p.name == "ZoomChart_FOOD");
+                DragChart(zoom, 6, 6); page.Collapse(); page.Refresh();
+                Assert.IsTrue(exchange.interactable);
+                Assert.AreEqual(6, Field<int?>(pointer.GetComponent<BarChartGraphic>(), "_exchangeSendStart"));
+                exchange.onClick.Invoke();
+                var sent = client.Sent.Single(c => c.type == StockRules.ShareInformation);
+                Assert.AreEqual(6, sent.payload.startDay); Assert.AreEqual(11, sent.payload.requestedStartDay);
+                Assert.AreEqual("P2", sent.payload.targetPlayerId);
+                Assert.IsFalse(InformationWindowRules.KnownDays(controller.Store.View.companies.Single(c => c.companyId == "FOOD"))[11].HasValue);
+                foreach (bool accept in new[] { false, true })
+                {
+                    view.informationExchanges = new[] { new InformationExchange { id = "incoming-" + accept, senderId = "P2", targetPlayerId = "P1", status = "PENDING",
+                        offeredCompanyId = "FOOD", offeredStartDay = 11, requestedCompanyId = "FOOD", requestedStartDay = 6 } };
+                    client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view }); page.Refresh();
+                    Assert.IsTrue(Button("ConfirmInformationWindow").interactable);
+                    Assert.IsTrue(Button("ReserveRange").interactable);
+                    Button(accept ? "ConfirmInformationWindow" : "ReserveRange").onClick.Invoke();
+                    var response = client.Sent.Last(c => c.type == StockRules.RespondExchange);
+                    Assert.AreEqual(accept, response.payload.acceptExchange);
+                    client.Receive(new ServerMessage { type = "COMMAND_RESULT", response = new CommandResult {
+                        requestId = response.requestId, turn = 1, type = StockRules.RespondExchange + "_RESULT", success = true } });
+                }
+            }
+            finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); UnityEngine.Object.DestroyImmediate(events); }
+        }
+
+        [UnityTest]
+        public IEnumerator ReservedRange_RumorRecipients_CancelAndSend_WithoutSidebarActions()
+        {
+            var client = new PlanningClient(); var controller = new GameClientController(client);
+            var events = new GameObject("Rumor events", typeof(EventSystem));
+            var canvas = new GameObject("Reserved rumor UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.GetComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            canvas.GetComponent<CanvasScaler>().referenceResolution = new Vector2(1280, 720);
+            try {
+                client.Receive(new ServerMessage { type = "WELCOME", session = new Session { playerId = "P1" } });
+                var state = new PublicState { turn = 1, phase = Protocol.Info, stockSystem = true, windowInformation = true,
+                    players = Enumerable.Range(1, 4).Select(n => new Player { playerId = "P" + n, displayName = "Player " + n, connected = true }).ToArray() };
+                var view = new PlayerView { turn = 1, phase = Protocol.Info, recipientPlayerId = "P1", assets = 100000000,
+                    companies = UiRules.CompanyIds.Select(id => new VisibleCompany { companyId = id, visibleWindows = new VisibleInformationWindow[0] }).ToArray() };
+                client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                client.Receive(new ServerMessage { type = "PLAYER_VIEW", playerView = view });
+                var page = new InfoPurchasePage((RectTransform)canvas.transform, controller); page.Refresh();
+                Assert.AreEqual("", controller.Store.TradePlans.TryAddInterval("FOOD", 6, 10));
+                yield return null; Canvas.ForceUpdateCanvases();
+                var card = canvas.GetComponentsInChildren<RectTransform>().Single(r => r.name == "Card_FOOD");
+                var pointer = card.GetComponentInChildren<ChartPointerLayer>();
+                Button Action() => card.GetComponentsInChildren<Button>().Single(b => b.name == "ConfirmInformationWindow");
+                Button[] Recipients() => card.GetComponentsInChildren<Button>().Where(b => b.name.StartsWith("SendRumorTo_")).ToArray();
+                DragChart(pointer, 7, 7);
+                Assert.AreEqual("\uCC0C\uB77C\uC2DC \uBCF4\uB0B4\uAE30", Action().GetComponentInChildren<Text>().text);
+                Action().onClick.Invoke();
+                CollectionAssert.AreEquivalent(new[] { "SendRumorTo_P2", "SendRumorTo_P3", "SendRumorTo_P4" }, Recipients().Select(b => b.name));
+                Assert.AreEqual("\uCDE8\uC18C", Action().GetComponentInChildren<Text>().text);
+                Assert.IsTrue(card.GetComponentsInChildren<Button>().Single(b => b.name == "ReserveRange").interactable);
+                Assert.IsFalse(client.Sent.Any(c => c.type == StockRules.SendPlan));
+                Action().onClick.Invoke();
+                Assert.AreEqual(0, Recipients().Length);
+                Assert.AreEqual(1, controller.Store.TradePlans.Get("FOOD").Intervals.Length, "cancel recipient selection preserves reservation");
+                Assert.IsFalse(client.Sent.Any(c => c.type == StockRules.SendPlan));
+                Action().onClick.Invoke();
+                var stale = Recipients().Single(b => b.name == "SendRumorTo_P2");
+                controller.Store.TradePlans.RemoveInterval("FOOD", 0); stale.onClick.Invoke(); page.Refresh();
+                Assert.IsFalse(client.Sent.Any(c => c.type == StockRules.SendPlan), "deleted reservation cannot be sent through stale buttons");
+                Assert.AreEqual("", controller.Store.TradePlans.TryAddInterval("FOOD", 6, 10));
+                DragChart(pointer, 7, 7); page.Refresh();
+                Action().onClick.Invoke();
+                Recipients().Single(b => b.name == "SendRumorTo_P3").onClick.Invoke();
+                var command = client.Sent.Single(c => c.type == StockRules.SendPlan);
+                Assert.AreEqual("P3", command.payload.targetPlayerId); Assert.AreEqual("FOOD", command.payload.companyId);
+                Assert.AreEqual(6, command.payload.startDay); Assert.AreEqual(10, command.payload.endDay);
+                Assert.AreEqual(0, Recipients().Length);
+                Assert.AreEqual(1, controller.Store.TradePlans.Get("FOOD").Intervals.Length);
+                // Hovering a player now opens their summary, with no social action buttons.
+                var tablet = TabletView.Create((RectTransform)canvas.transform, controller);
+                var rowType = typeof(TabletView).Assembly.GetType("BlackWhale.UI.View.RankRow");
+                var row = Activator.CreateInstance(rowType); rowType.GetField("PlayerId").SetValue(row, "P2");
+                typeof(TabletView).GetMethod("ShowPlayerPopup", BindingFlags.Instance | BindingFlags.NonPublic)
+                    .Invoke(tablet, new[] { row, (object)card });
+                Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Any(b => b.name == "ChooseShareInformation" || b.name == "ChooseSendTradeIntent"));
+            }
+            finally { controller.Dispose(); UnityEngine.Object.DestroyImmediate(canvas); UnityEngine.Object.DestroyImmediate(events); }
+        }
+
         private sealed class PlanningClient : IGameClient
         {
             public readonly List<Command> Sent = new List<Command>();
@@ -709,13 +938,19 @@ namespace BlackWhale.UI.Tests
             Assert.IsFalse(host.GetComponentsInChildren<Text>().Any(t => t.text.Contains("사람이 입장한 뒤") || t.text.Contains("혼자 테스트할 때는")), "lobby has no small setup instructions");
             Assert.AreEqual("P1", C(host).LocalPlayerId);
             Assert.IsFalse(C(host).Store.Public.players[0].isBot);
-            Click(host, "OpenDifficulty");
-            Click(host, "BotDifficulty_Hard");
-            yield return Until(() => C(host).Store.Public.botDifficulty == "Hard", "D difficulty screen updates actual room setting");
-            Click(host, "CloseGameScreen");
             Click(host, "FillBots");
             yield return Until(() => C(host).Store.Public.players.Length == 4 && C(host).Store.Public.players.Skip(1).All(p => p.isBot && p.ready), "three bot clients ready");
             Assert.AreEqual(Protocol.Lobby, C(host).Store.Public.phase, "host chooses when to start");
+            CollectionAssert.AreEqual(new[] { "Adventurous", "Stable", "Strategic" }, C(host).Store.Public.players.Skip(1).Select(p => p.botPersonality));
+            Assert.IsFalse(host.GetComponentsInChildren<Button>().Any(b => b.name == "OpenDifficulty"), "bot settings are inline in the ready roster");
+            var difficultyDropdown = host.GetComponentsInChildren<Dropdown>().Single(d => d.name == "BotDifficulty_P2");
+            Assert.AreEqual("Player2", difficultyDropdown.transform.parent.name);
+            CollectionAssert.AreEqual(new[] { "난이도: 쉬움", "난이도: 보통", "난이도: 어려움" }, difficultyDropdown.options.Select(o => o.text));
+            difficultyDropdown.value = 2;
+            yield return Until(() => C(host).Store.Public.players.Single(p => p.playerId == "P2").botDifficulty == "Hard", "individual bot difficulty");
+            host.GetComponentsInChildren<Dropdown>().Single(d => d.name == "BotPersonality_P2").value = 1;
+            yield return Until(() => C(host).Store.Public.players.Single(p => p.playerId == "P2").botPersonality == "Stable", "individual bot personality");
+            Assert.IsTrue(C(host).Store.Public.players.Skip(2).All(p => p.botDifficulty == "Normal"), "other bots keep difficulty");
             Click(host, "RemoveBots");
             yield return Until(() => C(host).Store.Public.players.Length == 1, "remove all bots");
 
@@ -725,13 +960,14 @@ namespace BlackWhale.UI.Tests
             Click(guest, "Join");
             yield return Until(() => C(guest)?.Store.Public?.players.Length == 2, "human reuses released P2 slot");
             Assert.AreEqual("P2", C(guest).LocalPlayerId);
-            Click(guest, "OpenDifficulty");
-            Assert.IsTrue(guest.GetComponentsInChildren<Button>().Where(b => b.name.StartsWith("BotDifficulty_")).All(b => !b.interactable), "guest cannot edit host difficulty");
-            Click(guest, "CloseGameScreen");
+            Assert.IsFalse(guest.GetComponentsInChildren<Button>().Any(b => b.name == "OpenDifficulty"), "guest has no separate bot settings tab");
             Assert.IsFalse(guest.GetComponentsInChildren<Button>().Any(b => b.name == "FillBots" || b.name == "RemoveBots"), "guest has no host controls");
             Click(host, "FillBots");
             yield return Until(() => C(host).Store.Public.players.Length == 4 && C(host).Store.Public.players.Count(p => p.isBot && p.ready) == 2, "two humans and two bots");
             CollectionAssert.AreEqual(new[] { "P1", "P2", "P3", "P4" }, C(host).Store.Public.players.Select(p => p.playerId));
+            var guestBotOptions = guest.GetComponentsInChildren<Dropdown>().Where(d => d.name.StartsWith("BotDifficulty_") || d.name.StartsWith("BotPersonality_")).ToArray();
+            Assert.AreEqual(4, guestBotOptions.Length, "guest sees two dropdowns per bot in the ready roster");
+            Assert.IsTrue(guestBotOptions.All(b => !b.interactable), "guest cannot edit individual bot profiles");
 
             var extra = Create("Full room UI");
             yield return null;
@@ -850,8 +1086,13 @@ namespace BlackWhale.UI.Tests
                 var tablet = TabletView.Create((RectTransform)canvas.transform, controller); tablet.ShowPage(1);
                 yield return null; Canvas.ForceUpdateCanvases();
                 float smallWidth = canvas.GetComponentsInChildren<BarChartGraphic>().First(c => c.name == "Chart").rectTransform.rect.width;
+                Assert.AreEqual(6, canvas.GetComponentsInChildren<Text>().Count(t => t.name == "HiddenTailLabel" && t.text == "hidden"), "each company marks its hidden tail");
                 ClickPlanning(canvas, "Expand_AI"); Canvas.ForceUpdateCanvases();
                 var chart = canvas.GetComponentsInChildren<ChartPointerLayer>().Single(c => c.name == "ZoomChart_AI");
+                var hiddenLabel = chart.GetComponentsInChildren<Text>().Single(t => t.name == "HiddenTailLabel");
+                Assert.AreEqual(new Vector2(26f / DayAxis.Count, 0), hiddenLabel.rectTransform.anchorMin);
+                Assert.AreEqual(Vector2.one, hiddenLabel.rectTransform.anchorMax);
+                Assert.IsFalse(hiddenLabel.raycastTarget, "hidden region remains available for chart interaction");
                 Assert.Greater(chart.GetComponent<BarChartGraphic>().rectTransform.rect.width, smallWidth * 2, "enlarged chart fills central tablet outside the pager mask");
                 Assert.IsFalse(chart.GetComponentsInParent<RectMask2D>().Any(), "large graph is not clipped to a company card or page");
                 Assert.IsNull(Field<DayBar[]>(chart.GetComponent<BarChartGraphic>(), "_bars")[20].Bps, "zoom never reveals hidden prices");
@@ -870,6 +1111,7 @@ namespace BlackWhale.UI.Tests
                 tablet.ShowBanner("이전 정보 탐색 안내");
                 state.phase = Protocol.Selection; state.currentPlayerId = "P1";
                 client.Receive(new ServerMessage { type = "PUBLIC_STATE", state = state });
+                Assert.IsFalse(canvas.GetComponentsInChildren<Text>().Any(t => t.name == "HiddenTailLabel"), "hidden tail labels only appear during information purchase");
                 Assert.IsFalse(Field<Queue<string>>(tablet, "_bannerQueue").Any(m => m.Contains("이전 정보 탐색")), "queued messages expire on phase change");
                 Assert.AreEqual("", Field<Text>(tablet, "_bannerText").text, "visible old-phase message disappears immediately");
                 yield return null;
@@ -909,8 +1151,7 @@ namespace BlackWhale.UI.Tests
                     companyId = id, dailyChangesBps = Enumerable.Range(0, 31).Select(d => d * 10).ToArray() }).ToArray() });
                 ClickPlanning(canvas, "Expand_AI");
                 chart = canvas.GetComponentsInChildren<ChartPointerLayer>().Single(c => c.name == "ZoomChart_AI");
-                StringAssert.Contains("6", chart.GetComponentsInChildren<Text>().Single(t => t.name == "EntryMarker_0").text);
-                StringAssert.Contains("11", chart.GetComponentsInChildren<Text>().Single(t => t.name == "ExitMarker_0").text);
+                Assert.IsFalse(chart.GetComponentsInChildren<Text>().Any(t => t.name.StartsWith("EntryMarker_") || t.name.StartsWith("ExitMarker_")), "market reveal chart has no entry/exit markers");
                 Assert.IsTrue(Field<DayBar[]>(chart.GetComponent<BarChartGraphic>(), "_bars")[20].Bps.HasValue, "full prices appear only after reveal");
                 Assert.IsFalse(canvas.GetComponentsInChildren<Button>().Single(b => b.name == "PlanRank_1").interactable);
                 Assert.AreEqual(10, controller.Store.TradePlans.Get("AI").Intervals.Single().entryDay, "confirmed markers supersede the original plan without overwriting it");

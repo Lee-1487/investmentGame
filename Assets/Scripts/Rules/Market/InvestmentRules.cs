@@ -8,7 +8,9 @@ namespace BlackWhale.Rules
     {
         public int daysPerTurn = 30;
         public int bundleSizeDays = 5;
-        public long initialAssets = 10000;
+        // 모든 플레이어가 게임을 시작할 때 보유하는 기본 자산입니다.
+        // 게임의 자산 단위를 1억 원으로 맞추기 위해 시작값을 100,000,000으로 설정합니다.
+        public long initialAssets = 100000000;
         public int maxPlayersPerCompany = 2;
         public int[] firstCompanyWeightOptionsBps = { 5000, 6000, 7000 };
         public int maxIntervalsPerCompany = 2; // v2 fixture default; 0 means unlimited in normal play.
@@ -24,7 +26,7 @@ namespace BlackWhale.Rules
         public const int FullWeightBps = 10000;
         public const int BundlesPerCompany = 6;
         public const int PublicBundlesPerCompany = 2;
-        public static readonly string[] CompanyIds = { "AI", "SPACE", "FOOD", "BANK", "BIO", "AUTO" };
+        public static readonly string[] CompanyIds = { "AI", "FOOD", "AUTO", "BIO" };
 
         public InvestmentRules Copy()
         {

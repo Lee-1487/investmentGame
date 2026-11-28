@@ -23,6 +23,7 @@ namespace BlackWhale.UI.State
         private int _requestCounter;
 
         public ClientStateStore Store { get; }
+        public event Action<CommandResult> CommandSucceeded;
         public string LocalPlayerId => Store.LocalPlayerId;
         public bool HasCurrentPlayerView => Store.Public != null && Store.View?.turn == Store.Public.turn;
         /// <summary>BlockedLocally일 때의 사유(공통 오류 코드).</summary>
@@ -39,7 +40,12 @@ namespace BlackWhale.UI.State
         public void Dispose()
         { _client.MessageReceived -= OnMessage; Store.TradePlans.ReservationsChanged -= SyncReservations; }
 
-        private void OnMessage(ServerMessage message) => Store.Apply(message);
+        private void OnMessage(ServerMessage message)
+        {
+            var outcome = Store.Apply(message);
+            if (outcome == ApplyOutcome.Applied && message.type == ServerMessageTypes.CommandResult && message.response?.success == true)
+                CommandSucceeded?.Invoke(message.response);
+        }
 
         private void SyncReservations()
         {
@@ -54,7 +60,7 @@ namespace BlackWhale.UI.State
         {
             var plans = Store.TradePlans.ToReservations();
             if (Store.Public?.stockSystem != true) return plans;
-            return plans.Where(i => i.companyId == "BANK" ? i.intervals?.Length > 0 : (Store.Public.phase != Protocol.Investment ||
+            return plans.Where(i => (Store.Public.phase != Protocol.Investment ||
                 Store.View?.portfolio?.holdings?.Any(h => h.companyId == i.companyId && h.shares > 0) == true)).ToArray();
         }
 
@@ -166,10 +172,36 @@ namespace BlackWhale.UI.State
             !Store.HasPending(StockRules.Trade) && !Store.HasPending(StockRules.Pass);
         public CommandStatus SetStockPosition(string company, int target)
         {
-            if (!HasCurrentPlayerView || !Store.Public.stockSystem || Store.Public.phase != Protocol.Investment || Store.Public.paused)
+            if (!HasCurrentPlayerView || !Store.Public.stockSystem || Store.Public.phase != Protocol.Investment || Store.Public.stockSegmentRevealing || Store.Public.paused)
                 return Block(ErrorCodes.WrongPhase);
             if (Store.HasPending(StockRules.Position)) return CommandStatus.AlreadyPending;
-            Send(StockRules.Position, new CommandPayload { shareOrders = new[] { new ShareOrder { companyId = company, targetShares = target } } });
+            Send(StockRules.Position, new CommandPayload { startDay = Store.Public.stockSegmentIndex * 5 + 1,
+                shareOrders = new[] { new ShareOrder { companyId = company, targetShares = target } } });
+            return CommandStatus.Sent;
+        }
+        public CommandStatus ShareInformation(string target, string company, int startDay, string requestedCompany = null, int requestedStartDay = 0)
+        {
+            if (!HasCurrentPlayerView || Store.Public?.stockSystem != true || Store.Public.phase != Protocol.Info || Store.Public.paused)
+                return Block(ErrorCodes.WrongPhase);
+            if (Store.HasPending(StockRules.ShareInformation)) return CommandStatus.AlreadyPending;
+            Send(StockRules.ShareInformation, new CommandPayload { targetPlayerId = target, companyId = company, startDay = startDay,
+                requestedCompanyId = requestedCompany, requestedStartDay = requestedStartDay });
+            return CommandStatus.Sent;
+        }
+        public CommandStatus RespondInformationExchange(string id, bool accept)
+        {
+            if (!HasCurrentPlayerView || Store.Public?.stockSystem != true || Store.Public.phase != Protocol.Info || Store.Public.paused)
+                return Block(ErrorCodes.WrongPhase);
+            if (Store.HasPending(StockRules.RespondExchange)) return CommandStatus.AlreadyPending;
+            Send(StockRules.RespondExchange, new CommandPayload { exchangeId = id, acceptExchange = accept });
+            return CommandStatus.Sent;
+        }
+        public CommandStatus SendTradeIntent(string target, string company, int entryDay, int exitDay)
+        {
+            if (!HasCurrentPlayerView || Store.Public?.stockSystem != true || Store.Public.phase != Protocol.Info || Store.Public.paused)
+                return Block(ErrorCodes.WrongPhase);
+            if (Store.HasPending(StockRules.SendPlan)) return CommandStatus.AlreadyPending;
+            Send(StockRules.SendPlan, new CommandPayload { targetPlayerId = target, companyId = company, startDay = entryDay, endDay = exitDay });
             return CommandStatus.Sent;
         }
         public CommandStatus PassStockDraft()
@@ -215,9 +247,10 @@ namespace BlackWhale.UI.State
         public bool CanCompleteStep()
         {
             var s = Store.Public;
+            if (s?.developerMode == true && s.stockSystem)
+                return IsHost && !s.paused && s.phase != Protocol.Lobby && s.phase != Protocol.Ended && !Store.HasPending("DEV_NEXT");
             if (s?.stockSystem == true && s.phase == Protocol.Investment)
                 return false;
-            if (s?.developerMode == true && s.stockSystem && s.phase == Protocol.Selection) return CanDraftShares();
             return CanFinishPhase();
         }
 
@@ -225,7 +258,7 @@ namespace BlackWhale.UI.State
         {
             if (!CanCompleteStep()) return Block(ErrorCodes.WrongPhase);
             var s = Store.Public;
-            if (s.developerMode && s.stockSystem && s.phase == Protocol.Selection) return PassStockDraft();
+            if (s.developerMode && s.stockSystem) return DeveloperControl("DEV_NEXT");
             return FinishPhase();
         }
 
@@ -237,6 +270,7 @@ namespace BlackWhale.UI.State
         {
             var s = Store.Public;
             if (s == null || s.paused || s.publicSelectionActive || IsDoneForCurrentPhase) return false;
+            if (s.phase == Protocol.Info && Store.View?.informationExchanges?.Any(e => e.status == "PENDING") == true) return false;
             if (s.stockSystem && !HasCurrentPlayerView) return false;
             return s.phase == Protocol.Info || s.phase == Protocol.Reveal || s.phase == Protocol.Result ||
                 (s.phase == Protocol.AbilitySelection && IsHost);
@@ -271,6 +305,7 @@ namespace BlackWhale.UI.State
             if (s == null || !HasCurrentPlayerView) return CommandStatus.NoState;
             if (s.paused) return Block(ErrorCodes.GamePaused);
             if (s.phase != Protocol.Info) return Block(ErrorCodes.WrongPhase);
+            if (s.stockSystem && !s.publicSelectionActive) return BuyRandomInformation(companyId);
             if (s.stockSystem && s.publicSelectionActive) {
                 if (s.publicSelectionPlayerId != LocalPlayerId) return Block(ErrorCodes.NotYourTurn);
                 if (!InformationWindowRules.CanRevealPublic(s, companyId)) return Block("NO_PUBLIC_DAYS");
@@ -285,6 +320,22 @@ namespace BlackWhale.UI.State
             if (Store.HasPending(type)) return CommandStatus.AlreadyPending;
             Send(type, new CommandPayload { companyId = companyId, startDay = startDay, endDay = endDay });
             return CommandStatus.Sent;
+        }
+        public CommandStatus BuyRandomInformation(string companyId, int count = 1)
+        {
+            var s = Store.Public;
+            if (s == null || !HasCurrentPlayerView) return CommandStatus.NoState;
+            if (!s.stockSystem || s.phase != Protocol.Info || s.paused) return Block(ErrorCodes.WrongPhase);
+            if (Store.HasPending(CommandTypes.BuyInformationWindow)) return CommandStatus.AlreadyPending;
+            Send(CommandTypes.BuyInformationWindow, new CommandPayload { companyId = companyId, informationDays = count });
+            return CommandStatus.Sent;
+        }
+        public CommandStatus DeveloperControl(string type)
+        {
+            var state = Store.Public;
+            if (state?.developerMode != true || !state.stockSystem || !IsHost || state.paused) return Block("HOST_ONLY");
+            if (Store.HasPending(type)) return CommandStatus.AlreadyPending;
+            Send(type, new CommandPayload()); return CommandStatus.Sent;
         }
         public CommandStatus UseInformationItem(string itemId, string companyId = "", int startDay = 1, string targetPlayerId = "")
         {
@@ -317,6 +368,7 @@ namespace BlackWhale.UI.State
                 type = type,
                 requestId = NextRequestId(type, turn),
                 turn = turn,
+                developerRevision = Store.Public?.developerRevision ?? 0,
                 payload = payload
             };
             Store.MarkPending(command.requestId, type, turn, pendingKey, notify);

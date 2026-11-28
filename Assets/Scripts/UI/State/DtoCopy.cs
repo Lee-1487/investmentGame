@@ -51,6 +51,9 @@ namespace BlackWhale.UI.State
                 ownInvestments = Copy(s.ownInvestments),
                 reservedInvestments = Copy(s.reservedInvestments),
                 portfolio = Copy(s.portfolio),
+                receivedTradeIntents = s.receivedTradeIntents?.Select(i => new TradeIntent { senderId = i.senderId, targetPlayerId = i.targetPlayerId,
+                    companyId = i.companyId, entryDay = i.entryDay, exitDay = i.exitDay }).ToArray(),
+                informationExchanges = s.informationExchanges?.Select(e => e.Copy()).ToArray(),
                 companies = s.companies?.Select(Copy).ToArray(),
                 ability = Copy(s.ability), auction = Copy(s.auction), inventory = (string[])s.inventory?.Clone()
             };
@@ -59,7 +62,7 @@ namespace BlackWhale.UI.State
             => s == null ? null : new CompanySeat { companyId = s.companyId, remainingSeats = s.remainingSeats };
 
         public static Player Copy(Player s)
-            => s == null ? null : new Player { playerId = s.playerId, displayName = s.displayName, connected = s.connected, ready = s.ready, isBot = s.isBot };
+            => s == null ? null : new Player { playerId = s.playerId, displayName = s.displayName, connected = s.connected, ready = s.ready, isBot = s.isBot, botDifficulty = s.botDifficulty, botPersonality = s.botPersonality, augments = (string[])s.augments?.Clone() };
 
         public static PublicState Copy(PublicState s)
             => s == null ? null : new PublicState
@@ -71,6 +74,7 @@ namespace BlackWhale.UI.State
                 turn = s.turn,
                 selectionIndex = s.selectionIndex,
                 paused = s.paused, developerMode = s.developerMode,
+                developerTimerRunning = s.developerTimerRunning, developerCanGoBack = s.developerCanGoBack, developerRevision = s.developerRevision,
                 serverElapsedSeconds = s.serverElapsedSeconds,
                 phaseEndsAtServerSeconds = s.phaseEndsAtServerSeconds,
                 selectionDeadlineAtServerSeconds = s.selectionDeadlineAtServerSeconds,
@@ -85,8 +89,14 @@ namespace BlackWhale.UI.State
                 publicInformation = s.publicInformation?.Select(c => new PublicInformationChoice { playerId = c.playerId,
                     companyId = c.companyId, startDay = c.startDay, automatic = c.automatic, days = (int[])c.days?.Clone() }).ToArray(),
                 stockSystem = s.stockSystem, totalTurns = s.totalTurns, draftOrder = (string[])s.draftOrder?.Clone(),
+                stockSegmentIndex = s.stockSegmentIndex, stockSegmentRevealing = s.stockSegmentRevealing,
+                stockSegmentHistory = s.stockSegmentHistory?.Select(r => new StockSegmentRecord { segmentIndex = r.segmentIndex,
+                    companies = r.companies?.Select(c => new CompanyShareState { companyId = c.companyId, totalShares = c.totalShares,
+                        fills = c.fills?.ToArray(), owners = c.owners?.Select(o => new ShareOwner { playerId = o.playerId, shares = o.shares, reserved = o.reserved }).ToArray() }).ToArray() }).ToArray(),
                 shareMarket = s.shareMarket?.Select(c => new CompanyShareState { companyId = c.companyId, totalShares = c.totalShares, fills = c.fills?.ToArray(),
-                    owners = c.owners?.Select(p => new ShareOwner { playerId = p.playerId, shares = p.shares, reserved = p.reserved }).ToArray() }).ToArray()
+                    owners = c.owners?.Select(p => new ShareOwner { playerId = p.playerId, shares = p.shares, reserved = p.reserved }).ToArray() }).ToArray(),
+                segmentKnowledge = s.segmentKnowledge?.Select(k => new SegmentKnowledge { companyId = k.companyId, startDay = k.startDay,
+                    playerIds = (string[])k.playerIds?.Clone() }).ToArray()
             };
 
         public static ReturnPoint Copy(ReturnPoint s)

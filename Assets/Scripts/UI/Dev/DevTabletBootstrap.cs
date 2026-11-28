@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.NetworkInformation;
@@ -17,6 +17,7 @@ using BlackWhale.UI.Presentation;
 using BlackWhale.UI.View;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.UI;
 using UnityEngine.UI;
 
@@ -42,13 +43,32 @@ namespace BlackWhale.UI.Dev
         private bool connecting, destroyed;
         private string endpoint;
         private BotDifficulty botDifficulty = BotDifficulty.Normal;
-        // D binds a lobby control here. Existing/new BOTs share the setting, frozen at start.
+
+        // The story is shown before any room connection is created.
+        private const float PrologueCutSeconds = 2.6f;
+        private static readonly string[] PrologueCaptions =
+        {
+            "세계 금융시장을 집어삼키던 거대 증권사, 블랙웨일(Black Whale).",
+            "어둠 속에서 거대한 자금을 움직이던 그들이, 외부와 단절된 비밀 시설의 문을 열었다.",
+            "초대받은 이들은 모두 빚에 쫓겨 갈 곳을 잃은 패배자들.",
+            "단 한 명의 최종 승자에게, 모든 빚의 청산과 거액의 상금을 지급한다.",
+            "심연 속 거대한 고래가 다시 움직이기 시작했다. 살아남아 모든 것을 되찾아라.",
+            ""
+        };
+        private RectTransform prologueRoot;
+        private Image prologueImage;
+        private Text prologueTitle, prologueCaption, prologueHint;
+        private Sprite[] prologueSprites;
+        private int prologueCut = -1;
+        private float prologueNextAt;
+        private bool prologueFinished;
+        // Default for future bots. Registered bots have independent profiles.
         public bool SetBotDifficulty(BotDifficulty difficulty)
         {
             if (!Enum.IsDefined(typeof(BotDifficulty), difficulty) || session?.IsHost != true ||
                 !session.SetBotDifficulty(difficulty.ToString())) return false;
             botDifficulty = difficulty;
-            foreach (var bot in bots) bot.SetDifficulty(difficulty);
+            // This setting is the default for future bots; existing profiles are independent.
             return true;
         }
 
@@ -70,16 +90,141 @@ namespace BlackWhale.UI.Dev
             scaler.matchWidthOrHeight = 0.5f;
             canvasRoot = (RectTransform)go.transform;
             BuildConnectionScreen();
+            BuildPrologueScreen();
+        }
+
+        /// <summary>
+        /// Builds the title screen shown before the room-creation screen.
+        /// The first click starts the six-cut story, and the room controls are
+        /// enabled only after the final cut has finished.
+        /// </summary>
+        private void BuildPrologueScreen()
+        {
+            prologueRoot = UiKit.Panel(canvasRoot, "PrologueIntro", Color.black, raycast: true).rectTransform;
+            UiKit.Stretch(prologueRoot);
+
+            // Keep the black background and the image on separate objects so
+            // Unity's UI renderer cannot hide the title behind a second Image.
+            var imageRoot = UiKit.Rect(prologueRoot, "PrologueImage");
+            prologueImage = imageRoot.gameObject.AddComponent<Image>();
+            prologueImage.color = Color.white;
+            prologueImage.preserveAspect = false;
+            prologueImage.raycastTarget = false;
+            UiKit.Stretch(imageRoot);
+            var aspect = imageRoot.gameObject.AddComponent<AspectRatioFitter>();
+            aspect.aspectMode = AspectRatioFitter.AspectMode.EnvelopeParent;
+            aspect.aspectRatio = 16f / 9f;
+
+            prologueTitle = UiKit.Label(prologueRoot, "Black Whale", 54, Color.white, TextAnchor.MiddleCenter, FontStyle.Bold);
+            UiKit.Place(prologueTitle.rectTransform, new Vector2(.5f, .5f), new Vector2(.5f, .5f), new Vector2(0, 0), new Vector2(900, 100));
+
+            prologueCaption = UiKit.Label(prologueRoot, "", 22, Color.white, TextAnchor.MiddleCenter);
+            UiKit.Place(prologueCaption.rectTransform, new Vector2(.5f, 0), new Vector2(.5f, 0), new Vector2(0, 76), new Vector2(1120, 80));
+
+            prologueHint = UiKit.Label(prologueRoot, "화면을 클릭해 시작", 15, new Color(1, 1, 1, .8f), TextAnchor.MiddleCenter);
+            UiKit.Place(prologueHint.rectTransform, new Vector2(.5f, 0), new Vector2(.5f, 0), new Vector2(0, 30), new Vector2(500, 30));
+
+            UiKit.Click(prologueRoot.gameObject, AdvancePrologue);
+            prologueSprites = LoadPrologueSprites();
+            prologueCut = -1;
+            prologueFinished = false;
+            connectionPanel.gameObject.SetActive(false);
+            ShowPrologueTitle();
+        }
+
+        /// <summary>Loads the six PNG files from Resources/Prologue.</summary>
+        private static Sprite[] LoadPrologueSprites()
+        {
+            var sprites = new Sprite[6];
+            for (int i = 0; i < sprites.Length; i++)
+            {
+                string path = "Prologue/Prologue_" + (i + 1).ToString("00");
+                // Support both Unity importer modes: Sprite and Texture2D.
+                sprites[i] = Resources.Load<Sprite>(path);
+                if (sprites[i] != null) continue;
+
+                var texture = Resources.Load<Texture2D>(path);
+                if (texture == null) continue;
+                try
+                {
+                    sprites[i] = Sprite.Create(texture, new UnityEngine.Rect(0, 0, texture.width, texture.height),
+                        new Vector2(.5f, .5f), 100f);
+                }
+                catch (Exception)
+                {
+                    // A missing or unsupported image must not hide the title screen.
+                    sprites[i] = null;
+                }
+            }
+            return sprites;
+        }
+
+        /// <summary>Shows the initial title over the first image.</summary>
+        private void ShowPrologueTitle()
+        {
+            prologueImage.sprite = prologueSprites != null && prologueSprites.Length > 0 ? prologueSprites[0] : null;
+            prologueTitle.gameObject.SetActive(true);
+            prologueCaption.gameObject.SetActive(false);
+            prologueHint.text = "클릭 또는 아무 키나 눌러 시작";
+            prologueHint.gameObject.SetActive(true);
+        }
+
+        /// <summary>Advances one cut, or closes the story after cut six.</summary>
+        private void AdvancePrologue()
+        {
+            if (prologueFinished) return;
+            if (prologueCut < 0) prologueCut = 0;
+            else if (prologueCut < prologueSprites.Length - 1) prologueCut++;
+            else
+            {
+                FinishPrologue();
+                return;
+            }
+            ShowPrologueCut();
+        }
+
+        /// <summary>Displays the current image and its matching narration.</summary>
+        private void ShowPrologueCut()
+        {
+            if (prologueSprites == null || prologueCut < 0 || prologueCut >= prologueSprites.Length)
+            {
+                FinishPrologue();
+                return;
+            }
+            prologueImage.sprite = prologueSprites[prologueCut];
+            prologueTitle.gameObject.SetActive(false);
+            prologueCaption.gameObject.SetActive(!string.IsNullOrEmpty(PrologueCaptions[prologueCut]));
+            prologueCaption.text = PrologueCaptions[prologueCut];
+            prologueHint.text = prologueCut == prologueSprites.Length - 1
+                ? "클릭 또는 아무 키나 눌러 방 만들기로 이동"
+                : "클릭 또는 아무 키나 눌러 다음 장면";
+            prologueHint.gameObject.SetActive(true);
+            // 마지막 초대장은 충분히 읽을 수 있도록 자동 전환하지 않는다.
+            prologueNextAt = prologueCut == prologueSprites.Length - 1
+                ? float.PositiveInfinity
+                : Time.unscaledTime + PrologueCutSeconds;
+        }
+
+        /// <summary>Reveals the room-creation controls after the prologue.</summary>
+        private void FinishPrologue()
+        {
+            prologueFinished = true;
+            prologueRoot.gameObject.SetActive(false);
+            connectionPanel.gameObject.SetActive(true);
+            connectionPanel.SetAsLastSibling();
         }
 
         private void BuildConnectionScreen()
         {
             connectionPanel = UiKit.Panel(canvasRoot, "ConnectionScreen", Palette.Background, raycast: true).rectTransform;
             UiKit.Stretch(connectionPanel);
-            var card = UiKit.Panel(connectionPanel, "ConnectionCard", Palette.Card, rounded: true).rectTransform;
+            // 회색 네모 대신 가장자리로 갈수록 바탕(검정)에 녹아드는 넓고 어두운 그라데이션(내용 칸보다 크게)
+            var glow = UiKit.Panel(connectionPanel, "ConnectionGlow", new Color32(0x24, 0x24, 0x24, 0xFF)); // 바탕보다 살짝 밝게
+            glow.sprite = UiKit.Soft; glow.type = UnityEngine.UI.Image.Type.Sliced; glow.pixelsPerUnitMultiplier = 0.35f;
+            UiKit.Place(glow.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(1100, 1000));
+            var card = UiKit.Panel(connectionPanel, "ConnectionCard", Color.clear).rectTransform; // 내용 배치용(투명)
             UiKit.Place(card, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(640, 650));
             Label(card, "BLACK WHALE", 30, -26, 50, Palette.Text);
-            Label(card, "함께 플레이할 방을 만들거나 방장 주소로 참가하세요.", 16, -84, 30, Palette.SubText);
             normalTab = UiKit.Button(card, "일반 플레이", 15, Palette.Accent, Color.white, () => SelectMode(false));
             normalTab.name = "NormalPlayTab";
             developerTab = UiKit.Button(card, "개발자", 15, Palette.AccentSoft, Palette.Accent, () => SelectMode(true));
@@ -110,7 +255,7 @@ namespace BlackWhale.UI.Dev
             developerMode = developer;
             UiKit.SetButton(normalTab, "일반 플레이", true, developer ? Palette.AccentSoft : Palette.Accent, developer ? Palette.Accent : Color.white);
             UiKit.SetButton(developerTab, "개발자", true, developer ? Palette.Accent : Palette.AccentSoft, developer ? Color.white : Palette.Accent);
-            modeHint.text = developer ? "방 생성: 시간 제한 없이 완료 버튼으로 진행 · BOT 자동 진행" : "방 생성: 타이머로 진행 · 참가 시 방장의 모드 적용";
+            modeHint.text = ""; // 모드 안내 문구는 표시하지 않음
         }
 
         private static Text Label(RectTransform parent, string text, int size, float y, float height, Color color)
@@ -161,7 +306,7 @@ namespace BlackWhale.UI.Dev
             {
                 if (host)
                 {
-                    var service = MarketService.CreateStockSystem(RandomMarketGenerator.NewSeed());
+                    var service = MarketService.CreateStockSystem(RandomMarketGenerator.NewSeed(), StockPatternLibraryResource.Load());
                     await active.Host(service, new SharedInformationService(service), nickname.text.Trim(), number, allowLan: true,
                         mode: developerMode ? TimerMode.Developer : TimerMode.Realtime);
                     endpoint = "접속 주소: " + HostAddresses() + "  ·  포트 " + active.ListeningPort;
@@ -176,6 +321,7 @@ namespace BlackWhale.UI.Dev
                 await WaitForWelcome(active.Client, active, current.Token);
                 if (host && !active.IsHost) throw new InvalidOperationException("방장 입장에 실패했습니다. 다시 방을 만들어 주세요.");
                 lobby = new LobbyActions { FillBots = FillBots, RemoveBots = RemoveBots, Leave = Leave, Status = LobbyStatus(host),
+                    SetBotProfile = (id, difficulty, personality) => session?.SetBotProfile(id, difficulty, personality) == true,
                     SetDifficulty = value => Enum.TryParse(value.ToString(), out BotDifficulty selected) && SetBotDifficulty(selected),
                     SetPaused = active.SetGamePaused };
                 view = TabletView.Create(canvasRoot, controller, lobby);
@@ -220,7 +366,7 @@ namespace BlackWhale.UI.Dev
             finally { client.MessageReceived -= onMessage; }
         }
 
-        private string LobbyStatus(bool host) => endpoint;
+        private string LobbyStatus(bool host) => ""; // 대기실에 접속 주소·포트 문구는 표시하지 않음
 
         private async void FillBots()
         {
@@ -249,7 +395,7 @@ namespace BlackWhale.UI.Dev
             catch (Exception ex)
             {
                 if (!destroyed && operation == current)
-                    lobby.Status = LobbyStatus(true) + "\n" + ConnectionError(ex);
+                    lobby.Status = ConnectionError(ex);
             }
             finally
             {
@@ -282,6 +428,15 @@ namespace BlackWhale.UI.Dev
 
         private void Update()
         {
+            // After the title click, cuts advance automatically. Clicking still
+            // advances immediately so the player controls the reading pace.
+            // Mouse clicks are handled by ClickRelay; keyboard input is handled here.
+            if (!prologueFinished && prologueRoot.gameObject.activeSelf && Keyboard.current?.anyKey.wasPressedThisFrame == true)
+                AdvancePrologue();
+            if (!prologueFinished && prologueCut >= 0 && prologueCut < prologueSprites.Length - 1
+                && Time.unscaledTime >= prologueNextAt)
+                AdvancePrologue();
+
             foreach (var bot in bots)
             {
                 bot.Client.Pump();

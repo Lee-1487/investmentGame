@@ -19,6 +19,7 @@
     <Compile Include="../../Assets/Scripts/UI/Presentation/ScreenModels.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/DisplayFormat.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/InvestmentDraft.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Presentation/BoardChartAnnotations.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/ChartRangeSelection.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/ChartVerticalRange.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/OrderInputValidator.cs" />
@@ -26,6 +27,8 @@
     <Compile Include="../../Assets/Scripts/UI/Presentation/UiRules.cs" />
     <Compile Include="../../Assets/Scripts/UI/Presentation/PhaseClock.cs" />
     <Compile Include="../../Assets/Scripts/UI/Dev/DevBot.cs" />
+    <Compile Include="../../Assets/Scripts/UI/Dev/BotExperiment.cs" />
+    <Compile Include="../../Assets/Tests/Network/Editor/BotExperimentValidation.cs" />
     <Compile Include="../../Assets/Scripts/Network/TcpTransport.cs" />
     <Compile Include="../../Assets/Scripts/Network/RequestJsonValidator.cs" />
     <Compile Include="../../Assets/Tests/Network/Editor/FixtureServices.cs" />
@@ -35,5 +38,7 @@
     <Compile Include="../../Assets/Tests/Network/Editor/NextAValidation.cs" />
     <Compile Include="../../Assets/Tests/Network/Editor/StockPatternValidation.cs" />
     <Compile Include="../../Assets/Tests/Network/Editor/StockSystemValidation.cs" />
+    <Compile Include="../../Assets/Tests/Network/Editor/BoardGameValidation.cs" />
+    <Compile Include="../../Assets/Tests/Network/Editor/BoardGameNetworkValidation.cs" />
   </ItemGroup>
 </Project>

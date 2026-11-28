@@ -10,8 +10,25 @@ namespace BlackWhale.UI.Presentation
             switch (errorCode)
             {
                 case "DRAFT_SHARE_LIMIT": return "한 차례에는 새로 매수하는 수량을 합쳐 최대 15주까지 투자할 수 있습니다.";
-                case "INVALID_LOBBY_SETTINGS": return "코인은 0~999개, 공개 일수는 0~30일, 일차당 시간은 1~60초로 입력하세요.";
+                case "INVALID_LOBBY_SETTINGS": return "코인은 0~999개, 정보 범위는 0~25일, 일차당 시간은 1~60초로 입력하세요. 공개 일수는 범위 안의 날짜 수 이하여야 합니다.";
+                case "SHARE_LIMIT": return "한 기업에 놓을 수 있는 투자말은 최대 3개입니다.";
+                case "PORTFOLIO_FULL": return "투자말은 모두 합쳐 3개까지 놓을 수 있습니다. 다른 기업의 말을 먼저 빼세요.";
+                case "INFORMATION_IS_DEALT": return "정보는 FOOD·AUTO 구간 카드로 자동 배정됩니다. 왼쪽 플레이어 메뉴에서 교환하세요.";
+                case "INFORMATION_NOT_KNOWN": return "내가 알고 있는 구간 카드만 교환에 제공할 수 있습니다.";
+                case "EXCHANGE_SAME_COMPANY": return "같은 기업 내의 구간만 교환할 수 있습니다.";
+                case "EXCHANGE_NOT_USEFUL": return "상대가 이미 알고 있거나 내가 이미 가진 카드는 교환할 수 없습니다.";
+                case "EXCHANGE_ALREADY_PENDING": return "해당 플레이어에게 이미 응답 대기 중인 교환 요청이 있습니다.";
+                case "EXCHANGE_NOT_FOUND": return "교환 요청을 찾을 수 없습니다.";
+                case "EXCHANGE_ALREADY_RESOLVED": return "이미 처리된 교환 요청입니다.";
+                case "EXCHANGE_PENDING": return "응답 대기 중인 정보 교환 요청을 먼저 수락 또는 거절해야 합니다.";
+                case "EXCHANGE_REQUIRED": return "정보 교환은 상대의 수락이 필요합니다.";
+                case "STALE_SEGMENT": return "다음 구간으로 넘어가 이전 배치 요청을 취소했습니다. 현재 구간에서 다시 선택하세요.";
+                case "INSUFFICIENT_SHARES": return "해당 기업의 남은 주식이 부족합니다.";
                 case "NO_PUBLIC_DAYS": return "설정한 일수만큼 공개할 수 없는 기업입니다. 다른 기업을 선택하세요.";
+                case "NOT_ENOUGH_INFORMATION_DAYS": return "선택한 기업에 요청한 수만큼의 미공개 날짜가 남아 있지 않습니다.";
+                case "STALE_DEVELOPER_STATE": return "단계가 복원되어 이전 요청을 취소했습니다. 현재 화면에서 다시 시도하세요.";
+                case "DEVELOPER_ONLY": return "개발자 모드에서만 사용할 수 있습니다.";
+                case "NO_PREVIOUS_PHASE": return "이번 턴에 돌아갈 이전 단계가 없습니다.";
                 case "INVALID_WINDOW": return "1~30일 안에서 시작일과 끝일을 선택하세요.";
                 case "PUBLIC_SELECTION_PENDING": return "4명의 공용 공개를 마친 뒤 개인 탐색을 시작합니다.";
                 case "PUBLIC_SELECTION_COMPLETE": return "공용 공개가 모두 끝났습니다.";

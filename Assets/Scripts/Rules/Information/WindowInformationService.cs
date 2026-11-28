@@ -13,24 +13,92 @@ namespace BlackWhale.Rules.Information
             public int Start, Paid, Length = 5;
             public bool Automatic;
             public double HiddenUntil;
+            public int[] Closes, Opens;
         }
         private sealed class WindowTurn
         {
             public string RoomId;
+            public bool RandomPrepared;
+            public readonly List<TradeIntent> Intents = new List<TradeIntent>();
+            public readonly List<InformationExchange> Exchanges = new List<InformationExchange>();
             public readonly List<WindowRecord> Records = new List<WindowRecord>();
             public readonly HashSet<string> UsedCategories = new HashSet<string>();
             public readonly Dictionary<string, Tuple<string, RuleResult>> Requests = new Dictionary<string, Tuple<string, RuleResult>>();
         }
         private readonly Dictionary<string, WindowTurn> windowTurns = new Dictionary<string, WindowTurn>();
         private readonly Dictionary<string, LobbySettings> roomSettings = new Dictionary<string, LobbySettings>();
+        private readonly Random informationRandom;
+        private bool RandomInformation => source is IStockMarketSystem stock && stock.StockEnabled;
         public void ConfigureRoom(string roomId, LobbySettings settings)
         {
             if (settings == null || !settings.IsValid) throw new ArgumentException("Invalid lobby settings.");
             lock (gate) roomSettings[roomId] = settings.Copy();
         }
         private bool PublicInformationComplete(RequestContext c) =>
-            roomSettings.TryGetValue(c.RoomId, out var options) && options.publicRevealDays == 0 ||
+            RandomInformation ? Windows(c).RandomPrepared : roomSettings.TryGetValue(c.RoomId, out var options) && options.publicRevealDays == 0 ||
             Windows(c).Records.Where(r => r.Source == "PUBLIC").Select(r => r.Player).Distinct().Count() == 4;
+        private int[] DrawInformationDays(IEnumerable<int> days, int count)
+        {
+            var available = days.ToArray();
+            for (int i = available.Length - 1; i > 0; i--)
+            { int j = informationRandom.Next(i + 1); int value = available[i]; available[i] = available[j]; available[j] = value; }
+            return available.Take(count).OrderBy(d => d).ToArray();
+        }
+        public void PrepareRandomInformation(RequestContext c)
+        {
+            if (!RandomInformation) return;
+            lock (gate)
+            {
+                var state = Windows(c);
+                if (state.RandomPrepared) return;
+                string[] players = rooms[c.RoomId].Players.OrderBy(id => id, StringComparer.Ordinal).ToArray();
+                foreach (string company in new[] { "FOOD", "AUTO" })
+                {
+                    AddWindow(c, company, 1, "PUBLIC", 0, true);
+                    for (int segment = 1; segment < 6; segment++) {
+                        // P1..P4 receive roles A/B/C/D, then B/C/D/A: role A moves to P4 next round.
+                        int seat = (segment - 1 + (company == "AUTO" ? 1 : 0) - (c.Turn - 1) % players.Length + players.Length) % players.Length;
+                        AddWindow(new RequestContext(c.RoomId, c.Turn, c.Phase, players[seat]), company, 1 + segment * 5, "DEALT", 0, true);
+                    }
+                }
+                state.RandomPrepared = true;
+            }
+        }
+        public void GrantAnalystCoins(RequestContext c, string player)
+        {
+            lock (gate)
+                if (source is IStockMarketSystem stock && stock.StockEnabled && stock.GetPortfolio(player).augments?.Contains("ANALYST") == true)
+                    rooms[c.RoomId].Service.RewardCoins(player, c.Turn, "augment-analyst", 2);
+        }
+        public RuleResult BuyRandomDays(RequestContext c, string company, int count = 1)
+        {
+            if (RandomInformation) return new RuleResult("INFORMATION_IS_DEALT");
+            lock (gate) return WindowRequest(c, "random-buy|" + company + "|" + count, () =>
+            {
+                if (!RandomInformation) return new RuleResult("WINDOWS_UNAVAILABLE");
+                string error = ValidateWindow(c, company, 1, 1); if (error != "") return new RuleResult(error);
+                if (!PublicInformationComplete(c)) return new RuleResult("PUBLIC_SELECTION_PENDING");
+                if (count < 1 || count > 25) return new RuleResult("INVALID_WINDOW");
+                var options = roomSettings.TryGetValue(c.RoomId, out var configured) ? configured : new LobbySettings();
+                int first = Math.Max(1, options.informationStartDay);
+                EnsureAnalysisRecords(c);
+                var mask = Mask(Windows(c), c.PlayerId, company);
+                var available = Enumerable.Range(first, Math.Max(0, options.informationEndDay - first + 1)).Where(day => !mask[day]).ToArray();
+                if (available.Length < count) return new RuleResult(available.Length == 0 ? "ALREADY_VISIBLE" : "NOT_ENOUGH_INFORMATION_DAYS");
+                if (rooms[c.RoomId].Service.GetCoins(c.PlayerId) < count) return new RuleResult("NOT_ENOUGH_COINS");
+                var days = DrawInformationDays(available, count);
+                foreach (int day in days) ((IWindowMarketDataSource)source).GetWindow(c.Turn, company, day, 1);
+                if (!rooms[c.RoomId].Service.SpendWindowCoins(c.PlayerId, c.Turn, count)) return new RuleResult("NOT_ENOUGH_COINS");
+                WindowRecord firstRecord = null;
+                foreach (int day in days)
+                {
+                    var record = AddWindow(c, company, day, "PURCHASED", 1, length: 1);
+                    if (firstRecord == null) firstRecord = record;
+                }
+                var result = WindowResult(c, firstRecord); result.Payload.paidCoins = count;
+                return result;
+            });
+        }
         public bool UsesWindowInformation => source is IWindowMarketDataSource windows && windows.UsesWindowInformation;
         private WindowTurn Windows(RequestContext c)
         {
@@ -63,7 +131,7 @@ namespace BlackWhale.Rules.Information
             return new RuleResult(r.ErrorCode, p == null ? null : new ResultPayload { companyId = p.companyId,
                 startDay = p.startDay, dailyChangesBps = (int[])p.dailyChangesBps?.Clone(), source = p.source,
                 dailyOpenBps = (int[])p.dailyOpenBps?.Clone(),
-                recordId = p.recordId, remainingCoins = p.remainingCoins, paidCoins = p.paidCoins, automatic = p.automatic });
+                recordId = p.recordId, exchangeId = p.exchangeId, remainingCoins = p.remainingCoins, paidCoins = p.paidCoins, automatic = p.automatic });
         }
         private static bool Accessible(WindowRecord r, string player) => r.Source == "PUBLIC" || r.Player == player;
         private bool[] Mask(WindowTurn state, string player, string company, bool publicOnly = false, WindowRecord except = null)
@@ -79,6 +147,10 @@ namespace BlackWhale.Rules.Information
             var state = Windows(c);
             var record = new WindowRecord { Id = c.RoomId + ":" + c.Turn + ":window:" + (state.Records.Count + 1),
                 Player = c.PlayerId, Company = company, Start = start, Source = sourceName, Paid = paid, Automatic = automatic, Length = length };
+            if (RandomInformation) {
+                record.Closes = ((IWindowMarketDataSource)source).GetWindow(c.Turn, company, start, length);
+                record.Opens = ((IWindowMarketDataSource)source).GetOpenWindow(c.Turn, company, start, length);
+            }
             state.Records.Add(record); return record;
         }
         private RuleResult WindowResult(RequestContext c, WindowRecord record)
@@ -123,6 +195,7 @@ namespace BlackWhale.Rules.Information
         }
         public RuleResult BuyWindow(RequestContext c, string company, int start, int endDay = 0)
         {
+            if (RandomInformation) return BuyRandomDays(c, company);
             int length = (endDay == 0 ? start + 4 : endDay) - start + 1;
             lock (gate) return WindowRequest(c, "buy|" + company + "|" + start + "|" + length, () =>
             {
@@ -148,28 +221,75 @@ namespace BlackWhale.Rules.Information
         }
         public PublicInformationChoice[] GetPublicInformation(RequestContext c)
         {
-            lock (gate) return Windows(c).Records.Where(r => r.Source == "PUBLIC").GroupBy(r => r.Player).Select(group => {
+            lock (gate) return Windows(c).Records.Where(r => r.Source == "PUBLIC").GroupBy(r => RandomInformation ? r.Company : r.Player).Select(group => {
                 var first = group.First();
                 return new PublicInformationChoice { playerId = first.Player, companyId = first.Company, startDay = first.Start,
                     automatic = first.Automatic, days = group.SelectMany(r => Enumerable.Range(r.Start, r.Length)).OrderBy(d => d).ToArray() };
             }).ToArray();
         }
-        private void PopulateWindows(RequestContext c, PlayerView view)
+        public SegmentKnowledge[] GetSegmentKnowledge(RequestContext c)
+        {
+            if (!RandomInformation) return Array.Empty<SegmentKnowledge>();
+            lock (gate) {
+                var state = Windows(c);
+                var result = new List<SegmentKnowledge>();
+                foreach (string company in new[] { "FOOD", "AUTO" })
+                    for (int start = 1; start <= 26; start += 5) {
+                        var records = state.Records.Where(r => r.Company == company && r.Start == start && r.Length == 5 && r.HiddenUntil == 0).ToArray();
+                        string[] owners = records.Any(r => r.Source == "PUBLIC")
+                            ? new[] { "ALL" }
+                            : records.Where(r => r.Source == "DEALT").Select(r => r.Player).Where(p => !string.IsNullOrEmpty(p)).Distinct().OrderBy(p => p, StringComparer.Ordinal).ToArray();
+                        result.Add(new SegmentKnowledge { companyId = company, startDay = start, playerIds = owners });
+                    }
+                return result.ToArray();
+            }
+        }
+        private void EnsureAnalysisRecords(RequestContext c)
         {
             var state = Windows(c);
             if (source is IStockMarketSystem stock && stock.StockEnabled && c.Turn == rooms[c.RoomId].CurrentTurn)
                 foreach (var analysis in stock.AnalysisWindows(c.PlayerId))
                     if (!state.Records.Any(r => r.Player == c.PlayerId && r.Company == analysis.companyId && r.Source == "AUGMENT"))
                         AddWindow(c, analysis.companyId, analysis.startDay, "AUGMENT", 0, length: analysis.dailyChangesBps.Length);
+        }
+        private void PopulateWindows(RequestContext c, PlayerView view)
+        {
+            var state = Windows(c);
+            EnsureAnalysisRecords(c);
             foreach (var company in view.companies)
             {
                 company.visibleBundles = Array.Empty<VisibleBundle>();
                 // Keep every independent proof. Hiding one paid record cannot remove another proof.
                 company.visibleWindows = state.Records.Where(r => r.Company == company.companyId && Accessible(r, c.PlayerId) && r.HiddenUntil == 0)
                     .Select(r => new VisibleInformationWindow { recordId = r.Id, startDay = r.Start, source = r.Source, paidCoins = r.Paid,
-                        dailyChangesBps = ((IWindowMarketDataSource)source).GetWindow(c.Turn, r.Company, r.Start, r.Length),
-                        dailyOpenBps = ((IWindowMarketDataSource)source).GetOpenWindow(c.Turn, r.Company, r.Start, r.Length) }).ToArray();
+                        dailyChangesBps = (int[])r.Closes?.Clone() ?? ((IWindowMarketDataSource)source).GetWindow(c.Turn, r.Company, r.Start, r.Length),
+                        dailyOpenBps = (int[])r.Opens?.Clone() ?? ((IWindowMarketDataSource)source).GetOpenWindow(c.Turn, r.Company, r.Start, r.Length) }).ToArray();
             }
+            view.receivedTradeIntents = state.Intents.Where(i => i.targetPlayerId == c.PlayerId).Select(CopyIntent).ToArray();
+            if (c.Phase != Protocol.Info) foreach (var request in state.Exchanges.Where(e => e.status == "PENDING")) request.status = "EXPIRED";
+            view.informationExchanges = state.Exchanges.Where(e => e.senderId == c.PlayerId || e.targetPlayerId == c.PlayerId).Select(e => e.Copy()).ToArray();
+        }
+
+        private static TradeIntent CopyIntent(TradeIntent i) => new TradeIntent { senderId = i.senderId, targetPlayerId = i.targetPlayerId,
+            companyId = i.companyId, entryDay = i.entryDay, exitDay = i.exitDay };
+
+        public RuleResult ShareKnownWindow(RequestContext c, string targetPlayerId, string companyId, int startDay)
+        {
+            return new RuleResult("EXCHANGE_REQUIRED");
+        }
+
+        public RuleResult SendTradeIntent(RequestContext c, string targetPlayerId, string companyId, int entryDay, int exitDay)
+        {
+            lock (gate) return WindowRequest(c, "intent|" + targetPlayerId + "|" + companyId + "|" + entryDay + "|" + exitDay, () => {
+                string error = ValidateWindow(c, companyId, 1);
+                if (error != "") return new RuleResult(error);
+                if (!RandomInformation || targetPlayerId == c.PlayerId || !rooms[c.RoomId].Players.Contains(targetPlayerId)) return new RuleResult("INVALID_TARGET");
+                if (entryDay < 1 || exitDay > 30 || entryDay > exitDay) return new RuleResult("INVALID_DAY");
+                var state = Windows(c);
+                state.Intents.RemoveAll(i => i.senderId == c.PlayerId && i.targetPlayerId == targetPlayerId && i.companyId == companyId);
+                state.Intents.Add(new TradeIntent { senderId = c.PlayerId, targetPlayerId = targetPlayerId, companyId = companyId, entryDay = entryDay, exitDay = exitDay });
+                return new RuleResult();
+            });
         }
         public bool ExpireDistortions(RequestContext c, double now)
         {

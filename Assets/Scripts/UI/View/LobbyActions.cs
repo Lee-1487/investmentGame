@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace BlackWhale.UI.View
 {
@@ -8,6 +8,7 @@ namespace BlackWhale.UI.View
         public Action FillBots, RemoveBots, Leave;
         public Func<bool, bool> SetPaused;
         public Func<BlackWhale.UI.Presentation.BotDifficulty, bool> SetDifficulty;
+        public Func<string, string, string, bool> SetBotProfile;
         public bool Busy;
         public string Status = "";
     }

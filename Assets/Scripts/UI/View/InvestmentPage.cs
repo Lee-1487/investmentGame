@@ -79,7 +79,7 @@ namespace BlackWhale.UI.View
             _status.text = s.turn + "턴 · " + PhaseNames.Korean(s.phase) + "   ·   내 선택: " + mine;
             if (s.stockSystem && s.phase != Protocol.Lobby)
             {
-                _status.text = s.turn + "/" + s.totalTurns + "턴 · " + PhaseNames.ForState(s) + " · 보유 " + (_c.Store.View?.portfolio?.usedSlots ?? 0) + "/30칸";
+                _status.text = s.turn + "/" + s.totalTurns + "턴 · " + PhaseNames.ForState(s) + " · 투자말 " + (_c.Store.View?.portfolio?.usedSlots ?? 0) + "/3개";
                 _stockPage.Build(); return;
             }
 
@@ -122,8 +122,8 @@ namespace BlackWhale.UI.View
 
         private void BuildLobby(PublicState s)
         {
-            _status.text = "대기실 · 4명이 모두 준비하면 방장이 시작합니다";
-            var card = UiKit.Panel(_body, "Lobby", Palette.Card, rounded: true);
+            _status.text = ""; // 대기실 안내 문구는 표시하지 않음
+            var card = UiKit.Panel(_body, "Lobby", Color.clear); // 큰 네모 바탕 없이
             UiKit.Stretch(card.rectTransform, 28, 12, 28, 12);
             var root = card.rectTransform;
 
@@ -135,22 +135,33 @@ namespace BlackWhale.UI.View
             for (int i = 0; i < 4; i++)
             {
                 var p = i < players.Length ? players[i] : null;
-                var row = UiKit.Panel(root, "Player" + (i + 1), p == null ? Palette.Disabled : Palette.Screen, rounded: true);
+                // 네모 칸 대신 밑줄(빈 자리는 회색 밑줄)
+                var row = UiKit.Panel(root, "Player" + (i + 1), Color.clear);
+                var rowLine = UiKit.Panel(row.transform, "Underline", p == null ? Palette.DisabledText : Palette.Text);
+                rowLine.rectTransform.anchorMin = Vector2.zero; rowLine.rectTransform.anchorMax = new Vector2(1, 0);
+                rowLine.rectTransform.offsetMin = Vector2.zero; rowLine.rectTransform.offsetMax = new Vector2(0, 1.5f);
                 UiKit.Place(row.rectTransform, new Vector2(0.5f, 1), new Vector2(0.5f, 1), new Vector2(0, -60 - i * 54), new Vector2(520, 46));
                 if (configurable) {
                     row.rectTransform.anchorMin = new Vector2(0, 1); row.rectTransform.anchorMax = new Vector2(.49f, 1);
                     row.rectTransform.offsetMin = new Vector2(20, -106 - i * 54); row.rectTransform.offsetMax = new Vector2(-8, -60 - i * 54);
                 }
+                string displayName = p == null ? "" : LiveScreenModels.Name(s, p.playerId);
                 string text = p == null
-                    ? "<color=#9CA3AF>빈 자리 · 접속 대기</color>"
-                    : "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(p.playerId)) + ">■</color>  <b>" + p.playerId + "</b>  "
-                      + (p.displayName ?? "").Replace("<", "‹").Replace(">", "›") + (p.isBot ? "  <size=11>BOT</size>" : "") + (p.playerId == _c.LocalPlayerId ? " (나)" : "") + (p.playerId == "P1" ? "  <size=11>방장</size>" : "")
-                      + "      " + (!p.connected ? "<color=#DC2626>연결 끊김</color>" : p.ready ? "<color=#047857><b>준비 완료</b></color>" : "<color=#6B7280>준비 전</color>");
+                    ? "<color=#A3A3A3>빈 자리 · 접속 대기</color>"
+                    : "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(p.playerId)) + ">■</color>  <b>" + displayName + "</b>  "
+                      + (p.playerId == _c.LocalPlayerId ? " (나)" : "") + (p.playerId == "P1" ? "  <size=11>방장</size>" : "")
+                      + "      " + (!p.connected ? Palette.BadText("연결 끊김") : p.ready ? "<color=#34D399><b>준비 완료</b></color>" : "<color=#8C8C8C>준비 전</color>");
                 var label = UiKit.Label(row.transform, text, 15, Palette.Text, TextAnchor.MiddleLeft);
                 label.resizeTextForBestFit = true;
                 label.resizeTextMinSize = 10;
                 label.resizeTextMaxSize = 15;
                 UiKit.Stretch(label.rectTransform, 16, 0, 16, 0);
+                if (p?.isBot == true) {
+                    UiKit.Stretch(label.rectTransform, 16, 0, 16, 24);
+                    bool editable = _c.IsHost && p.connected && _lobby?.Busy == false && _lobby.SetBotProfile != null;
+                    BotProfileDropdown(row.rectTransform, p, true, editable);
+                    BotProfileDropdown(row.rectTransform, p, false, editable);
+                }
             }
             if (configurable) BuildLobbySettings(root, s);
 
@@ -195,6 +206,70 @@ namespace BlackWhale.UI.View
             }
         }
 
+        private void BotProfileDropdown(RectTransform row, Player bot, bool personality, bool editable)
+        {
+            string[] values = personality ? new[] { "Adventurous", "Stable", "Strategic" } : new[] { "Easy", "Normal", "Hard" };
+            string[] names = personality ? new[] { "성향: 모험", "성향: 안정", "성향: 전략" } : new[] { "난이도: 쉬움", "난이도: 보통", "난이도: 어려움" };
+            var go = DefaultControls.CreateDropdown(new DefaultControls.Resources());
+            go.name = (personality ? "BotPersonality_" : "BotDifficulty_") + bot.playerId;
+            go.transform.SetParent(row, false);
+            var rect = (RectTransform)go.transform;
+            rect.anchorMin = new Vector2(personality ? 0 : .5f, 0);
+            rect.anchorMax = new Vector2(personality ? .5f : 1, 0);
+            rect.pivot = new Vector2(.5f, 0);
+            rect.offsetMin = new Vector2(personality ? 16 : 4, 3);
+            rect.offsetMax = new Vector2(personality ? -4 : -16, 25);
+            var dropdown = go.GetComponent<Dropdown>();
+            dropdown.ClearOptions(); dropdown.AddOptions(names.ToList());
+            dropdown.SetValueWithoutNotify(System.Math.Max(0, System.Array.IndexOf(values, personality ? bot.botPersonality : bot.botDifficulty)));
+            dropdown.interactable = editable;
+            var colors = dropdown.colors;
+            colors.normalColor = Palette.AccentSoft; colors.highlightedColor = Palette.CardBorder;
+            colors.pressedColor = Palette.CardBorder; colors.selectedColor = Palette.AccentSoft;
+            colors.disabledColor = Palette.Disabled; dropdown.colors = colors;
+            foreach (var text in go.GetComponentsInChildren<Text>(true)) {
+                text.font = UiKit.Font; text.fontSize = 12; text.color = Palette.Text;
+            }
+            // DefaultControls assumes a taller field; its 6/7px vertical insets clip
+            // Korean glyphs in this compact 22px ready-row selector.
+            UiKit.Stretch(dropdown.captionText.rectTransform, 8, 1, 24, 1);
+            dropdown.captionText.alignment = TextAnchor.MiddleLeft;
+            dropdown.captionText.verticalOverflow = VerticalWrapMode.Overflow;
+            dropdown.captionText.horizontalOverflow = HorizontalWrapMode.Overflow;
+            dropdown.captionText.raycastTarget = false;
+            foreach (var image in go.GetComponentsInChildren<Image>(true)) image.color = Palette.AccentSoft;
+            dropdown.targetGraphic.color = Color.white;
+            var arrow = go.transform.Find("Arrow");
+            if (arrow != null) {
+                arrow.GetComponent<Image>().enabled = false;
+                var glyph = UiKit.Label(arrow, "▾", 12, Palette.SubText, TextAnchor.MiddleCenter);
+                UiKit.Stretch(glyph.rectTransform);
+            }
+            var template = dropdown.template;
+            template.sizeDelta = new Vector2(template.sizeDelta.x, 90);
+            // DefaultControls leaves the template inactive until the list is opened.
+            var item = dropdown.itemText.GetComponentInParent<Toggle>(includeInactive: true);
+            item.targetGraphic.color = Color.white;
+            var itemColors = item.colors;
+            itemColors.normalColor = Palette.AccentSoft; itemColors.highlightedColor = Palette.CardBorder;
+            itemColors.pressedColor = Palette.CardBorder; itemColors.selectedColor = Palette.CardBorder;
+            item.colors = itemColors;
+            var checkmark = item.graphic as Image;
+            if (checkmark != null) {
+                checkmark.color = Palette.Text;
+                checkmark.rectTransform.sizeDelta = new Vector2(6, 6);
+            }
+            dropdown.onValueChanged.AddListener(index => {
+                if (_c.Store.Public?.phase != Protocol.Lobby || !_c.IsHost || _lobby?.Busy != false) return;
+                var current = _c.Store.Public.players?.FirstOrDefault(p => p.playerId == bot.playerId && p.isBot);
+                if (current == null) return;
+                bool accepted = _lobby.SetBotProfile?.Invoke(bot.playerId,
+                    personality ? current.botDifficulty : values[index], personality ? values[index] : current.botPersonality) == true;
+                if (!accepted) dropdown.SetValueWithoutNotify(System.Math.Max(0, System.Array.IndexOf(values,
+                    personality ? current.botPersonality : current.botDifficulty)));
+            });
+        }
+
         private bool LobbySettingsDirty => _c.Store.Public?.stockSystem == true && _c.Store.Public.windowInformation
             && _lobbySettingsDraft != null && !_lobbySettingsDraft.SameAs(_c.Store.Public.lobbySettings ?? new LobbySettings());
 
@@ -217,27 +292,23 @@ namespace BlackWhale.UI.View
             bool editable = _c.IsHost && !_c.Store.HasPending(CommandTypes.SetLobbySettings);
             var panel = UiKit.Rect(root, "LobbySettings");
             panel.anchorMin = new Vector2(.5f, 1); panel.anchorMax = Vector2.one;
-            panel.offsetMin = new Vector2(8, -332); panel.offsetMax = new Vector2(-20, -48);
+            panel.offsetMin = new Vector2(8, -382); panel.offsetMax = new Vector2(-20, -48);
             var title = UiKit.Label(panel, "게임 설정" + (_c.IsHost ? " · 방장" : " · 방장이 변경할 수 있습니다"), 15, Palette.Text, TextAnchor.UpperLeft, FontStyle.Bold);
-            UiKit.Stretch(title.rectTransform, 0, 0, 0, 258);
+            UiKit.Stretch(title.rectTransform, 0, 0, 0, 308);
+            if (state.stockSystem) {
+                var rules = UiKit.Label(panel, "4개 기업 · 1인당 투자말 3개\n\n정보 카드 공유 120초\n비공개 투자 선택 10초 → 5일 공개 2초\n6개 구간 / 30일을 6라운드 진행\n\nFOOD·AUTO 구간 카드 자동 배정\nAI·BIO는 투자말에 반응\n증강은 현재 비활성화", 14, Palette.SubText, TextAnchor.UpperLeft);
+                UiKit.Stretch(rules.rectTransform, 0, 34, 0, 0);
+                return;
+            }
             LobbyNumber(panel, "EarlyTurnCoins", "1~5턴 지급 코인 (0~999)", _lobbySettingsDraft.earlyTurnCoins, 30, editable, v => _lobbySettingsDraft.earlyTurnCoins = v);
             LobbyNumber(panel, "LateTurnCoins", "6턴 이후 지급 코인 (0~999)", _lobbySettingsDraft.lateTurnCoins, 68, editable, v => _lobbySettingsDraft.lateTurnCoins = v);
-            LobbyNumber(panel, "PublicRevealDays", "선택당 공개 일수 (0~30)", _lobbySettingsDraft.publicRevealDays, 106, editable, v => _lobbySettingsDraft.publicRevealDays = v);
+            LobbyNumber(panel, "PublicRevealDays", "기업마다 랜덤 공개 일수 (0~25)", _lobbySettingsDraft.publicRevealDays, 106, editable, v => _lobbySettingsDraft.publicRevealDays = v);
             LobbyNumber(panel, "DaySeconds", "일차당 시간 (1~60초)", _lobbySettingsDraft.daySeconds, 144, editable, v => _lobbySettingsDraft.daySeconds = v);
-            bool scattered = _lobbySettingsDraft.scatteredPublicDays;
-            for (int i = 0; i < 2; i++) {
-                bool mode = i == 1, selected = scattered == mode;
-                var button = UiKit.Button(panel, mode ? "무작위 날짜" : "연속 구간", 12, selected ? Palette.Accent : Palette.AccentSoft,
-                    selected ? Color.white : Palette.Accent, () => { _lobbySettingsDraft.scatteredPublicDays = mode; Refresh(); });
-                button.name = mode ? "PublicRevealScattered" : "PublicRevealContiguous";
-                button.interactable = editable;
-                var rect = (RectTransform)button.transform;
-                rect.anchorMin = new Vector2(i * .5f, 1); rect.anchorMax = new Vector2((i + 1) * .5f, 1);
-                rect.offsetMin = new Vector2(0, -216); rect.offsetMax = new Vector2(-4, -184);
-            }
-            var hint = UiKit.Label(panel, "매 턴 지급 · 공개 0일 = 공개 생략 · 설정 변경 시 준비 해제", 10, Palette.SubText, TextAnchor.UpperLeft);
+            LobbyNumber(panel, "InformationStartDay", "정보 추첨 시작일 (0~25)", _lobbySettingsDraft.informationStartDay, 182, editable, v => _lobbySettingsDraft.informationStartDay = v);
+            LobbyNumber(panel, "InformationEndDay", "정보 추첨 종료일 (0~25)", _lobbySettingsDraft.informationEndDay, 220, editable, v => _lobbySettingsDraft.informationEndDay = v);
+            var hint = UiKit.Label(panel, "", 10, Palette.SubText, TextAnchor.UpperLeft); // 설정 안내 문구는 표시하지 않음
             hint.rectTransform.anchorMin = new Vector2(0, 1); hint.rectTransform.anchorMax = Vector2.one;
-            hint.rectTransform.offsetMin = new Vector2(0, -242); hint.rectTransform.offsetMax = new Vector2(0, -222);
+            hint.rectTransform.offsetMin = new Vector2(0, -280); hint.rectTransform.offsetMax = new Vector2(0, -258);
             if (_c.IsHost) {
                 var apply = UiKit.Button(panel, editable ? "설정 적용" : "적용 중…", 12, Palette.Accent, Color.white,
                     () => _c.SetLobbySettings(_lobbySettingsDraft));
@@ -274,7 +345,7 @@ namespace BlackWhale.UI.View
         private string SelectionHint(PublicState s)
         {
             if (_c.IsMyTurnToSelect())
-                return "<color=#DC2626><b>내 차례입니다.</b></color> <b>기업 카드를 누르면 바로 선택됩니다.</b> ("
+                return "<color=#FFFFFF><b>내 차례입니다.</b></color> <b>기업 카드를 누르면 바로 선택됩니다.</b> ("
                        + (_c.Store.OwnSelections.Count + 1) + "번째 / 2개)";
             if (string.IsNullOrEmpty(s.currentPlayerId)) return "기업 선택 진행 중";
             return s.currentPlayerId + " 님이 고르는 중입니다. 차례 순서: A→B→C→D→D→C→B→A";
@@ -311,9 +382,9 @@ namespace BlackWhale.UI.View
             var ids = UiRules.CompanyIds;
             for (int i = 0; i < ids.Length; i++)
             {
-                int col = i % 3, row = i / 3;
+                int col = i % 2, row = i / 2;
                 var cell = UiKit.Rect(grid, "Pick_" + ids[i]);
-                UiKit.Anchor(cell, col / 3f, row == 0 ? 0.5f : 0f, (col + 1) / 3f, row == 0 ? 1f : 0.5f, 6, 6);
+                UiKit.Anchor(cell, col / 2f, row == 0 ? 0.5f : 0f, (col + 1) / 2f, row == 0 ? 1f : 0.5f, 6, 6);
                 BuildCompanyPickCard(cell, ids[i], myTurn);
             }
 
@@ -346,7 +417,7 @@ namespace BlackWhale.UI.View
                 bool current = slot.State == PickSlotState.Current;
                 bool done = slot.State == PickSlotState.Done;
                 Color frameColor = current ? ScreenKit.Amber : slot.IsMine ? Palette.Accent : Palette.CardBorder;
-                Color fill = current ? new Color32(0xFE, 0xF3, 0xC7, 0xFF) : done ? Palette.Disabled : slot.IsMine ? Palette.AccentSoft : Palette.Card;
+                Color fill = current ? ScreenKit.AmberSoft : done ? Palette.Disabled : slot.IsMine ? Palette.AccentSoft : Palette.Card;
                 var frame = UiKit.Panel(cell, "Frame", frameColor, rounded: true);
                 UiKit.Stretch(frame.rectTransform);
                 var inner = UiKit.Panel(frame.transform, "Inner", fill, rounded: true);
@@ -426,7 +497,7 @@ namespace BlackWhale.UI.View
             UiKit.Place(logo, new Vector2(0, 1), new Vector2(0, 1), new Vector2(12, -12), new Vector2(52, 52));
 
             var name = UiKit.Label(root, "<b>" + entry.DisplayName + "</b>\n<size=10>" + entry.Id + " · " + entry.Volatility + "</size>"
-                + "\n<size=11><color=#2563EB>" + _c.Store.TradePlans.Summary(id) + "</color></size>",
+                + "\n<size=11><color=#9A9A9A>" + _c.Store.TradePlans.Summary(id) + "</color></size>",
                 16, slots.Empty == 0 && !own ? Palette.DisabledText : Palette.Text, TextAnchor.UpperLeft);
             name.name = "SelectionPlan_" + id;
             UiKit.Place(name.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(72, -12), new Vector2(200, 52));
@@ -439,12 +510,12 @@ namespace BlackWhale.UI.View
             UiKit.Place(seatRow, new Vector2(0, 0), new Vector2(0, 0), new Vector2(12, 34), new Vector2(170, 30));
             int k = 0;
             for (int m = 0; m < slots.Mine; m++) SeatBox(seatRow, k++, "나", Palette.Accent, Color.white);
-            for (int a = 0; a < slots.OccupiedAnonymous; a++) SeatBox(seatRow, k++, "선점", new Color32(0x6B, 0x72, 0x80, 0xFF), Color.white);
-            for (int e = 0; e < slots.Empty; e++) SeatBox(seatRow, k++, "빈칸", Color.white, Palette.SubText, outline: true);
+            for (int a = 0; a < slots.OccupiedAnonymous; a++) SeatBox(seatRow, k++, "선점", new Color32(0x6B, 0x6B, 0x6B, 0xFF), Color.white);
+            for (int e = 0; e < slots.Empty; e++) SeatBox(seatRow, k++, "빈칸", Palette.Card, Palette.SubText, outline: true);
 
-            string state = own ? "<color=#2563EB><b>내 확정</b></color>"
+            string state = own ? "<color=#9A9A9A><b>내 확정</b></color>"
                 : slots.Empty == 0 ? "정원 마감"
-                : selectable ? "<color=#2563EB><b>클릭하여 바로 선택</b></color>" : "남은 자리 " + slots.Empty;
+                : selectable ? "<color=#9A9A9A><b>클릭하여 바로 선택</b></color>" : "남은 자리 " + slots.Empty;
             var stateText = UiKit.Label(root, state, 12, Palette.SubText, TextAnchor.LowerLeft);
             UiKit.Place(stateText.rectTransform, new Vector2(0, 0), new Vector2(0, 0), new Vector2(12, 8), new Vector2(240, 22));
         }
@@ -585,7 +656,7 @@ namespace BlackWhale.UI.View
 
             var logo = CompanyBadge.Create(root, companyId, 26);
             UiKit.Place(logo, new Vector2(0, 1), new Vector2(0, 1), new Vector2(10, -6), new Vector2(26, 26));
-            var header = UiKit.Label(root, (index + 1) + ". <b>" + entry.DisplayName + "</b> <size=11>" + entry.Id + "</size>   <color=#2563EB><b>"
+            var header = UiKit.Label(root, (index + 1) + ". <b>" + entry.DisplayName + "</b> <size=11>" + entry.Id + "</size>   <color=#9A9A9A><b>"
                 + DisplayFormat.Weight(weightBps) + "</b></color>   <size=11>" + (_c.Store.TradePlans.Get(companyId).Favorite ? "★ 찜 · " : "")
                 + (_c.Store.TradePlans.Get(companyId).Rank > 0 ? _c.Store.TradePlans.Get(companyId).Rank + "순위" : entry.Volatility) + "</size>", 16, Palette.Text, TextAnchor.MiddleLeft);
             UiKit.Place(header.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(42, -4), new Vector2(380, 30));
@@ -656,9 +727,9 @@ namespace BlackWhale.UI.View
             if (_draft.EntryAtOpen || intervals.Count < UiRules.MaxIntervalsPerCompany)
             {
                 string guide = candidateDay.HasValue
-                    ? "<color=#B45309>진입 " + candidateDay.Value + "일 선택됨 → 청산일을 클릭하세요</color>"
+                    ? "<color=#D0D0D0>진입 " + candidateDay.Value + "일 선택됨 → 청산일을 클릭하세요</color>"
                     : _c.Store.Public?.windowInformation == true ? "드래그 → 예약하기 · 양 끝을 끌어 조절 / 몸통을 끌어 이동 · 선택 후 Del / Backspace로 삭제"
-                    : "그래프에서 <b>진입일 → 청산일</b> 순서로 클릭 (보유 5~10일, 최대 2구간) · <color=#059669>초록</color> = 지금 고를 수 있는 날짜, 회색(미열람)도 선택 가능";
+                    : "그래프에서 <b>진입일 → 청산일</b> 순서로 클릭 (보유 5~10일, 최대 2구간) · <color=#34D399>초록</color> = 지금 고를 수 있는 날짜, 회색(미열람)도 선택 가능";
                 var hint = UiKit.Label(rows, guide, 12, Palette.SubText, TextAnchor.MiddleLeft);
                 UiKit.Place(hint.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(14, y - 4), new Vector2(400, 26));
             }
@@ -682,14 +753,14 @@ namespace BlackWhale.UI.View
             var allowed = _picker.AllowedRange(companyId);
             bool inAllowed = allowed.HasValue && day.Value >= allowed.Value.x && day.Value <= allowed.Value.y;
             if (!entry.HasValue && OrderEditable)
-                text += inAllowed ? "  <color=#059669>· 클릭 = 진입일</color>" : "  <color=#9CA3AF>· 진입 불가(30일까지 5일 보유 안 됨)</color>";
+                text += inAllowed ? "  <color=#34D399>· 클릭 = 진입일</color>" : "  <color=#A3A3A3>· 진입 불가(30일까지 5일 보유 안 됨)</color>";
             if (entry.HasValue && day.Value > entry.Value)
             {
                 bool ok = _picker.PreviewIsValid(companyId, day.Value);
                 var ret = DailyBarModel.IntervalReturnBps(bars, entry.Value, day.Value, _c.Store.View?.entryAtOpen == true);
                 text = entry.Value + "일 → " + day.Value + "일 · 보유 " + (day.Value - entry.Value) + "일"
                        + (ret.HasValue ? " · 알려진 값 기준 구간 " + DisplayFormat.Percent(ret.Value) + "p" : " · 끝점 미열람")
-                       + (ok ? "" : "  <color=#DC2626>(불가)</color>");
+                       + (ok ? "" : "  <color=#FFFFFF>(불가)</color>");
                 if (chart != null) chart.SetPreview(new Vector2Int(entry.Value, day.Value), ok);
             }
             else if (chart != null) chart.SetPreview(null, false);
@@ -713,7 +784,7 @@ namespace BlackWhale.UI.View
             }
             // 거절 이유를 그래프 바로 아래에도 보여 준다(클릭이 무시된 것처럼 보이지 않게)
             if (!string.IsNullOrEmpty(result.Message) && _chartTips.TryGetValue(companyId, out var tip) && tip != null)
-                tip.text = "<color=#DC2626>" + day + "일: " + result.Message + "</color>";
+                tip.text = "<color=#FFFFFF>" + day + "일: " + result.Message + "</color>";
         }
 
         private void BuildIntervalRow(RectTransform root, string companyId, int index, Interval iv, float y)
@@ -850,6 +921,7 @@ namespace BlackWhale.UI.View
         {
             if (chart == null || _draft == null) return;
             var company = _c.Store.View?.companies?.FirstOrDefault(c => c.companyId == companyId);
+            chart.SetCompany(companyId);
             chart.SetData(DailyBarModel.Build(company));
             chart.SetTradeIntervals(_draft.IntervalsOf(companyId));
             if (_c.Store.Public?.windowInformation == true) { UpdateMouseOrderRange(companyId); return; }
@@ -900,7 +972,7 @@ namespace BlackWhale.UI.View
             var card = UiKit.Panel(_body, "Result", Palette.Card, rounded: true);
             UiKit.Stretch(card.rectTransform, 6, 6, 6, 6);
             var sb = new System.Text.StringBuilder("<b>" + board.turn + "턴 결과</b>\n\n");
-            sb.Append("<size=13><color=#6B7280>순위      플레이어      총자산          이번 턴          누적 손익</color></size>\n");
+            sb.Append("<size=13><color=#8C8C8C>순위      플레이어      총자산          이번 턴          누적 손익</color></size>\n");
             foreach (var r in board.rows.OrderBy(r => r.rank).ThenBy(r => r.playerId))
             {
                 bool me = r.playerId == _c.LocalPlayerId;
@@ -927,7 +999,9 @@ namespace BlackWhale.UI.View
 
     public static class PhaseNames
     {
-        public static string ForState(PublicState state) => state?.stockSystem == true && state.phase == Protocol.Selection ? "주식 경쟁" : Korean(state?.phase);
+        public static string ForState(PublicState state) => state?.stockSystem == true && state.phase == Protocol.Investment
+            ? (state.stockSegmentIndex + 1) + "/6구간 · " + (state.stockSegmentRevealing ? "시장 공개" : "투자 선택")
+            : state?.stockSystem == true && state.phase == Protocol.Info ? "정보 공유" : Korean(state?.phase);
         public static string Korean(string phase)
         {
             switch (phase)

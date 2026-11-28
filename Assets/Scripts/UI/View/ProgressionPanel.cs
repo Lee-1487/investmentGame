@@ -11,7 +11,7 @@ namespace BlackWhale.UI.View
     // Uses real public/private snapshots; only unsubmitted drafts belong to this screen.
     public sealed class ProgressionPanel : MonoBehaviour
     {
-        private enum Page { None, Board, Ability, Auction, Shop, Inventory, Difficulty }
+        private enum Page { None, Board, Ability, Auction, Shop, Inventory }
         private GameClientController controller;
         private LobbyActions lobby;
         private RectTransform modal, content;
@@ -42,10 +42,11 @@ namespace BlackWhale.UI.View
             var nav = UiKit.Rect(root, "GameScreens");
             nav.anchorMin = new Vector2(0, 1); nav.anchorMax = Vector2.one;
             nav.offsetMin = new Vector2(148, -33); nav.offsetMax = new Vector2(-48, -2);
-            string[] labels = { "전광판", "입찰 결과", "내 능력", "상점", "보유 아이템", "BOT 난이도" };
-            Page[] pages = { Page.Board, Page.Auction, Page.Ability, Page.Shop, Page.Inventory, Page.Difficulty };
+            // 아이템이 기획에서 빠져 '상점'·'보유 아이템' 탭은 두지 않는다.
+            string[] labels = { "전광판", "입찰 결과", "내 능력" };
+            Page[] pages = { Page.Board, Page.Auction, Page.Ability };
             if (controller.Store.Public?.stockSystem == true)
-            { labels = new[] { "전광판", "주식 현황", "내 증강", "BOT 난이도" }; pages = new[] { Page.Board, Page.Auction, Page.Ability, Page.Difficulty }; }
+            { labels = new[] { "전광판", "공개된 배치", "게임 규칙" }; pages = new[] { Page.Board, Page.Auction, Page.Ability }; }
             for (int i = 0; i < labels.Length; i++)
             {
                 Page target = pages[i];
@@ -64,8 +65,6 @@ namespace BlackWhale.UI.View
             close.name = "CloseGameScreen";
             UiKit.Place((RectTransform)close.transform, new Vector2(1, 0), new Vector2(1, 0), new Vector2(-16, 14), new Vector2(130, 38));
         }
-        public void OpenShop() => Open(Page.Shop);
-        public void OpenInventory() => Open(Page.Inventory);
         public void OpenAbility() => Open(Page.Ability);
         private void Open(Page target)
         {
@@ -104,7 +103,7 @@ namespace BlackWhale.UI.View
             if (store.EndReason != endReason)
             { endReason = store.EndReason; if (!string.IsNullOrEmpty(endReason)) page = Page.Board; }
             string nextSignature = nextPhase + "|" + page + "|" + view?.turn + "|" + view?.ability?.selectedId + "|" + view?.ability?.freeInformationCredits
-                + "|" + view?.auction?.confirmed + "|" + state.botDifficulty + "|" + string.Join(",", view?.inventory ?? new string[0])
+                + "|" + view?.auction?.confirmed + "|" + string.Join(",", (state.players ?? Array.Empty<Player>()).Where(p => p.isBot).Select(p => p.playerId + ":" + p.botDifficulty + ":" + p.botPersonality)) + "|" + string.Join(",", view?.inventory ?? new string[0])
                 + "|" + store.HasPending(CommandTypes.SelectAbility) + "|" + store.HasPending(CommandTypes.SubmitBid)
                 + "|" + controller.IsDoneForCurrentPhase + "|" + store.LastError?.RequestId + "|" + state.events?.Length
                 + "|" + lobby?.Busy + "|" + state.paused
@@ -126,7 +125,7 @@ namespace BlackWhale.UI.View
                 controller.CanFinishPhase(), Palette.Accent, Color.white);
             feedback.text = endReason == "GAME_COMPLETE" ? (state.totalTurns > 0 ? state.totalTurns : 10) + "턴 게임이 종료되었습니다. 서버가 확정한 최종 결과입니다."
                 : !connected ? ErrorMessages.ToKorean(endReason) : store.LastError != null ? ErrorMessages.ToKorean(store.LastError.ErrorCode)
-                : mandatory ? "선택과 확정은 서버가 처리합니다. 다른 참가자의 개인 정보는 표시하지 않습니다." : "실제 게임 상태 · 화면을 닫아도 게임은 계속 진행됩니다.";
+                : ""; // '실제 게임 상태 · …' 같은 안내 문구는 표시하지 않음
             UiKit.Clear(content); abilityScreen = null; auctionScreen = null;
             if (((page == Page.Ability && state.phase == Protocol.AbilitySelection) || (page == Page.Auction && state.phase == Protocol.Auction))
                 && (view == null || view.turn != state.turn)) { Message("내 게임 정보를 받아오는 중입니다."); return; }
@@ -136,7 +135,7 @@ namespace BlackWhale.UI.View
                 case Page.Ability:
                     if (state.stockSystem)
                     {
-                        Message("<b>내 증강</b>\n\n" + string.Join("\n\n", (view?.portfolio?.augments ?? new string[0]).Select(id => "<b>" + StockRules.Name(id) + "</b>\n" + StockRules.Description(id))) + "\n\n증강은 1·3·5턴 정보 확인 후 선택합니다.");
+                        Message("<b>게임 규칙</b>\n\n투자말 3개 · 정보 공유 120초\n비공개 선택 10초 → 5일 시장 공개 2초 · 총 6구간\n\nFOOD: 기본 흐름 + 투자말 1개당 변동폭 2%p (최대 20%p)\nAUTO: 기본 흐름만 적용\nAI: 구간 상승 +15%p / 하락 −30%p\n상승 시 투자말당 하락 확률 5% 누적 · 미투자 구간은 0%\n투자 플레이어 3명 이상이면 하락\nBIO: 평소 ±1%p · Lightening +200%p (30일당 최대 1회)\n\n그래프에서 정보를 교환하고 예약 구간에서 찌라시를 보낼 수 있습니다.\n계획 통보는 자동 주문이 아닙니다. 증강은 현재 비활성화되어 있습니다.");
                         break;
                     }
                     var ability = LiveScreenModels.Ability(state, view, abilityDraft, store.HasPending(CommandTypes.SelectAbility), seconds);
@@ -149,8 +148,8 @@ namespace BlackWhale.UI.View
                 case Page.Auction:
                     if (state.stockSystem)
                     {
-                        Message("<b>기업별 주식 보유 현황</b>\n\n" + string.Join("\n\n", (state.shareMarket ?? new CompanyShareState[0]).Select(c =>
-                            "<b>" + c.companyId + "</b>" + (c.companyId == "BANK" ? " · 자동 예금\n" : " · 잔여 ■ ×" + (c.totalShares - c.owners.Sum(v => v.shares + v.reserved)) + "\n") + string.Join("   ", c.owners.Select(v => v.playerId + " " + v.shares + "주")))));
+                        Message("<b>최근 공개된 투자말 배치</b>\n비공개 선택 중에는 직전 구간 배치를 표시합니다.\n\n" + string.Join("\n\n", (state.shareMarket ?? new CompanyShareState[0]).Select(c =>
+                            "<b>" + c.companyId + "</b>\n" + string.Join("   ", c.owners.Select(v => v.playerId + " " + v.shares + "개")))));
                         break;
                     }
                     if (state.phase == Protocol.Auction)
@@ -181,15 +180,48 @@ namespace BlackWhale.UI.View
                         ? "정보 아이템은 공용 공개 후 정보 구매 창의 확대 화면에서 사용합니다. 프리패스는 9턴 입찰에서 사용합니다."
                         : "서버가 지급한 보유 아이템입니다. 프리패스는 9턴 입찰 화면에서 사용합니다.";
                     break;
-                case Page.Difficulty:
-                    Enum.TryParse(state.botDifficulty, out BotDifficulty difficulty);
-                    var panel = new BotDifficultyPanel(content);
-                    panel.Changed = value => { if (lobby?.Busy != true && lobby?.SetDifficulty != null) lobby.SetDifficulty(value); };
-                    panel.Show(difficulty, connected && controller.IsHost && lobby?.SetDifficulty != null && lobby.Busy == false, state.phase == Protocol.Lobby);
-                    break;
             }
         }
         private void Message(string text)
-        { var label = UiKit.Label(content, text, 18, Palette.SubText); UiKit.Stretch(label.rectTransform, 24, 24, 24, 24); }
+        {
+            // 주식 모드의 '내 증강' 페이지는 이름·설명뿐 아니라 실제 증강 이미지도 함께 보여줍니다.
+            // 데이터가 아직 오지 않은 대기 메시지에는 이미지를 만들지 않습니다.
+            var view = controller?.Store?.View;
+            if (controller?.Store?.Public?.stockSystem == true && page == Page.Ability
+                && view?.portfolio?.augments != null && view.portfolio.augments.Length > 0 && text.Contains("<b>"))
+            {
+                ShowStockAugments(view.portfolio);
+                return;
+            }
+
+            var label = UiKit.Label(content, text, 18, Palette.SubText); UiKit.Stretch(label.rectTransform, 24, 24, 24, 24);
+        }
+
+        private void ShowStockAugments(PortfolioState portfolio)
+        {
+            var title = UiKit.Label(content, "<b>내 증강</b>   <size=12>현재 보유한 증강</size>", 18, Palette.Text, TextAnchor.UpperLeft);
+            UiKit.Place(title.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(24, -48), new Vector2(420, 30));
+
+            string[] augments = portfolio.augments ?? new string[0];
+            for (int i = 0; i < augments.Length; i++)
+            {
+                string id = augments[i];
+                var row = UiKit.Panel(content, "OwnedAugment_" + id, Palette.Card, rounded: true);
+                var rowTransform = row.rectTransform;
+                rowTransform.anchorMin = new Vector2(0, 1);
+                rowTransform.anchorMax = new Vector2(1, 1);
+                rowTransform.pivot = new Vector2(.5f, 1);
+                float top = 92 + i * 118;
+                rowTransform.offsetMin = new Vector2(24, -top - 100);
+                rowTransform.offsetMax = new Vector2(-24, -top);
+
+                var artwork = AugmentArtwork.Create(row.transform, id, 82);
+                UiKit.Place(artwork, new Vector2(0, .5f), new Vector2(0, .5f), new Vector2(12, 0), new Vector2(82, 82));
+                var detail = UiKit.Label(row.transform,
+                    "<size=18><b>" + StockRules.Name(id) + "</b></size>\n" + StockRules.Description(id),
+                    14, Palette.Text, TextAnchor.MiddleLeft);
+                UiKit.Stretch(detail.rectTransform, 112, 12, 14, 12);
+            }
+        }
     }
 }

@@ -2,24 +2,47 @@ using System;
 using System.Collections.Generic;
 using BlackWhale.Rules;
 using BlackWhale.UI.Presentation;
+using BlackWhale.UI.View;
 using UnityEditor;
 using UnityEngine;
 
 namespace BlackWhale.UI.EditorTools
 {
     // Independent diagnostic samples. No room, transport, scene switch, or play-mode dependency.
-    public sealed class PatternLabWindow : EditorWindow
+    public sealed partial class PatternLabWindow : EditorWindow
     {
-        [SerializeField] private int seed = 20261108, turn = 1, companyIndex, mode;
-        [SerializeField] private bool candles, highlight = true;
+        [SerializeField] private int seed = 20261108, turn = 1, mode = 2;
+        [SerializeField] private bool highlight = true;
+        [SerializeField] private bool showMarketCloseLine = true;
+        [SerializeField] private int randomRevealStartDay = 0, randomRevealEndDay = 25;
+        [SerializeField] private int randomRevealCompany; // 0: random company, 1..6: company, 7: all.
+        private static readonly string[] RevealTargets = BuildRevealTargets();
+        private static string[] BuildRevealTargets()
+        {
+            var targets = new List<string> { "랜덤 기업" };
+            targets.AddRange(InvestmentRules.CompanyIds);
+            targets.Add("모두");
+            return targets.ToArray();
+        }
+        private readonly System.Random fogRandom = new System.Random();
+        private string randomRevealMessage = "";
         private Vector2 scroll;
         private int selected = -1;
+        private readonly HashSet<string> revealedMarketDays = new HashSet<string>();
+        private bool marketFog;
+        private float marketZoom = 1f;
+        private double marketExtentBps = 500;
+        private double marketCenterBps;
+        private string panningCompany;
+        private Rect panningRect;
+        private Vector2 panStartMouse;
+        private double panStartCenter, panSpan;
         private int renderedCardCount;
+        private int renderedMarketCandleCount, renderedCloseLinePointCount;
         private GUIStyle cardTitle, cardNote;
         private readonly List<StockPatternSample> samples = new List<StockPatternSample>();
         public IReadOnlyList<StockPatternSample> Samples => samples;
-        private static readonly string[] PatternNames = { "박스권 · Rectangle", "M자 · Double Top", "W자 · Double Bottom", "깃발형 · Flag", "AscendingTriangle", "DescendingTriangle", "RoundingBottom", "RoundingTop", "MeasuredMoveUp", "MeasuredMoveDown", "BumpAndRunTop", "HeadAndShouldersTop", "Pennant", "ThreeRisingValleys", "VBottom", "VTop" };
-        private static readonly string[] OutcomeNames = { "완성 분기", "실패·훼손 분기", "비패턴 대조군" };
+        private static readonly string[] PatternNames = { "박스권 · Rectangle", "M자 · Double Top", "W자 · Double Bottom", "깃발형 · Flag" };
         private static readonly string[] Turns = { "1턴", "2턴", "3턴", "4턴", "5턴", "6턴", "7턴", "8턴", "9턴", "10턴" };
 
         [MenuItem("BlackWhale/패턴 실험실", false, 120)]
@@ -28,49 +51,171 @@ namespace BlackWhale.UI.EditorTools
             var window = GetWindow<PatternLabWindow>("패턴 실험실", true, typeof(SceneView));
             window.minSize = new Vector2(1000, 640); window.Show();
         }
-        private void OnEnable() { titleContent = new GUIContent("패턴 실험실"); Rebuild(); }
-        public void Configure(int newSeed, int newTurn, int newCompanyIndex, bool normalMarket = false)
+        private void OnEnable() { titleContent = new GUIContent("패턴 실험실"); wantsMouseMove = true; wantsMouseEnterLeaveWindow = true; if (mode != 2) mode = 1; LoadAuthoringLibrary(); Rebuild(); }
+        public void Configure(int newSeed, int newTurn, bool normalMarket = false)
         {
             seed = newSeed; turn = Math.Max(1, Math.Min(10, newTurn));
-            companyIndex = Math.Max(0, Math.Min(InvestmentRules.CompanyIds.Length - 1, newCompanyIndex));
-            mode = normalMarket ? 1 : 0; selected = -1; Rebuild(); Repaint();
+            mode = normalMarket ? 1 : 2; selected = -1; Rebuild(); Repaint();
         }
         private void Rebuild()
         {
             samples.Clear();
+            revealedMarketDays.Clear();
+            randomRevealMessage = "";
+            marketExtentBps = 50;
             if (mode == 1)
-                foreach (string id in InvestmentRules.CompanyIds) samples.Add(PatternMarketGenerator.Inspect(seed, turn, id));
-            else
-                foreach (StockPatternKind pattern in Enum.GetValues(typeof(StockPatternKind)))
-                    foreach (StockPatternOutcome outcome in Enum.GetValues(typeof(StockPatternOutcome)))
-                        samples.Add(PatternMarketGenerator.Inspect(seed, turn, InvestmentRules.CompanyIds[companyIndex], pattern, outcome));
+                foreach (string id in InvestmentRules.CompanyIds)
+                {
+                    var sample = PatternMarketGenerator.Inspect(seed, turn, id, library: authoringLibrary);
+                    samples.Add(sample);
+                    foreach (int value in sample.DailyChangesBps)
+                        marketExtentBps = Math.Max(marketExtentBps, Math.Abs((double)value));
+                }
+            marketExtentBps *= 1.24;
         }
+        private void SetMarketFog(bool covered)
+        {
+            marketFog = covered;
+            revealedMarketDays.Clear();
+            randomRevealMessage = "";
+            Repaint();
+        }
+        private bool IsMarketDayHidden(string companyId, int day)
+            => marketFog && day > 0 && !revealedMarketDays.Contains(companyId + ":" + day);
+
+        private bool RevealRandomMarketFog()
+        {
+            int first = Mathf.Clamp(Math.Min(randomRevealStartDay, randomRevealEndDay), 0, 30);
+            int last = Mathf.Clamp(Math.Max(randomRevealStartDay, randomRevealEndDay), 0, 30);
+            var candidates = new List<KeyValuePair<string, int>>();
+            bool all = randomRevealCompany == RevealTargets.Length - 1;
+            var revealed = new List<string>();
+            foreach (var sample in samples)
+            {
+                if (!all && randomRevealCompany > 0 && sample.CompanyId != InvestmentRules.CompanyIds[randomRevealCompany - 1]) continue;
+                var companyCandidates = new List<KeyValuePair<string, int>>();
+                for (int day = first; day <= last; day++)
+                    if (IsMarketDayHidden(sample.CompanyId, day))
+                        companyCandidates.Add(new KeyValuePair<string, int>(sample.CompanyId, day));
+                if (all && companyCandidates.Count > 0)
+                {
+                    var chosenDay = companyCandidates[fogRandom.Next(companyCandidates.Count)];
+                    revealedMarketDays.Add(chosenDay.Key + ":" + chosenDay.Value);
+                    revealed.Add($"{chosenDay.Key} · {chosenDay.Value}일");
+                }
+                else candidates.AddRange(companyCandidates);
+            }
+            if (all && revealed.Count > 0)
+            {
+                randomRevealMessage = string.Join(", ", revealed) + " 공개";
+                Repaint(); return true;
+            }
+            // Sampling only remaining fog is equivalent to retrying revealed days, without an unbounded loop.
+            if (candidates.Count == 0)
+            {
+                randomRevealMessage = $"{first}~{last}일 범위에 남은 안개가 없습니다.";
+                Repaint(); return false;
+            }
+            var chosen = candidates[fogRandom.Next(candidates.Count)];
+            revealedMarketDays.Add(chosen.Key + ":" + chosen.Value);
+            randomRevealMessage = $"{chosen.Key} · {chosen.Value}일차 공개";
+            Repaint(); return true;
+        }
+
+        private ChartVerticalRange MarketRange()
+        {
+            double extent = marketExtentBps / marketZoom;
+            // Four equal intervals, with the same readable percentage ticks on every company.
+            double roughStep = extent / 2;
+            double magnitude = Math.Pow(10, Math.Floor(Math.Log10(roughStep)));
+            double step = Math.Ceiling(roughStep / magnitude) * magnitude;
+            return new ChartVerticalRange { MinBps = marketCenterBps - step * 2, MaxBps = marketCenterBps + step * 2 };
+        }
+        private bool HandleMarketPlotInput(Rect rect, string companyId, Event input)
+        {
+            if (panningCompany == companyId && panningRect == rect)
+            {
+                if (input.type == EventType.MouseDrag)
+                {
+                    marketCenterBps = panStartCenter + (input.mousePosition.y - panStartMouse.y) / rect.height * panSpan;
+                    input.Use(); Repaint(); return true;
+                }
+                if (input.type == EventType.MouseUp)
+                { panningCompany = null; input.Use(); Repaint(); return true; }
+            }
+            if (!rect.Contains(input.mousePosition)) return false;
+            if (input.type == EventType.MouseDown && (input.button == 2 || input.button == 0 && input.alt))
+            {
+                panningCompany = companyId; panningRect = rect;
+                panStartMouse = input.mousePosition; panStartCenter = marketCenterBps; panSpan = MarketRange().Span;
+                input.Use(); return true;
+            }
+            if (input.type == EventType.ScrollWheel)
+            {
+                marketZoom = Mathf.Clamp(marketZoom * Mathf.Pow(1.12f, -input.delta.y), .1f, 100f);
+                input.Use(); Repaint(); return true;
+            }
+            if (input.type == EventType.MouseDown && input.button == 0)
+            {
+                int day = Mathf.Clamp(Mathf.FloorToInt((input.mousePosition.x - rect.x) / rect.width * 31), 0, 30);
+                if (IsMarketDayHidden(companyId, day))
+                {
+                    revealedMarketDays.Add(companyId + ":" + day);
+                    input.Use(); Repaint(); return true;
+                }
+            }
+            return false;
+        }
+        private void OnLostFocus() { panningCompany = null; }
         private void OnGUI()
         {
-            if (Event.current.type == EventType.Repaint) renderedCardCount = 0;
+            if (Event.current.type == EventType.Repaint) renderedCardCount = renderedMarketCandleCount = renderedCloseLinePointCount = 0;
             if (cardTitle == null)
             {
                 cardTitle = new GUIStyle(EditorStyles.boldLabel); cardTitle.normal.textColor = new Color(.92f, .95f, 1);
                 cardNote = new GUIStyle(EditorStyles.miniLabel); cardNote.normal.textColor = new Color(.70f, .77f, .84f);
             }
+            DrawVolatilitySettings();
             EditorGUI.BeginChangeCheck();
-            mode = GUILayout.Toolbar(mode, new[] { "패턴별 비교 · 16종 × 3분기", "일반 게임 생성 · 6종목" }, GUILayout.Height(28));
+            int previousMode = mode;
+            mode = GUILayout.Toolbar(mode == 2 ? 1 : 0, new[] { "일반 게임 생성 · 6종목", "기업별 패턴 · 조합/직접 그리기" }, GUILayout.Height(28)) + 1;
+            if (mode != previousMode)
+            { EditorGUI.EndChangeCheck(); selected = -1; Rebuild(); Repaint(); GUIUtility.ExitGUI(); }
+            if (mode == 2) { EditorGUI.EndChangeCheck(); DrawAuthoring(); return; }
             using (new EditorGUILayout.HorizontalScope())
             {
                 seed = EditorGUILayout.IntField("시드", seed, GUILayout.Width(230));
                 turn = EditorGUILayout.Popup(turn - 1, Turns, GUILayout.Width(75)) + 1;
-                using (new EditorGUI.DisabledScope(mode != 0)) companyIndex = EditorGUILayout.Popup(companyIndex, InvestmentRules.CompanyIds, GUILayout.Width(85));
-                candles = GUILayout.Toggle(candles, "캔들", GUILayout.Width(65));
+                GUILayout.Label("일봉 캔들", GUILayout.Width(80));
                 highlight = GUILayout.Toggle(highlight, "패턴 위치 강조", GUILayout.Width(115));
                 GUILayout.FlexibleSpace();
                 if (GUILayout.Button("새 시드", GUILayout.Width(75))) { seed = RandomMarketGenerator.NewSeed(); GUI.changed = true; }
                 if (GUILayout.Button("다시 생성", GUILayout.Width(85))) GUI.changed = true;
             }
             if (EditorGUI.EndChangeCheck()) { selected = -1; Rebuild(); }
-            EditorGUILayout.HelpBox(mode == 0
-                ? "기존 생성기의 패턴·분기를 고정한 비교 샘플입니다. 비패턴 열은 형태를 넣지 않은 대조군입니다. 카드를 누르면 크게 봅니다."
-                : "일반 게임과 같은 시드·턴으로 생성한 전체 시장입니다. 유형과 구간 정보는 이 개발용 창에서만 표시합니다.", MessageType.Info);
-            EditorGUILayout.LabelField("Y축은 표시된 값만으로 자동 맞춤 · 상·하한 % 미표시 · 시가=전날 종가 · 실제 게임/씬과 연결되지 않음", EditorStyles.miniLabel);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("안개 모두 씌우기", GUILayout.Width(130))) SetMarketFog(true);
+                if (GUILayout.Button("안개 모두 없애기", GUILayout.Width(130))) SetMarketFog(false);
+                if (GUILayout.Button(showMarketCloseLine ? "꺾은선 끄기" : "꺾은선 켜기", GUILayout.Width(100)))
+                { showMarketCloseLine = !showMarketCloseLine; Repaint(); }
+                if (GUILayout.Button("배율·위치 초기화", GUILayout.Width(125))) { marketZoom = 1f; marketCenterBps = 0; Repaint(); }
+                GUILayout.Label($"공통 % 축 · 세로 배율 {marketZoom:0.##}배", EditorStyles.miniLabel);
+            }
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.Label("랜덤 공개 범위", GUILayout.Width(90));
+                randomRevealStartDay = Mathf.Clamp(EditorGUILayout.IntField(randomRevealStartDay, GUILayout.Width(45)), 0, 30);
+                GUILayout.Label("~", GUILayout.Width(12));
+                randomRevealEndDay = Mathf.Clamp(EditorGUILayout.IntField(randomRevealEndDay, GUILayout.Width(45)), 0, 30);
+                GUILayout.Label("일 (양 끝 포함)", GUILayout.Width(90));
+                randomRevealCompany = EditorGUILayout.Popup(randomRevealCompany, RevealTargets, GUILayout.Width(95));
+                if (GUILayout.Button(new GUIContent("랜덤 안개 1개 없애기", "선택 기업에서 남은 안개 한 칸을 공개합니다. '모두'는 각 기업에서 한 칸씩 공개하며 이미 공개된 칸은 제외합니다."), GUILayout.Width(155)))
+                    RevealRandomMarketFog();
+                GUILayout.Label(randomRevealMessage, EditorStyles.miniLabel);
+            }
+            EditorGUILayout.HelpBox("카드를 누르면 크게 봅니다. 안개를 클릭하면 해당 기업의 하루만 공개됩니다(0일차는 항상 공개). 휠: 확대·축소 · 가운데 버튼 또는 Alt+왼쪽 드래그: 세로 이동 · 모든 기업에 같은 % 축과 배율·위치를 적용합니다.", MessageType.Info);
+            EditorGUILayout.LabelField("기본 패턴: 규칙 기반 변형 + hidden · 사용자 패턴: 등록 모양 유지 · 실제 게임과 동일한 가격 생성", EditorStyles.miniLabel);
             scroll = EditorGUILayout.BeginScrollView(scroll);
             if (selected >= 0 && selected < samples.Count)
             {
@@ -93,32 +238,43 @@ namespace BlackWhale.UI.EditorTools
                     int index = row * columns + column; if (index >= samples.Count) continue;
                     Rect card = new Rect(strip.x + column * (width + 8), strip.y, width, 184);
                     DrawCard(card, samples[index], index == selected);
-                    if (Event.current.type == EventType.MouseDown && card.Contains(Event.current.mousePosition))
+                    if (Event.current.type == EventType.MouseDown && Event.current.button == 0 && card.Contains(Event.current.mousePosition))
                     { selected = index == selected ? -1 : index; Event.current.Use(); Repaint(); }
                 }
             }
             EditorGUILayout.EndScrollView();
-            if (Event.current.type == EventType.MouseMove) Repaint();
+            if (Event.current.type == EventType.MouseMove || Event.current.type == EventType.MouseLeaveWindow) Repaint();
         }
         private void DrawCard(Rect card, StockPatternSample sample, bool active)
         {
             if (Event.current.type == EventType.Repaint) renderedCardCount++;
             EditorGUI.DrawRect(card, active ? new Color(.16f, .28f, .40f) : new Color(.16f, .17f, .20f));
             var header = new Rect(card.x + 10, card.y + 6, card.width - 20, 20);
-            GUI.Label(header, sample.CompanyId + "   " + PatternNames[(int)sample.Pattern], cardTitle);
-            GUI.Label(new Rect(header.x, header.y + 20, header.width, 18), OutcomeNames[(int)sample.Outcome], cardNote);
-            Rect plot = new Rect(card.x + 10, card.y + 48, card.width - 20, card.height - 75);
+            GUI.Label(header, sample.CompanyId + "   " + (sample.CustomPatternName ?? PatternNames[(int)sample.Pattern]), cardTitle);
+            GUI.Label(new Rect(header.x, header.y + 20, header.width, 18), (sample.IsBasePattern ? "공유 기본 패턴" : "기업별 사용자 패턴") + $" · 시드 {sample.Seed}", cardNote);
+            Rect plot = new Rect(card.x + 57, card.y + 48, card.width - 67, card.height - 75);
+            var range = MarketRange();
+            for (int tick = 0; tick <= 4; tick++)
+            {
+                double value = range.MaxBps - range.Span * tick / 4;
+                GUI.Label(new Rect(card.x + 3, plot.y + plot.height * tick / 4 - 8, 53, 16),
+                    (value / 100).ToString("0.##") + "%", cardNote);
+            }
             DrawPlot(plot, sample);
             string footer = sample.Outcome == StockPatternOutcome.Unstructured ? "형태 없는 추세·횡보 경로"
-                : "주 패턴 배치: " + sample.StartDay + "~" + sample.EndDay + "일";
+                : "주 패턴 배치: " + sample.StartDay + "~" + sample.EndDay + "일 · hidden " + sample.Hidden;
             GUI.Label(new Rect(card.x + 10, card.yMax - 20, card.width - 20, 18), footer, cardNote);
         }
         private void DrawPlot(Rect rect, StockPatternSample sample)
         {
+            EditorGUIUtility.AddCursorRect(rect, MouseCursor.Pan);
+            HandleMarketPlotInput(rect, sample.CompanyId, Event.current);
+            GUI.BeginGroup(rect);
+            rect = new Rect(0, 0, rect.width, rect.height);
             EditorGUI.DrawRect(rect, new Color(.065f, .085f, .12f));
-            var range = ChartVerticalRange.FromVisibleValues(sample.DailyChangesBps);
+            var range = MarketRange();
             float X(int day) => rect.x + (day + .5f) / 31 * rect.width;
-            float Y(int bps) => rect.yMax - (float)range.Fraction(bps) * rect.height;
+            float Y(int bps) => rect.yMax - (float)((bps - range.MinBps) / range.Span) * rect.height;
             if (highlight && sample.Outcome != StockPatternOutcome.Unstructured)
                 EditorGUI.DrawRect(new Rect(rect.x + sample.StartDay / 31f * rect.width, rect.y,
                     (sample.EndDay - sample.StartDay + 1) / 31f * rect.width, rect.height), new Color(.15f, .30f, .42f, .35f));
@@ -130,19 +286,62 @@ namespace BlackWhale.UI.EditorTools
             Handles.DrawDottedLine(new Vector3(rect.x, Y(0)), new Vector3(rect.xMax, Y(0)), 4);
             var points = new Vector3[31];
             for (int day = 0; day <= 30; day++) points[day] = new Vector3(X(day), Y(sample.DailyChangesBps[day]));
-            Handles.color = new Color(.30f, .82f, .94f, candles ? .45f : 1);
-            Handles.DrawAAPolyLine(candles ? 1 : 2.5f, points);
             Handles.EndGUI();
-            if (candles)
-                for (int day = 1; day <= 30; day++)
+            for (int day = 0; day <= 30; day++)
                 {
-                    int open = sample.DailyChangesBps[day - 1], close = sample.DailyChangesBps[day];
-                    float top = Math.Min(Y(open), Y(close)), height = Math.Max(1.5f, Math.Abs(Y(open) - Y(close)));
-                    EditorGUI.DrawRect(new Rect(X(day) - rect.width / 31 * .3f, top, rect.width / 31 * .6f, height),
-                        close > open ? new Color(.95f, .35f, .35f) : close < open ? new Color(.30f, .55f, .98f) : Color.gray);
+                    if (IsMarketDayHidden(sample.CompanyId, day)) continue;
+                    int open = sample.DailyChangesBps[Math.Max(0, day - 1)], close = sample.DailyChangesBps[day];
+                    float height = Math.Max(2, Math.Abs(Y(open) - Y(close)));
+                    EditorGUI.DrawRect(new Rect(X(day) - rect.width / 31 * .31f, (Y(open) + Y(close)) / 2 - height / 2, rect.width / 31 * .62f, height),
+                        close > open ? (Color)BarChartGraphic.UpColor : close < open ? (Color)BarChartGraphic.DownColor : (Color)BarChartGraphic.FlatColor);
+                    if (Event.current.type == EventType.Repaint) renderedMarketCandleCount++;
                 }
+            if (showMarketCloseLine)
+            {
+                Handles.BeginGUI();
+                Handles.color = new Color(.30f, .82f, .94f);
+                // Only join consecutive revealed days; a visible fragment must never point toward a hidden price.
+                for (int day = 0; day <= 30; day++)
+                {
+                    if (IsMarketDayHidden(sample.CompanyId, day)) continue;
+                    int start = day;
+                    while (day < 30 && !IsMarketDayHidden(sample.CompanyId, day + 1)) day++;
+                    int count = day - start + 1;
+                    if (count < 2) continue;
+                    var visiblePoints = new Vector3[count];
+                    Array.Copy(points, start, visiblePoints, 0, count);
+                    Handles.DrawAAPolyLine(2, visiblePoints);
+                    if (Event.current.type == EventType.Repaint) renderedCloseLinePointCount += count;
+                }
+                Handles.EndGUI();
+            }
+            float DayEdge(int day) => Mathf.Round(day / 31f * rect.width * EditorGUIUtility.pixelsPerPoint) / EditorGUIUtility.pixelsPerPoint;
+            for (int day = 1; day <= 30; day++)
+            {
+                if (!IsMarketDayHidden(sample.CompanyId, day)) continue;
+                int start = day;
+                while (day < 30 && IsMarketDayHidden(sample.CompanyId, day + 1)) day++;
+                // Paint adjacent hidden days as one solid, pixel-aligned span to avoid fractional-width seams.
+                var fog = new Rect(DayEdge(start), rect.y, DayEdge(day + 1) - DayEdge(start), rect.height);
+                EditorGUI.DrawRect(fog, new Color(.22f, .25f, .30f, 1));
+                EditorGUIUtility.AddCursorRect(fog, MouseCursor.Link);
+            }
+            // Keep the solid cover underneath; day boundaries are strokes, never gaps in the fog.
+            float borderWidth = 1f / EditorGUIUtility.pixelsPerPoint;
+            for (int day = 1; day <= 30; day++)
+            {
+                if (!IsMarketDayHidden(sample.CompanyId, day)) continue;
+                var fog = new Rect(DayEdge(day), rect.y, DayEdge(day + 1) - DayEdge(day), rect.height);
+                EditorGUI.DrawRect(new Rect(fog.x, fog.y, borderWidth, fog.height), new Color(.40f, .45f, .52f, 1));
+                if (day == 30 || !IsMarketDayHidden(sample.CompanyId, day + 1))
+                    EditorGUI.DrawRect(new Rect(fog.xMax - borderWidth, fog.y, borderWidth, fog.height), new Color(.40f, .45f, .52f, 1));
+                if (fog.Contains(Event.current.mousePosition) && Event.current.type != EventType.MouseLeaveWindow)
+                    EditorGUI.DrawRect(fog, new Color(.60f, .78f, 1f, .18f));
+                GUI.Label(fog, new GUIContent("", $"{sample.CompanyId} · {day}일차 · 클릭하여 안개 없애기"), GUIStyle.none);
+            }
             foreach (int day in new[] { 0, 10, 20, 30 })
                 GUI.Label(new Rect(Mathf.Clamp(X(day) - 10, rect.x, rect.xMax - 30), rect.yMax - 17, 30, 16), day + "일", cardNote);
+            GUI.EndGroup();
         }
     }
 }

@@ -3,8 +3,11 @@
     "rootNamespace": "BlackWhale.UI.EditorTools",
     "references": [
         "BlackWhale.UI.Dev",
+        "UnityEngine.UI",
         "BlackWhale.Rules.Market",
-        "BlackWhale.UI"
+        "BlackWhale.UI",
+        "BlackWhale.Bots",
+        "BlackWhale.Shared"
     ],
     "includePlatforms": [
         "Editor"

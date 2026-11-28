@@ -236,8 +236,22 @@ namespace BlackWhale.UI.Presentation
         public static string Safe(string text) => (text ?? "").Replace("<", "‹").Replace(">", "›");
         public static string Name(PublicState state, string id)
         {
-            string name = state?.players?.FirstOrDefault(p => p.playerId == id)?.displayName;
-            return Safe(string.IsNullOrEmpty(name) ? id : name);
+            var players = state?.players ?? new Player[0];
+            var player = players.FirstOrDefault(p => p.playerId == id);
+            if (player == null) return Safe(id);
+            if (player.isBot)
+            {
+                int botNo = 0;
+                foreach (var p in players)
+                {
+                    if (p == null || !p.isBot) continue;
+                    botNo++;
+                    if (p == player) break;
+                }
+                return "bot" + (botNo > 0 ? botNo : 1);
+            }
+            string name = player.displayName;
+            return Safe(string.IsNullOrWhiteSpace(name) ? id : name);
         }
 
         public static AbilityPickModel Ability(PublicState state, PlayerView view, string draft, bool pending, int seconds)

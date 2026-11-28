@@ -24,19 +24,16 @@ namespace BlackWhale.UI.View
             bool gain = turnReturnBps > 0, loss = turnReturnBps < 0;
             Color tone = gain ? Palette.Up : loss ? Palette.Down : Palette.SubText;
 
-            // 가장자리 번쩍임(수익: 금빛, 손실: 붉은빛). 화면 전체는 덮지 않는다.
-            if (gain || loss)
-                EdgeFlash.Play(root, gain ? new Color(0.98f, 0.75f, 0.14f) : new Color(0.86f, 0.12f, 0.12f), 0.9f);
+            // 주변 테두리 번쩍임 효과는 쓰지 않음
 
-            // 가운데 카드
-            var card = UiKit.Panel(root, "Card", ScreenKit.Ink, rounded: true);
-            UiKit.Place(card.rectTransform, new Vector2(.5f, .5f), new Vector2(.5f, .5f), new Vector2(0, 10), new Vector2(430, 200));
+            // 네모 카드 대신 '결과 발표'와 같은 가로 띠 배경(화면 가로 전체, 테두리 없음)
+            var card = UiKit.Panel(root, "Card", new Color(0.06f, 0.06f, 0.06f, 0.94f));
             card.raycastTarget = false;
-            var border = card.gameObject.AddComponent<Outline>();
-            border.effectColor = gain ? ScreenKit.Amber : tone; border.effectDistance = new Vector2(3, -3);
+            card.rectTransform.anchorMin = new Vector2(0, .5f); card.rectTransform.anchorMax = new Vector2(1, .5f);
+            card.rectTransform.anchoredPosition = Vector2.zero; card.rectTransform.sizeDelta = new Vector2(0, 200);
 
             string head = final ? "최종 정산" : turn + "턴 정산";
-            string rankText = rank > 0 ? (rank == 1 ? "<color=#FBBF24><b>1위!</b></color>" : rank + "위") : "";
+            string rankText = rank > 0 ? (rank == 1 ? "<color=#FFFFFF><b>1위!</b></color>" : rank + "위") : "";
             var title = UiKit.Label(card.transform, "<b>" + head + "</b>   <size=16>" + rankText + "</size>", 20, Color.white, TextAnchor.UpperCenter);
             UiKit.Stretch(title.rectTransform, 10, 16, 10, 0);
 
@@ -44,13 +41,23 @@ namespace BlackWhale.UI.View
             UiKit.Stretch(pct.rectTransform, 10, 50, 10, 60);
             UiAnim.Count(pct, 0, turnReturnBps, v => DisplayFormat.Percent((int)v), 1.2f, 0.25f);
 
-            var assets = UiKit.Label(card.transform, "", 18, new Color(0.9f, 0.92f, 0.95f), TextAnchor.LowerCenter);
+            var assets = UiKit.Label(card.transform, "", 18, new Color(0.9f, 0.9f, 0.9f), TextAnchor.LowerCenter);
             UiKit.Stretch(assets.rectTransform, 10, 0, 10, 18);
             UiAnim.Count(assets, prevAssets, nowAssets, v => "자산 " + DisplayFormat.Money(prevAssets) + "  →  <b>" + DisplayFormat.Money(v) + "</b>", 1.4f, 0.35f);
 
-            UiAnim.Rise(card.rectTransform, 0f, 50f, 0.35f);
-            UiAnim.Pulse(card.rectTransform, 0.35f, gain ? 1.12f : 1.05f);
-            if (loss) Shake.Play(card.rectTransform, 0.4f, 0.45f, 9f);
+            if (gain)
+            {
+                UiAnim.Pulse(assets.rectTransform, 0.35f, 1.12f);
+                UiSound.Play(UiSound.Kind.ResultGood);
+            }
+            else if (loss)
+            {
+                UiAnim.Pulse(pct.rectTransform, 0.35f, 1.10f);
+                Shake.Play(card.rectTransform, 0.35f, 0.42f, 8f);
+                UiSound.Play(UiSound.Kind.ResultBad);
+            }
+
+            // 흔들림·튀는 효과, 올라오는 움직임 없이 결과 발표 띠처럼 그 자리에 나타났다가 서서히 사라짐
 
             UiAnim.FadeOut(card.rectTransform, Seconds - 0.5f, 0.5f);
             if (Application.isPlaying) Object.Destroy(root.gameObject, Seconds + 0.3f);
@@ -94,17 +101,15 @@ namespace BlackWhale.UI.View
             var root = UiKit.Rect(screen, "ResultAnnouncement");
             UiKit.Stretch(root);
 
-            EdgeFlash.Play(root, new Color(0.98f, 0.75f, 0.14f), 1.2f);
-            var band = UiKit.Panel(root, "Band", new Color(0.07f, 0.09f, 0.15f, 0.92f));
+            var band = UiKit.Panel(root, "Band", new Color(0.06f, 0.06f, 0.06f, 0.94f));
             band.raycastTarget = false;
             band.rectTransform.anchorMin = new Vector2(0, .5f); band.rectTransform.anchorMax = new Vector2(1, .5f);
             band.rectTransform.sizeDelta = new Vector2(0, 150);
-            var title = UiKit.Label(band.transform, (final ? "최종" : turn + "턴") + " 결과 발표", 54, new Color32(0xFB, 0xBF, 0x24, 0xFF), TextAnchor.MiddleCenter, FontStyle.Bold);
+            var title = UiKit.Label(band.transform, (final ? "최종" : turn + "턴") + " 결과 발표", 54, new Color32(0xFF, 0xFF, 0xFF, 0xFF), TextAnchor.MiddleCenter, FontStyle.Bold);
             UiKit.Stretch(title.rectTransform, 0, 0, 0, 34);
             var sub = UiKit.Label(band.transform, "이번 턴 수익과 순위가 확정되었습니다", 18, Color.white, TextAnchor.LowerCenter);
             UiKit.Stretch(sub.rectTransform, 0, 0, 0, 16);
 
-            UiAnim.Pulse(title.rectTransform, 0.05f, 1.25f);
             UiAnim.FadeOut(band.rectTransform, 1.8f, 0.45f);
             if (Application.isPlaying) Object.Destroy(root.gameObject, 2.6f);
         }
@@ -118,14 +123,12 @@ namespace BlackWhale.UI.View
             if (screen == null || string.IsNullOrEmpty(text)) return;
             var root = UiKit.Rect(screen, "ReversalFx");
             UiKit.Stretch(root);
-            var band = UiKit.Panel(root, "Band", mine ? new Color32(0xDC, 0x26, 0x26, 0xF0) : new Color32(0x7C, 0x3A, 0xED, 0xF0), rounded: true);
+            var band = UiKit.Panel(root, "Band", mine ? new Color32(0x24, 0x24, 0x24, 0xF0) : new Color32(0x16, 0x16, 0x16, 0xF0), rounded: true);
             band.raycastTarget = false;
             UiKit.Place(band.rectTransform, new Vector2(.5f, 1), new Vector2(.5f, 1), new Vector2(0, -90), new Vector2(560, 70));
             var label = UiKit.Label(band.transform, "<size=30><b>역전!</b></size>   " + text, 18, Color.white, TextAnchor.MiddleCenter);
             UiKit.Stretch(label.rectTransform, 10, 0, 10, 0);
             UiAnim.Rise(band.rectTransform, delay, -40f, 0.35f); // 위에서 내려오기
-            UiAnim.Pulse(band.rectTransform, delay + 0.35f, 1.12f);
-            Shake.Play(band.rectTransform, delay + 0.5f, 0.35f, 6f);
             UiAnim.FadeOut(band.rectTransform, delay + 3.0f, 0.4f);
             if (Application.isPlaying) Object.Destroy(root.gameObject, delay + 3.6f);
         }
@@ -192,7 +195,7 @@ namespace BlackWhale.UI.View
         private readonly float _maxAlpha, _breathSpeed;
         private float _level, _target;
 
-        public UrgencyEdges(RectTransform screen) : this(screen, new Color(0.86f, 0.12f, 0.12f), 0.16f, 1.2f) { }
+        public UrgencyEdges(RectTransform screen) : this(screen, new Color(1f, 1f, 1f), 0.16f, 1.2f) { }
 
         /// <param name="breathSpeed">초당 깜박임 횟수 비슷한 값. 0이면 깜박이지 않음</param>
         public UrgencyEdges(RectTransform screen, Color color, float maxAlpha, float breathSpeed)
