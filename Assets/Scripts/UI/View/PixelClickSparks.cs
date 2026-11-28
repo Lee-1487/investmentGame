@@ -12,6 +12,8 @@ namespace BlackWhale.UI.View
         private const float Life = 0.95f;     // 파편이 사라질 때까지(초): 튀어 올랐다 떨어지는 게 보이게
         private const float Gravity = -1100f; // 아래로 떨어지는 힘(캔버스 px/초²)
 
+        private const float Speed = 240f;   // 튀는 세기(모든 파편 같음 → 범위 일정)
+        private readonly System.Random _rng = new System.Random();
         private static readonly Color32 SparkColor = new Color32(0xA0, 0xA0, 0xA0, 0xFF); // 회색
 
         private struct Spark { public RectTransform Rt; public Image Img; public Vector2 Vel, Pos; public float Age, Floor; public int Bounces; public bool On; }
@@ -86,13 +88,12 @@ namespace BlackWhale.UI.View
             for (int k = 0; k < PerClick; k++)
             {
                 var s = _sparks[_next]; _next = (_next + 1) % Pool;
-                // 누를 때마다 똑같은 모양: 부채꼴로 고르게 퍼지고(가운데가 가장 높이) 같은 높이에서 통통
-                float u = PerClick > 1 ? k / (float)(PerClick - 1) : 0.5f;   // 0 ~ 1
-                float side = u * 2f - 1f;                                     // -1(왼쪽) ~ 1(오른쪽)
-                s.Vel = new Vector2(side * 340f, 260f + 280f * (1f - Mathf.Abs(side)));
+                // 튀는 방향(모양)은 매번 무작위, 튀는 세기(범위)는 항상 같게
+                float angle = Mathf.Lerp(25f, 155f, (float)_rng.NextDouble()) * Mathf.Deg2Rad; // 위쪽 부채꼴 안에서 아무 방향
+                s.Vel = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * Speed;
                 s.Age = 0; s.On = true; s.Bounces = 0;
-                s.Floor = local.y - 64f;
-                float size = k % 2 == 0 ? 4f : 2f;
+                s.Floor = local.y - 48f;
+                float size = _rng.NextDouble() < 0.4 ? 2f : 4f;
                 s.Rt.sizeDelta = new Vector2(size, size);
                 s.Pos = local; s.Rt.anchoredPosition = local;
                 s.Img.color = SparkColor;
