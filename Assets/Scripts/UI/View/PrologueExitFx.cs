@@ -9,7 +9,7 @@ namespace BlackWhale.UI.View
 {
     public sealed class PrologueExitFx : MonoBehaviour
     {
-        private const float Seconds = 0.9f;
+        private const float Seconds = 2.7f; // 예전 0.9초의 3배: 천천히 시작해 점점 빨라짐
         private Canvas _canvas;
         private bool _wasShowing;
 
@@ -97,7 +97,7 @@ namespace BlackWhale.UI.View
 
             private void Apply(float p)
             {
-                float ease = 1f - (1f - p) * (1f - p);              // 처음엔 빠르게, 끝에 천천히
+                float ease = p * p * p;                              // 처음엔 아주 천천히, 갈수록 빨라짐(가속)
                 float scale = Mathf.Lerp(1f, 1.35f, ease);           // 초대장 안으로 들어가듯 확대
                 float spread = Mathf.Lerp(0f, 18f, ease);            // 번짐(복사본이 사방으로 벌어짐)
                 for (int i = 0; i < _copies.Length; i++)
@@ -105,8 +105,8 @@ namespace BlackWhale.UI.View
                     _copies[i].localScale = new Vector3(scale, scale, 1f);
                     _copies[i].anchoredPosition = Dirs[i] * spread;
                 }
-                _group.alpha = 1f - Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.15f, 1f, p)); // 흐려지며 사라짐
-                _black.color = new Color(0, 0, 0, 1f - Mathf.InverseLerp(0f, 0.5f, p));
+                _group.alpha = 1f - Mathf.Pow(Mathf.InverseLerp(0.2f, 1f, p), 2f);            // 흐려지며 사라짐(끝으로 갈수록 빠르게)
+                _black.color = new Color(0, 0, 0, 1f - Mathf.InverseLerp(0.3f, 0.8f, p));
                 if (_connection != null)
                 {
                     float c = Mathf.Lerp(0.94f, 1f, ease);           // 방 만들기 화면이 살짝 작았다가 제 크기로
