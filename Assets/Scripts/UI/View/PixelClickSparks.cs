@@ -12,14 +12,7 @@ namespace BlackWhale.UI.View
         private const float Life = 0.95f;     // 파편이 사라질 때까지(초): 튀어 올랐다 떨어지는 게 보이게
         private const float Gravity = -1100f; // 아래로 떨어지는 힘(캔버스 px/초²)
 
-        private static readonly Color32[] Colors =
-        {
-            new Color32(0xF2, 0xE6, 0xCC, 0xFF), // 크림
-            new Color32(0xD9, 0xC7, 0xA0, 0xFF), // 베이지
-            new Color32(0xE8, 0x89, 0x2B, 0xFF), // 주황
-            new Color32(0xFF, 0x4D, 0x4D, 0xFF), // 빨강
-            new Color32(0x5C, 0xD1, 0x7A, 0xFF), // 초록
-        };
+        private static readonly Color32 SparkColor = new Color32(0xA0, 0xA0, 0xA0, 0xFF); // 회색
 
         private struct Spark { public RectTransform Rt; public Image Img; public Vector2 Vel; public float Age, Floor; public int Bounces; public bool On; }
 
@@ -27,7 +20,6 @@ namespace BlackWhale.UI.View
         private RectTransform _layer;
         private Canvas _canvas;
         private int _next;
-        private readonly System.Random _rng = new System.Random();
 
         /// <summary>parent가 속한 최상위 캔버스에 효과를 한 번만 붙인다.</summary>
         public static void Attach(Transform parent)
@@ -91,16 +83,16 @@ namespace BlackWhale.UI.View
             for (int k = 0; k < PerClick; k++)
             {
                 var s = _sparks[_next]; _next = (_next + 1) % Pool;
-                // 위로 톡 튀어 올랐다가 떨어지며 바닥에서 한두 번 통통
-                float vx = (float)(_rng.NextDouble() * 2 - 1) * 340f; // 좌우로 넓게
-                float vy = 260f + (float)_rng.NextDouble() * 280f;    // 더 높이
-                s.Vel = new Vector2(vx, vy);
+                // 누를 때마다 똑같은 모양: 부채꼴로 고르게 퍼지고(가운데가 가장 높이) 같은 높이에서 통통
+                float u = PerClick > 1 ? k / (float)(PerClick - 1) : 0.5f;   // 0 ~ 1
+                float side = u * 2f - 1f;                                     // -1(왼쪽) ~ 1(오른쪽)
+                s.Vel = new Vector2(side * 340f, 260f + 280f * (1f - Mathf.Abs(side)));
                 s.Age = 0; s.On = true; s.Bounces = 0;
-                s.Floor = local.y - 40f - (float)_rng.NextDouble() * 50f;
-                float size = _rng.NextDouble() < 0.35 ? 2f : 4f; // 작게
+                s.Floor = local.y - 64f;
+                float size = k % 2 == 0 ? 4f : 2f;
                 s.Rt.sizeDelta = new Vector2(size, size);
                 s.Rt.anchoredPosition = local;
-                s.Img.color = Colors[_rng.Next(Colors.Length)];
+                s.Img.color = SparkColor;
                 s.Rt.gameObject.SetActive(true);
                 _sparks[_next == 0 ? Pool - 1 : _next - 1] = s;
             }
