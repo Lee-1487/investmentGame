@@ -14,7 +14,7 @@ namespace BlackWhale.UI.View
 
         private static readonly Color32 SparkColor = new Color32(0xA0, 0xA0, 0xA0, 0xFF); // 회색
 
-        private struct Spark { public RectTransform Rt; public Image Img; public Vector2 Vel; public float Age, Floor; public int Bounces; public bool On; }
+        private struct Spark { public RectTransform Rt; public Image Img; public Vector2 Vel, Pos; public float Age, Floor; public int Bounces; public bool On; }
 
         private readonly Spark[] _sparks = new Spark[Pool];
         private RectTransform _layer;
@@ -61,12 +61,15 @@ namespace BlackWhale.UI.View
                 s.Age += dt;
                 if (s.Age >= Life) { s.On = false; s.Rt.gameObject.SetActive(false); _sparks[i] = s; continue; }
                 s.Vel.y += Gravity * dt;
-                var p = s.Rt.anchoredPosition + s.Vel * dt;
+                // 실제 위치는 소수점까지 따로 기억하고, 화면에 그릴 때만 2px 칸에 맞춘다
+                // (예전엔 칸에 맞춘 값을 다시 위치로 써서, 프레임이 빠르면 한 프레임 이동이 1px 미만이라 제자리에 멈췄음)
+                var p = s.Pos + s.Vel * dt;
                 if (p.y < s.Floor && s.Vel.y < 0 && s.Bounces < 2)
                 {
                     // 바닥(클릭 지점 조금 아래)에 닿으면 통통 튄다
                     p.y = s.Floor; s.Vel.y = -s.Vel.y * 0.45f; s.Vel.x *= 0.7f; s.Bounces++;
                 }
+                s.Pos = p;
                 s.Rt.anchoredPosition = new Vector2(Mathf.Round(p.x / 2f) * 2f, Mathf.Round(p.y / 2f) * 2f); // 2px 격자에 맞춰 도트처럼
                 float t = s.Age / Life;
                 var c = s.Img.color; c.a = t < 0.65f ? 1f : 1f - (t - 0.65f) / 0.35f; s.Img.color = c;
@@ -91,7 +94,7 @@ namespace BlackWhale.UI.View
                 s.Floor = local.y - 64f;
                 float size = k % 2 == 0 ? 4f : 2f;
                 s.Rt.sizeDelta = new Vector2(size, size);
-                s.Rt.anchoredPosition = local;
+                s.Pos = local; s.Rt.anchoredPosition = local;
                 s.Img.color = SparkColor;
                 s.Rt.gameObject.SetActive(true);
                 _sparks[_next == 0 ? Pool - 1 : _next - 1] = s;
