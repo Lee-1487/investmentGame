@@ -19,6 +19,9 @@ namespace BlackWhale.UI.View
                 case UiSound.Kind.Sell: return Sell();
                 case UiSound.Kind.Coin: return Coin(variant);
                 case UiSound.Kind.Turn: return Turn();
+                case UiSound.Kind.Warning: return Warning();
+                case UiSound.Kind.ResultGood: return ResultGood();
+                case UiSound.Kind.ResultBad: return ResultBad();
                 default: return Click(p);
             }
         }
@@ -87,6 +90,32 @@ namespace BlackWhale.UI.View
             Sparkle(b, 0.32, 0.35, 0.07, 11);
             Room(b, 0.45);
             return Finish(b, 0.72);
+        }
+
+        private static float[] Warning()
+        {
+            var b = new float[Len(0.16)];
+            Bell(b, 0.01, 880, 0.12, 0.28);
+            Bell(b, 0.08, 660, 0.08, 0.22);
+            return Finish(b, 0.55);
+        }
+
+        private static float[] ResultGood()
+        {
+            var b = new float[Len(0.85)];
+            double[] up = { 523.25, 659.25, 783.99, 1046.5 };
+            for (int i = 0; i < up.Length; i++) Bell(b, 0.08 + i * 0.10, up[i], 0.35, 0.22);
+            Sparkle(b, 0.32, 0.28, 0.14, 19);
+            return Finish(b, 0.72);
+        }
+
+        private static float[] ResultBad()
+        {
+            var b = new float[Len(0.55)];
+            Thump(b, 0, 180, 72, 0.20, 0.42);
+            Pluck(b, 0.04, 196, 0.32, 0.28);
+            Pluck(b, 0.16, 146.83, 0.28, 0.24);
+            return Finish(b, 0.68);
         }
 
         // ---------------------------------------------------------------- 재료

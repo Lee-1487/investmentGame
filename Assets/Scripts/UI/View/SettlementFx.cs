@@ -45,6 +45,18 @@ namespace BlackWhale.UI.View
             UiKit.Stretch(assets.rectTransform, 10, 0, 10, 18);
             UiAnim.Count(assets, prevAssets, nowAssets, v => "자산 " + DisplayFormat.Money(prevAssets) + "  →  <b>" + DisplayFormat.Money(v) + "</b>", 1.4f, 0.35f);
 
+            if (gain)
+            {
+                UiAnim.Pulse(assets.rectTransform, 0.35f, 1.12f);
+                UiSound.Play(UiSound.Kind.ResultGood);
+            }
+            else if (loss)
+            {
+                UiAnim.Pulse(pct.rectTransform, 0.35f, 1.10f);
+                Shake.Play(card.rectTransform, 0.35f, 0.42f, 8f);
+                UiSound.Play(UiSound.Kind.ResultBad);
+            }
+
             // 흔들림·튀는 효과, 올라오는 움직임 없이 결과 발표 띠처럼 그 자리에 나타났다가 서서히 사라짐
 
             UiAnim.FadeOut(card.rectTransform, Seconds - 0.5f, 0.5f);

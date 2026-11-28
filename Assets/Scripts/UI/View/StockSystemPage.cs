@@ -31,6 +31,9 @@ namespace BlackWhale.UI.View
             public RectTransform MineBadge;    // '내 n주 · 매매 가능'
             public Text MineBadgeText;
             public Image Shade;                // 미보유 기업 흐린 덮개
+            public Text TradeMarker;
+            public int InitialShares;
+            public int LiveTradeDirection;
         }
         // 연출(D): 현재 차례 시간 막대·긴박감·내 차례 알림
         private Image currentBar;
@@ -186,13 +189,17 @@ namespace BlackWhale.UI.View
         {
             var panel = UiKit.Panel(cell, "ShareCardBackground", Palette.Card, rounded: true); UiKit.Stretch(panel.rectTransform);
             var r = panel.rectTransform;
-            var card = new Card(); cards[id] = card;
+            var card = new Card { InitialShares = targets.TryGetValue(id, out var initial) ? initial : Holding(id) }; cards[id] = card;
             // 1줄: 기업명·수량(왼쪽) | 내 보유 배지 · 확대(오른쪽)   2줄: 플레이어별 보유   3줄~: 차트
             // (예전에는 제목이 가운데 버튼 안에 있어 아래 줄 보유 표시와 겹쳐 보였음)
             card.Heading = Label(r, "", 5, 22, 14); card.Heading.name = "ShareHeading_" + id;
             card.Heading.rectTransform.offsetMin = new Vector2(10, card.Heading.rectTransform.offsetMin.y);
             card.Heading.rectTransform.offsetMax = new Vector2(-150, card.Heading.rectTransform.offsetMax.y);
             card.Heading.horizontalOverflow = HorizontalWrapMode.Overflow; // 리치 텍스트는 best-fit이 작게 잡혀 글자가 줄어들어서 고정 크기
+            card.TradeMarker = UiKit.Label(r, "", 12, Palette.Text, TextAnchor.MiddleCenter, FontStyle.Bold);
+            card.TradeMarker.name = "TradeDraftMarker_" + id;
+            UiKit.Place(card.TradeMarker.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(10, -35), new Vector2(70, 20));
+            card.TradeMarker.gameObject.SetActive(false);
             var expand = UiKit.Button(r, "확대 ↗", 11, Palette.AccentSoft, Palette.Accent, () => OpenPlan?.Invoke(id));
             expand.name = "ExpandShare_" + id;
             UiKit.Place((RectTransform)expand.transform, Vector2.one, Vector2.one, new Vector2(-6, -5), new Vector2(58, 22));
@@ -340,6 +347,8 @@ namespace BlackWhale.UI.View
                 var button = UiKit.Button(controls, labels[i], 12, Palette.AccentSoft, Palette.Accent, () =>
                 {
                     var h = Portfolio.holdings.First(v => v.companyId == id);
+                    card.LiveTradeDirection = action == 0 ? 1 : -1;
+                    RefreshCards(false);
                     controller.SetStockPosition(id, h.activeShares + (action == 0 ? 1 : -1));
                 });
                 button.name = "LiveOrder_" + id + "_" + i;
@@ -392,7 +401,23 @@ namespace BlackWhale.UI.View
                     for (int i = 0; i < available.Length; i++) card.Actions[i].interactable = enabled && available[i];
                 }
                 // 매매 가능: 네모 테두리·보유 주 네모 배지 대신 카드 왼쪽 위 흰 점만(보유 수는 아래 '보유 N' 줄에 있음)
-                card.Frame.enabled = false;
+                int draft = card.InitialShares;
+                bool hasDraft = targets.TryGetValue(id, out draft);
+                bool draftChanged = card.Slider != null && hasDraft && draft != card.InitialShares;
+                bool liveChanged = card.Slider == null && card.LiveTradeDirection != 0;
+                bool changed = draftChanged || liveChanged;
+                bool draftBuy = draftChanged ? draft > card.InitialShares : card.LiveTradeDirection > 0;
+                Color draftColor = draftBuy ? Palette.Good : Palette.Bad;
+                card.Frame.enabled = changed;
+                card.Frame.effectColor = draftColor;
+                card.Frame.effectDistance = changed ? new Vector2(4, -4) : Vector2.zero;
+                // 매수·매도 상태는 테두리와 방향 표시로만 강조합니다. 카드 확대는 레이아웃을 밀 수 있어 사용하지 않습니다.
+                if (card.TradeMarker != null)
+                {
+                    card.TradeMarker.gameObject.SetActive(changed);
+                    card.TradeMarker.text = draftBuy ? "▲ 매수" : "▼ 매도";
+                    card.TradeMarker.color = draftColor;
+                }
                 card.MineBadge.gameObject.SetActive(false);
                 card.TradableDot.gameObject.SetActive(tradable);
                 card.Shade.gameObject.SetActive(false);

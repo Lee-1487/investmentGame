@@ -136,8 +136,13 @@ namespace BlackWhale.UI.View
                 band.rectTransform.offsetMax = new Vector2(-4, 0);
 
                 Column(cols, "<b>" + p.Name + "</b>" + (p.IsMe ? "  <size=11><color=#9A9A9A>나</color></size>" : ""), 0.15f, 0.42f, TextAnchor.MiddleLeft, 16, Palette.Text);
-                var assets = Column(cols, DisplayFormat.Money(p.TotalAssets), 0.42f, 0.62f, TextAnchor.MiddleRight, 16, Palette.Text);
-                var turnReturn = Column(cols, ScreenKit.Signed(p.TurnReturnBps), 0.62f, 0.80f, TextAnchor.MiddleRight, 16, Palette.Text);
+                Color resultColor = p.TurnReturnBps > 0 ? Palette.Good : p.TurnReturnBps < 0 ? Palette.Bad : Palette.Text;
+                if (p.TurnReturnBps != 0)
+                {
+                    bg.color = new Color(resultColor.r, resultColor.g, resultColor.b, 0.08f);
+                }
+                var assets = Column(cols, DisplayFormat.Money(p.TotalAssets), 0.42f, 0.62f, TextAnchor.MiddleRight, 16, resultColor);
+                var turnReturn = Column(cols, ScreenKit.Signed(p.TurnReturnBps), 0.62f, 0.80f, TextAnchor.MiddleRight, 16, resultColor);
                 Column(cols, ScreenKit.Signed(p.CumulativeReturnBps) + "\n<size=11><color=#8C8C8C>" + DisplayFormat.SignedMoney(p.CumulativeProfit) + "</color></size>",
                     0.80f, 1.00f, TextAnchor.MiddleRight, 16, Palette.Text);
 
@@ -156,6 +161,7 @@ namespace BlackWhale.UI.View
                 if (p.PrevTotalAssets.HasValue)
                     UiAnim.Count(assets, p.PrevTotalAssets.Value, p.TotalAssets, v => DisplayFormat.Money(v), UiAnim.CountSeconds, delay);
                 UiAnim.Count(turnReturn, 0, p.TurnReturnBps, v => ScreenKit.Signed((int)v), UiAnim.CountSeconds, delay);
+                if (p.TurnReturnBps != 0) UiAnim.Pulse(turnReturn.rectTransform, delay + UiAnim.CountSeconds, 1.08f);
             }
             foreach (var r in movedUp) r.SetAsLastSibling(); // 올라오는 줄이 위에 보이게
 

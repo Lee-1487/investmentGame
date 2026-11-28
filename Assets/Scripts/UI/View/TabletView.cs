@@ -95,6 +95,7 @@ namespace BlackWhale.UI.View
         private int _lastActiveShares = -1;
         private bool _lastLocked;
         private int _lastBoardTurn = -1;
+        private int _lastTimerSecond = -1;
         private string _lastSelector = "";
 
         public static TabletView Create(RectTransform parent, GameClientController controller, LobbyActions lobby = null)
@@ -592,11 +593,11 @@ namespace BlackWhale.UI.View
             var board = Store.Scoreboard;
             if (board?.rows != null && board.rows.Length > 0)
                 return board.rows.OrderBy(r => r.rank).ThenBy(r => r.playerId)
-                    .Select(r => new RankRow { PlayerId = r.playerId, Rank = r.rank, Score = r }).ToList();
+                    .Select(r => new RankRow { PlayerId = r.playerId, Name = LiveScreenModels.Name(Store.Public, r.playerId), Rank = r.rank, Score = r }).ToList();
 
             var players = Store.Public?.players;
             if (players == null) return new List<RankRow>();
-            return players.Select(p => new RankRow { PlayerId = p.playerId, Rank = 0, Connected = p.connected }).ToList();
+            return players.Select(p => new RankRow { PlayerId = p.playerId, Name = LiveScreenModels.Name(Store.Public, p.playerId), Rank = 0, Connected = p.connected }).ToList();
         }
 
         // ------------------------------------------------------------------
@@ -680,6 +681,8 @@ namespace BlackWhale.UI.View
             if (s == null)
             {
                 _timerText.text = "접속 대기";
+                _timerText.transform.localScale = Vector3.one;
+                _timerText.color = Palette.Text;
                 UiKit.SetButton(_doneButton, "상태 갱신 중", false, Palette.Disabled, Palette.DisabledText);
                 return;
             }
@@ -688,6 +691,7 @@ namespace BlackWhale.UI.View
             {
                 _timerText.text = ""; // '시간 제한 없음' 문구는 표시하지 않음
                 _timerText.color = Palette.Text;
+                _timerText.transform.localScale = Vector3.one;
                 UiKit.SetButton(_doneButton, "완료", false, Palette.Disabled, Palette.DisabledText);
                 return;
             }
@@ -696,6 +700,7 @@ namespace BlackWhale.UI.View
             {
                 _timerText.text = "<size=11>일시정지</size>\n<size=28><b>" + DisplayFormat.Clock(_clock.RemainingSeconds(s, Time.realtimeSinceStartup)) + "</b></size>";
                 _timerText.color = Palette.Text;
+                _timerText.transform.localScale = Vector3.one;
                 UiKit.SetButton(_doneButton, "일시정지 중", false, Palette.Disabled, Palette.DisabledText);
                 return;
             }
@@ -707,7 +712,29 @@ namespace BlackWhale.UI.View
                 : PhaseNames.ForState(s);
             _timerText.text = "<size=11>" + (remain == 0 ? "서버 진행 대기" : what) + "</size>\n<size=28><b>" + DisplayFormat.Clock(remain) + "</b></size>";
             if (s.developerMode && !PhaseClock.HasDeadline(s)) _timerText.text = "<size=11>개발자 모드 · " + what + "</size>\n<size=22><b>수동 진행</b></size>";
-            _timerText.color = remain <= 10 && remain > 0 ? Palette.Bad : Palette.Text; // 마감 10초 전부터 빨간 글자
+            int timerBand = remain <= 3 ? 3 : remain <= 5 ? 2 : remain <= 15 ? 1 : 0;
+            // Palette.Warning은 일반 안내용 회색이므로, 카운트다운 전용 노란색을 사용합니다.
+            Color timerWarning = new Color32(0xFF, 0xD1, 0x54, 0xFF);
+            Color timerColor = timerBand >= 2 ? Palette.Bad : timerBand == 1 ? timerWarning : Palette.Text;
+            if (timerBand == 3)
+            {
+                // 마지막 3초에는 타이머 전체가 아니라 숫자 영역이 포함된 표시만 짧게 확대·점멸합니다.
+                float pulse = 0.5f + 0.5f * Mathf.Sin(Time.unscaledTime * 11f);
+                _timerText.transform.localScale = Vector3.one * Mathf.Lerp(1f, 1.12f, pulse);
+                timerColor.a = Mathf.Lerp(0.45f, 1f, pulse);
+            }
+            else
+            {
+                _timerText.transform.localScale = Vector3.one;
+            }
+            _timerText.color = timerColor;
+            // 실제 선택·매매처럼 시간 압박이 전략에 영향을 주는 단계에서만 초읽기 소리를 냅니다.
+            // 시장 공개·정보 확인·정산은 결과를 읽는 단계이므로 불필요한 긴장음을 재생하지 않습니다.
+            bool tensionPhase = (s.phase == Protocol.Selection || s.phase == Protocol.Investment)
+                && !s.stockSegmentRevealing && !s.publicSelectionActive;
+            if (tensionPhase && remain > 0 && remain <= 5 && remain != _lastTimerSecond)
+                UiSound.Play(UiSound.Kind.Warning);
+            _lastTimerSecond = remain;
 
             bool can = _c.CanCompleteStep();
             bool done = _c.IsDoneForCurrentPhase;
@@ -999,6 +1026,7 @@ namespace BlackWhale.UI.View
     internal sealed class RankRow
     {
         public string PlayerId;
+        public string Name;
         public int Rank;
         public bool Connected = true;
         public ScoreRow Score;
@@ -1069,7 +1097,7 @@ namespace BlackWhale.UI.View
             string me = row.PlayerId == localPlayerId ? " (나)" : "";
             string dot = "<color=#" + ColorUtility.ToHtmlStringRGB(Palette.Player(row.PlayerId)) + ">●</color> ";
             string conn = row.Connected ? "" : "\n" + Palette.BadText("연결 끊김");
-            _text.text = "<b>" + rank + "</b>" + _delta + "\n" + dot + row.PlayerId + me + conn;
+            _text.text = "<b>" + rank + "</b>" + _delta + "\n" + dot + (string.IsNullOrEmpty(row.Name) ? row.PlayerId : row.Name) + me + conn;
 
             if (row.Score == null) { _assets.text = ""; return; }
             long now = row.Score.totalAssets;

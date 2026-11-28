@@ -13,7 +13,7 @@ namespace BlackWhale.UI.View
 {
     public static class UiSound
     {
-        public enum Kind { Click, Buy, Sell, Coin, Turn }
+        public enum Kind { Click, Buy, Sell, Coin, Turn, Warning, ResultGood, ResultBad }
 
         /// <summary>전체 효과음 크기(0~1). 0이면 끈다.</summary>
         public static float Volume = 0.9f;
