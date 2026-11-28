@@ -116,6 +116,8 @@ namespace BlackWhale.UI.View
         private int? _lastDay;
         private int _lastCoins = -1;
         private int _lastActiveShares = -1;
+        private int _lastMoneyDay = -1;     // 실시간 매매: 마지막으로 돈 효과를 계산한 일차
+        private RectTransform _edgeFxLayer; // 화면 가장자리까지 덮는 효과층(손실 시 빨간 가장자리)
         private bool _lastLocked;
         private int _lastBoardTurn = -1;
         private string _lastSelector = "";
@@ -199,6 +201,36 @@ namespace BlackWhale.UI.View
                 if (_fxLayer == null) return ScreenRect;
                 _fxLayer.SetAsLastSibling();
                 return _fxLayer;
+            }
+        }
+
+        /// <summary>
+        /// 실시간 매매 중 하루가 지날 때마다, 그날 내가 들고 있던 기업들의 하루 등락(시가→종가)으로
+        /// 돈이 늘었는지 줄었는지 보고 효과를 낸다(값 계산은 화면용 추정이며 실제 정산은 서버).
+        /// </summary>
+        private void DetectMoneyChange(PublicState s, PlayerView v)
+        {
+            if (s == null || !s.stockSystem || s.phase != Protocol.Investment || v.portfolio?.holdings == null) { _lastMoneyDay = -1; return; }
+            int day = v.portfolio.processedDay;
+            if (_lastMoneyDay < 0 || day <= _lastMoneyDay) { _lastMoneyDay = day; return; }
+            long delta = 0;
+            foreach (var h in v.portfolio.holdings)
+            {
+                if (h == null || h.activeShares <= 0 || h.companyId == "BANK") continue;
+                var visible = v.companies?.FirstOrDefault(c => c.companyId == h.companyId);
+                if (visible == null) continue;
+                var bars = DailyBarModel.Build(visible);
+                for (int d = _lastMoneyDay + 1; d <= day && d < bars.Length; d++)
+                    if (bars[d].Bps.HasValue && bars[d].OpenBps.HasValue)
+                        delta += (long)h.activeShares * (bars[d].Bps.Value - bars[d].OpenBps.Value);
+            }
+            _lastMoneyDay = day;
+            if (delta > 0) MoneyFx.Gain(FxLayer);
+            else if (delta < 0)
+            {
+                if (_edgeFxLayer == null) { _edgeFxLayer = UiKit.Rect(Root, "EdgeFxLayer"); UiKit.Stretch(_edgeFxLayer); }
+                _edgeFxLayer.SetAsLastSibling();
+                MoneyFx.Loss(_edgeFxLayer, ScreenRect); // 바탕은 두고 화면 내용만 흔들림(가장자리에 기본 배경이 비치지 않게)
             }
         }
 
@@ -383,11 +415,18 @@ namespace BlackWhale.UI.View
         private void BuildOverlays()
         {
             // 암전 + 팝업
-            _dim = UiKit.Panel(ScreenRect, "Dim", Palette.Dim);
+            // 어둡게 덮는 층은 화면 전체(위쪽 탭·일시정지·방 나가기까지)를 덮도록 Root에 두고,
+            // 정렬 순서를 따로 줘서 다른 요소보다 위에, 팝업은 그보다 한 단계 더 위에 그린다.
+            _dim = UiKit.Panel(Root, "Dim", Palette.Dim);
             UiKit.Stretch(_dim.rectTransform);
+            var dimCanvas = _dim.gameObject.AddComponent<Canvas>();
+            dimCanvas.overrideSorting = true; dimCanvas.sortingOrder = 50;
             _dim.gameObject.SetActive(false);
 
             _popup = UiKit.Rect(ScreenRect, "Popup");
+            var popupCanvas = _popup.gameObject.AddComponent<Canvas>();
+            popupCanvas.overrideSorting = true; popupCanvas.sortingOrder = 51;
+            _popup.gameObject.AddComponent<GraphicRaycaster>(); // 따로 정렬되는 캔버스도 마우스·클릭을 받게
             _popup.gameObject.SetActive(false);
         }
 
@@ -499,6 +538,7 @@ namespace BlackWhale.UI.View
                 {
                     _lastCoins = -1;
                     _lastActiveShares = -1;
+                    _lastMoneyDay = -1;
                     _lastSelector = "";
                     _lastPhaseKey = phaseKey;
                     if (s.phase == Protocol.Lobby) ShowBanner("대기실에 입장했습니다. 준비를 누르세요.");
@@ -544,6 +584,7 @@ namespace BlackWhale.UI.View
                 if (_lastActiveShares >= 0 && activeShares != _lastActiveShares)
                     UiSound.Play(activeShares > _lastActiveShares ? UiSound.Kind.Buy : UiSound.Kind.Sell);
                 _lastActiveShares = activeShares;
+                DetectMoneyChange(s, v);
             }
 
             if (Store.EndReason != _lastEndReason)
