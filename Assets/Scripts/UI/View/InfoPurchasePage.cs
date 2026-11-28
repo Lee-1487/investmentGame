@@ -120,7 +120,9 @@ namespace BlackWhale.UI.View
                 _cards.Add(new CompanyCard(cell, ids[i], controller, Enlarge));
             }
 
-            _zoom = UiKit.Panel(overlayParent ?? page, "ZoomCompanyPanel", Palette.Screen, rounded: true, raycast: true).rectTransform;
+            var zoomBg = UiKit.Panel(overlayParent ?? page, "ZoomCompanyPanel", Palette.Screen, rounded: true, raycast: true);
+            UiKit.AddFrame(zoomBg, Palette.CardBorder);
+            _zoom = zoomBg.rectTransform;
             // Reserve the top HUD and right-side controls, including the timer above the chart.
             UiKit.Stretch(_zoom, 4, 76, 168, 4);
             _zoomTitle = UiKit.Label(_zoom, "", 22, Palette.Text, TextAnchor.MiddleLeft, FontStyle.Bold);
@@ -387,8 +389,8 @@ namespace BlackWhale.UI.View
             {
                 int held = store.View?.portfolio?.holdings?.Where(h => h.companyId == _zoomCompany).Sum(h => h.shares) ?? 0;
                 _zoomTitle.text += held > 0
-                    ? "   <size=14><color=#9A9A9A>● " + (_zoomCompany == "BANK" ? "예금" : "보유 " + held + "주") + " · 매매 가능</color></size>"
-                    : "   <size=14><color=#FFFFFF>● 미보유 · 보유 0주 · 매수 가능</color></size>";
+                    ? "   <size=14><color=#A08A66>● " + (_zoomCompany == "BANK" ? "예금" : "보유 " + held + "주") + " · 매매 가능</color></size>"
+                    : "   <size=14><color=#F2E6CC>● 미보유 · 보유 0주 · 매수 가능</color></size>";
             }
             if (stockSystem && revealed != null) _zoomMessage.text = "그래프와 구간 수익률은 증강 적용 전 값입니다. 증강·현금을 포함한 최종 수익률은 전광판에서 확인하세요.";
             RefreshZoomHover();
@@ -559,10 +561,10 @@ namespace BlackWhale.UI.View
             _companyId = companyId;
             _c = controller;
 
-            var bg = _border = UiKit.Panel(cell, "Bg", Palette.ChartFrame, rounded: true);
+            var bg = _border = UiKit.Panel(cell, "Bg", Palette.CardBorder, rounded: true); // 도트 테마: 황토 테두리
             UiKit.Stretch(bg.rectTransform);
             var inner = UiKit.Panel(bg.transform, "Inner", Palette.Card, rounded: true);
-            UiKit.Stretch(inner.rectTransform, 1, 1, 1, 1);
+            UiKit.Stretch(inner.rectTransform, 2, 2, 2, 2);
             var root = inner.rectTransform;
 
             // NEXT-D03 기업 이미지(없으면 배지)와 표시명. 통신 ID는 그대로.
@@ -667,9 +669,9 @@ namespace BlackWhale.UI.View
             bool investing = s?.stockSystem == true && s.phase == Protocol.Investment && !_c.Store.OrderLocked;
             int shares = _c.Store.View?.portfolio?.holdings?.Where(h => h.companyId == _companyId).Sum(h => h.shares) ?? 0;
             bool tradable = investing && shares > 0;
-            _border.color = tradable ? Palette.Accent : Palette.ChartFrame;
-            _border.transform.GetChild(0).GetComponent<RectTransform>().offsetMin = Vector2.one * (tradable ? 3f : 1f);
-            _border.transform.GetChild(0).GetComponent<RectTransform>().offsetMax = -Vector2.one * (tradable ? 3f : 1f);
+            _border.color = tradable ? Palette.Accent : Palette.CardBorder;
+            _border.transform.GetChild(0).GetComponent<RectTransform>().offsetMin = Vector2.one * (tradable ? 3f : 2f);
+            _border.transform.GetChild(0).GetComponent<RectTransform>().offsetMax = -Vector2.one * (tradable ? 3f : 2f);
             _tradeBadge.gameObject.SetActive(tradable);
             _tradeBadgeText.text = _companyId == "BANK" ? "예금 가능" : "내 " + shares + "주";
             _tradeShade.gameObject.SetActive(false);
@@ -734,7 +736,7 @@ namespace BlackWhale.UI.View
             // 남은 자리 수는 정보 구매 창에 표시하지 않는다(자리 선택 화면에서만 보임). 내가 고른 기업 표시만 남김.
             string selectionKey = _c.Store.CurrentTurn + ":" + _c.Store.Public?.phase;
             if (_selectionKey != selectionKey) { _selectionKey = selectionKey; Selection.Clear(); } // 턴·단계가 바뀌면 확정 안 한 선택 지움
-            _seats.text = _c.Store.OwnSelections.Contains(_companyId) ? "<color=#9A9A9A><b>내 선택</b></color>" : "";
+            _seats.text = _c.Store.OwnSelections.Contains(_companyId) ? "<color=#A08A66><b>내 선택</b></color>" : "";
             _expand.interactable = _c.Store.View != null;
             var intervals = _c.Store.TradePlans.ChartIntervals(_c.Store.View, _c.Store.CurrentTurn, _companyId, _c.Store.OrderLocked);
             _planLabel.text = _c.Store.OrderLocked ? (intervals.Length == 0 ? "" : "확정: " + string.Join(", ", intervals.Select(i => i.entryDay + "→" + i.exitDay + "일"))) : _c.Store.TradePlans.Summary(_companyId);

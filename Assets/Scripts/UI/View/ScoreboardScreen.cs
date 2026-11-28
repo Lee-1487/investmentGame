@@ -35,7 +35,7 @@ namespace BlackWhale.UI.View
 
         private void BuildLive(ScoreboardModel m)
         {
-            ScreenKit.Title(_root, "<b>전광판</b>   <size=15><color=#8C8C8C>" + m.Turn + "턴 / " + _turnCount + "턴</color></size>");
+            ScreenKit.Title(_root, "<b>전광판</b>   <size=15><color=#B39C74>" + m.Turn + "턴 / " + _turnCount + "턴</color></size>");
             BuildTurnStrip(m.Turn, false);
 
             var left = UiKit.Rect(_root, "Ranking");
@@ -57,19 +57,21 @@ namespace BlackWhale.UI.View
         }
 
         /// <summary>1~10턴 진행 띠. 지난 턴=회색, 현재=주황, 3·6·9=입찰 표시.</summary>
-        /// <summary>네모 카드 대신 밑줄만 있는 영역(전광판 밑줄 테마). line이 투명이면 밑줄도 없음.</summary>
-        private static RectTransform LineCard(Transform parent, string name, Color line, out RectTransform inner, float thickness = 1.5f)
+        /// <summary>도트 테마 카드(황토 테두리 + 갈색 바탕). line이 투명이면 테두리·바탕 없이 영역만.</summary>
+        private static RectTransform LineCard(Transform parent, string name, Color line, out RectTransform inner, float thickness = 2f)
         {
-            var frame = UiKit.Panel(parent, name, Color.clear);
-            var body = UiKit.Rect(frame.transform, "Inner");
-            UiKit.Stretch(body, 0, 0, 0, thickness);
-            inner = body;
-            if (line.a > 0f)
+            if (line.a <= 0f)
             {
-                var u = UiKit.Panel(frame.transform, "Underline", line);
-                u.rectTransform.anchorMin = Vector2.zero; u.rectTransform.anchorMax = new Vector2(1, 0);
-                u.rectTransform.offsetMin = Vector2.zero; u.rectTransform.offsetMax = new Vector2(0, thickness);
+                var plain = UiKit.Panel(parent, name, Color.clear);
+                inner = UiKit.Rect(plain.transform, "Inner"); UiKit.Stretch(inner);
+                return plain.rectTransform;
             }
+            var frame = UiKit.Panel(parent, name, Palette.CardBorder, rounded: true);
+            var fill = UiKit.Panel(frame.transform, "Fill", Palette.Card, rounded: true);
+            UiKit.Stretch(fill.rectTransform, 2, 2, 2, 2);
+            var body = UiKit.Rect(frame.transform, "Inner");
+            UiKit.Stretch(body, 2, 2, 2, 2);
+            inner = body;
             return frame.rectTransform;
         }
 
@@ -114,19 +116,18 @@ namespace BlackWhale.UI.View
                 var p = ranked[index];
                 float y = rowTop + index * rowStep;
                 var row = ScreenKit.TopStrip(inner, "Row_" + p.Id, y, 62, 8, 8);
-                // 줄마다 네모 바탕 대신 밑줄(내 줄은 흰색으로 진하게)
-                var bg = UiKit.Panel(row, "Bg", Color.clear);
+                // 도트 테마: 줄마다 테두리 상자(내 줄은 자주색)
+                var bg = UiKit.Panel(row, "Bg", p.IsMe ? Palette.MaroonBorder : Palette.ChartFrame, rounded: true);
                 UiKit.Stretch(bg.rectTransform);
-                var rowLine = UiKit.Panel(row, "Underline", p.IsMe ? Palette.Text : Palette.CardBorder);
-                rowLine.rectTransform.anchorMin = Vector2.zero; rowLine.rectTransform.anchorMax = new Vector2(1, 0);
-                rowLine.rectTransform.offsetMin = Vector2.zero; rowLine.rectTransform.offsetMax = new Vector2(0, p.IsMe ? 2f : 1f);
+                var rowFill = UiKit.Panel(bg.transform, "Fill", p.IsMe ? Palette.Maroon : Palette.Screen, rounded: true);
+                UiKit.Stretch(rowFill.rectTransform, 2, 2, 2, 2);
                 var cols = UiKit.Rect(row, "Cols");
                 UiKit.Stretch(cols, 6, 0, 6, 0);
 
                 // 순위 + 변화
-                string delta = p.RankDelta > 0 ? "<color=#FFFFFF>▲" + p.RankDelta + "</color>"
-                    : p.RankDelta < 0 ? "<color=#9A9A9A>▼" + (-p.RankDelta) + "</color>"
-                    : "<color=#A3A3A3>-</color>";
+                string delta = p.RankDelta > 0 ? "<color=#FF4D4F>▲" + p.RankDelta + "</color>"
+                    : p.RankDelta < 0 ? "<color=#3D8BFF>▼" + (-p.RankDelta) + "</color>"
+                    : "<color=#B39C74>-</color>";
                 Column(cols, "<size=24><b>" + p.Rank + "</b></size>  <size=12>" + delta + "</size>", 0.00f, 0.15f, TextAnchor.MiddleLeft, 14, Palette.Text);
 
                 var band = UiKit.Panel(cols, "PlayerColor", Palette.Player(p.Id));
@@ -135,10 +136,10 @@ namespace BlackWhale.UI.View
                 band.rectTransform.offsetMin = new Vector2(-8, 0);
                 band.rectTransform.offsetMax = new Vector2(-4, 0);
 
-                Column(cols, "<b>" + p.Name + "</b>" + (p.IsMe ? "  <size=11><color=#9A9A9A>나</color></size>" : ""), 0.15f, 0.42f, TextAnchor.MiddleLeft, 16, Palette.Text);
+                Column(cols, "<b>" + p.Name + "</b>" + (p.IsMe ? "  <size=11><color=#A08A66>나</color></size>" : ""), 0.15f, 0.42f, TextAnchor.MiddleLeft, 16, Palette.Text);
                 var assets = Column(cols, DisplayFormat.Money(p.TotalAssets), 0.42f, 0.62f, TextAnchor.MiddleRight, 16, Palette.Text);
                 var turnReturn = Column(cols, ScreenKit.Signed(p.TurnReturnBps), 0.62f, 0.80f, TextAnchor.MiddleRight, 16, Palette.Text);
-                Column(cols, ScreenKit.Signed(p.CumulativeReturnBps) + "\n<size=11><color=#8C8C8C>" + DisplayFormat.SignedMoney(p.CumulativeProfit) + "</color></size>",
+                Column(cols, ScreenKit.Signed(p.CumulativeReturnBps) + "\n<size=11><color=#B39C74>" + DisplayFormat.SignedMoney(p.CumulativeProfit) + "</color></size>",
                     0.80f, 1.00f, TextAnchor.MiddleRight, 16, Palette.Text);
 
                 // 정산 연출: 이전 순위 자리에서 새 자리로 이동 + 숫자 세기 + 상승 강조
@@ -192,7 +193,7 @@ namespace BlackWhale.UI.View
             UiKit.Stretch(chartRt, 48, 34, 14, 40);
             var chart = chartRt.gameObject.AddComponent<LineChartGraphic>();
             chart.SetRange(0, _turnCount, -limit, limit);
-            for (int t = 0; t <= _turnCount; t++) chart.AddVLine(t, IsSpecialTurn(t) ? new Color32(0x55, 0x55, 0x55, 0xFF) : new Color32(0xEE, 0xF0, 0xF3, 0xFF));
+            for (int t = 0; t <= _turnCount; t++) chart.AddVLine(t, IsSpecialTurn(t) ? new Color32(0x5E, 0x4E, 0x3A, 0xFF) : new Color32(0xEE, 0xF0, 0xF3, 0xFF));
             chart.AddHLine(0, Palette.Grid, 1.5f);
             foreach (var p in m.Players)
             {
@@ -241,7 +242,7 @@ namespace BlackWhale.UI.View
         {
             var frame = LineCard(area, "EventCard", Palette.CardBorder, out var inner);
             UiKit.Stretch(frame);
-            var title = UiKit.Label(inner, "<b>공개 이벤트</b>  <size=11><color=#8C8C8C>입찰 결과·능력 발동·공격 대상만 공개</color></size>", 14, Palette.Text, TextAnchor.MiddleLeft);
+            var title = UiKit.Label(inner, "<b>공개 이벤트</b>  <size=11><color=#B39C74>입찰 결과·능력 발동·공격 대상만 공개</color></size>", 14, Palette.Text, TextAnchor.MiddleLeft);
             UiKit.Place(title.rectTransform, new Vector2(0, 1), new Vector2(0, 1), new Vector2(12, -4), new Vector2(520, 24));
             title.rectTransform.anchorMax = new Vector2(1, 1);
             title.rectTransform.sizeDelta = new Vector2(-24, 24);
@@ -273,7 +274,7 @@ namespace BlackWhale.UI.View
 
         private void BuildFinal(ScoreboardModel m)
         {
-            ScreenKit.Title(_root, "<b>최종 결과</b>   <size=15><color=#8C8C8C>" + _turnCount + "턴 종료</color></size>");
+            ScreenKit.Title(_root, "<b>최종 결과</b>   <size=15><color=#B39C74>" + _turnCount + "턴 종료</color></size>");
             BuildTurnStrip(_turnCount, true);
 
             var podium = UiKit.Rect(_root, "Podium");
@@ -303,12 +304,12 @@ namespace BlackWhale.UI.View
 
                 string best = p.BestTurnBps.HasValue ? ScreenKit.Signed(p.BestTurnBps.Value) : "-";
                 var text = UiKit.Label(inner,
-                    (winner ? "<size=13><color=#D0D0D0><b>우승</b></color></size>\n" : "") +
+                    (winner ? "<size=13><color=#E0D2B4><b>우승</b></color></size>\n" : "") +
                     "<size=34><b>" + p.Rank + "위</b></size>\n" +
-                    "<size=20><b>" + p.Name + "</b></size>" + (p.IsMe ? " <size=12><color=#9A9A9A>나</color></size>" : "") + "\n\n" +
-                    "<size=12><color=#8C8C8C>최종 자산</color></size>\n<size=20><b>" + DisplayFormat.Money(p.TotalAssets) + "</b></size>\n" +
-                    "<size=12><color=#8C8C8C>누적 수익률</color></size>  " + ScreenKit.Signed(p.CumulativeReturnBps) + "\n" +
-                    "<size=12><color=#8C8C8C>최고 단일 턴</color></size>  " + best,
+                    "<size=20><b>" + p.Name + "</b></size>" + (p.IsMe ? " <size=12><color=#A08A66>나</color></size>" : "") + "\n\n" +
+                    "<size=12><color=#B39C74>최종 자산</color></size>\n<size=20><b>" + DisplayFormat.Money(p.TotalAssets) + "</b></size>\n" +
+                    "<size=12><color=#B39C74>누적 수익률</color></size>  " + ScreenKit.Signed(p.CumulativeReturnBps) + "\n" +
+                    "<size=12><color=#B39C74>최고 단일 턴</color></size>  " + best,
                     14, Palette.Text, TextAnchor.UpperCenter);
                 UiKit.Stretch(text.rectTransform, 8, 16, 8, 8);
 
