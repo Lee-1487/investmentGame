@@ -9,7 +9,7 @@ namespace BlackWhale.UI.View
 {
     public sealed class PrologueExitFx : MonoBehaviour
     {
-        private const float Seconds = 2.7f; // 예전 0.9초의 3배: 천천히 시작해 점점 빨라짐
+        private const float Seconds = 2.2f; // 천천히 시작해 점점 빨라짐
         private Canvas _canvas;
         private bool _wasShowing;
 
@@ -66,7 +66,10 @@ namespace BlackWhale.UI.View
                 copies[i] = rt;
             }
 
-            var connection = _canvas.transform.Find("ConnectionScreen") as RectTransform;
+            // 방 만들기 화면 전체(바탕 포함)를 줄이면 가장자리에 Unity 기본 배경이 비쳐 보이므로,
+            // 바탕은 그대로 두고 가운데 카드(테두리 상자·내용)만 살짝 작았다 커지게 한다.
+            var screen = _canvas.transform.Find("ConnectionScreen");
+            var connection = new[] { screen?.Find("ConnectionFrame") as RectTransform, screen?.Find("ConnectionCard") as RectTransform };
             var anim = layer.gameObject.AddComponent<ExitAnimation>();
             anim.Init(group, black, copies, connection);
             Destroy(layer.gameObject, Seconds + 0.1f);
@@ -77,11 +80,11 @@ namespace BlackWhale.UI.View
             private CanvasGroup _group;
             private Image _black;
             private RectTransform[] _copies;
-            private RectTransform _connection;
+            private RectTransform[] _connection;
             private float _t;
             private static readonly Vector2[] Dirs = { Vector2.zero, new Vector2(1, 1), new Vector2(-1, 1), new Vector2(1, -1), new Vector2(-1, -1) };
 
-            public void Init(CanvasGroup group, Image black, RectTransform[] copies, RectTransform connection)
+            public void Init(CanvasGroup group, Image black, RectTransform[] copies, RectTransform[] connection)
             {
                 _group = group; _black = black; _copies = copies; _connection = connection;
                 Apply(0f);
@@ -93,7 +96,7 @@ namespace BlackWhale.UI.View
                 Apply(Mathf.Clamp01(_t / Seconds));
             }
 
-            private void OnDestroy() { if (_connection != null) _connection.localScale = Vector3.one; }
+            private void OnDestroy() { foreach (var c in _connection) if (c != null) c.localScale = Vector3.one; }
 
             private void Apply(float p)
             {
@@ -107,11 +110,8 @@ namespace BlackWhale.UI.View
                 }
                 _group.alpha = 1f - Mathf.Pow(Mathf.InverseLerp(0.2f, 1f, p), 2f);            // 흐려지며 사라짐(끝으로 갈수록 빠르게)
                 _black.color = new Color(0, 0, 0, 1f - Mathf.InverseLerp(0.3f, 0.8f, p));
-                if (_connection != null)
-                {
-                    float c = Mathf.Lerp(0.94f, 1f, ease);           // 방 만들기 화면이 살짝 작았다가 제 크기로
-                    _connection.localScale = new Vector3(c, c, 1f);
-                }
+                float c = Mathf.Lerp(0.94f, 1f, ease);               // 방 만들기 카드가 살짝 작았다가 제 크기로
+                foreach (var rt in _connection) if (rt != null) rt.localScale = new Vector3(c, c, 1f);
             }
         }
     }
