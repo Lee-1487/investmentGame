@@ -54,7 +54,7 @@ namespace BlackWhale.UI.View
         private void Update()
         {
             var mouse = UnityEngine.InputSystem.Mouse.current;
-            if (mouse != null && mouse.leftButton.wasPressedThisFrame) Burst(mouse.position.ReadValue());
+            if (mouse != null && mouse.leftButton.wasPressedThisFrame && !StoryShowing()) Burst(mouse.position.ReadValue());
 
             float dt = Time.unscaledDeltaTime;
             for (int i = 0; i < Pool; i++)
@@ -74,6 +74,14 @@ namespace BlackWhale.UI.View
                 var c = s.Img.color; c.a = 1f - t * t; s.Img.color = c; // 점점 흐려지며 사라짐
                 _sparks[i] = s;
             }
+        }
+
+        /// <summary>처음 스토리(프롤로그) 화면이 떠 있으면 파편을 내지 않는다.</summary>
+        private bool StoryShowing()
+        {
+            if (_canvas == null) return false;
+            var story = _canvas.transform.Find("PrologueIntro");
+            return story != null && story.gameObject.activeInHierarchy;
         }
 
         private void Burst(Vector2 screen)

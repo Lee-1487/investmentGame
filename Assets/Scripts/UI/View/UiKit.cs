@@ -532,7 +532,16 @@ namespace BlackWhale.UI.View
         private float _scale = 1f, _target = 1f;
 
         private void Awake() => _selectable = GetComponent<Selectable>();
-        private bool Usable => _selectable == null || _selectable.IsInteractable();
+        // 화면 전체를 덮는 큰 클릭 영역(예: 처음 스토리 화면)은 눌림 효과 없음
+        private bool Usable
+        {
+            get
+            {
+                if (_selectable != null && !_selectable.IsInteractable()) return false;
+                var size = ((RectTransform)transform).rect.size;
+                return size.x <= 600f && size.y <= 400f;
+            }
+        }
 
         public void OnPointerDown(PointerEventData e)
         {
