@@ -429,6 +429,7 @@ namespace BlackWhale.UI.View
             Stretch(text.rectTransform, 4, 2, 4, 2);
             var look = img.gameObject.AddComponent<HoverUnderline>();
             look.Init(button, text);
+            img.gameObject.AddComponent<PressFeedback>(); // 누르는 동안 쑥 들어가는 눌림 효과
             look.Apply(background, textColor);
             button.onClick.AddListener(() => UiSound.Play(UiSound.Kind.Click)); // 버튼 효과음(플레이 중에만)
             if (onClick != null) button.onClick.AddListener(() => onClick());
@@ -504,6 +505,7 @@ namespace BlackWhale.UI.View
         public static ClickRelay Click(GameObject go, Action click)
         {
             if (!go.TryGetComponent<ClickRelay>(out var relay)) relay = go.AddComponent<ClickRelay>();
+            if (!go.TryGetComponent<PressFeedback>(out _)) go.AddComponent<PressFeedback>(); // 클릭되는 칸도 눌림 효과
             relay.Clicked = click;
             return relay;
         }
@@ -515,6 +517,52 @@ namespace BlackWhale.UI.View
         public Action Exit;
         public void OnPointerEnter(PointerEventData eventData) => Enter?.Invoke();
         public void OnPointerExit(PointerEventData eventData) => Exit?.Invoke();
+    }
+
+    /// <summary>
+    /// 눌림 효과: 마우스를 누르는 동안 살짝 작아지며(쑥 들어감), 떼면 톡 튀어나왔다 원래 크기로.
+    /// 누를 수 없는(비활성) 버튼에는 반응하지 않는다.
+    /// </summary>
+    [DisallowMultipleComponent]
+    public sealed class PressFeedback : MonoBehaviour, IPointerDownHandler, IPointerUpHandler, IPointerExitHandler
+    {
+        private const float PressedScale = 0.92f, PopScale = 1.04f;
+        private Selectable _selectable;
+        private bool _pressed;
+        private float _scale = 1f, _target = 1f;
+
+        private void Awake() => _selectable = GetComponent<Selectable>();
+        private bool Usable => _selectable == null || _selectable.IsInteractable();
+
+        public void OnPointerDown(PointerEventData e)
+        {
+            if (e.button != PointerEventData.InputButton.Left || !Usable) return;
+            _pressed = true; _target = PressedScale;
+            _scale = PressedScale; Apply(); // 누르는 순간 바로 들어가 보이게
+            if (TryGetComponent<HoverUnderline>(out var look)) look.SetPressed(true);
+        }
+
+        public void OnPointerUp(PointerEventData e) => Release(true);
+        public void OnPointerExit(PointerEventData e) { if (_pressed) Release(false); }
+
+        private void Release(bool pop)
+        {
+            if (!_pressed) return;
+            _pressed = false;
+            _scale = pop ? PopScale : _scale; _target = 1f; Apply();
+            if (TryGetComponent<HoverUnderline>(out var look)) look.SetPressed(false);
+        }
+
+        private void OnDisable() { _pressed = false; _scale = _target = 1f; Apply(); }
+
+        private void Update()
+        {
+            if (Mathf.Approximately(_scale, _target)) return;
+            _scale = Mathf.MoveTowards(_scale, _target, Time.unscaledDeltaTime * 0.9f);
+            Apply();
+        }
+
+        private void Apply() => transform.localScale = new Vector3(_scale, _scale, 1f);
     }
 
     public sealed class ClickRelay : MonoBehaviour, IPointerClickHandler
@@ -569,7 +617,20 @@ namespace BlackWhale.UI.View
         private Text _label;
         private Image _image, _line, _frame;
         private Color _background, _text;
-        private bool _hover;
+        private bool _hover, _pressed;
+
+        /// <summary>누르는 동안: 바탕을 어둡게 하고 글자를 2px 내려 '눌린' 느낌.</summary>
+        public void SetPressed(bool on)
+        {
+            if (_pressed == on) return;
+            _pressed = on;
+            if (_label != null && !IsCard)
+            {
+                var rt = _label.rectTransform;
+                rt.anchoredPosition += new Vector2(0, on ? -2f : 2f);
+            }
+            Refresh();
+        }
 
         public void Init(Button button, Text label)
         {
@@ -643,7 +704,7 @@ namespace BlackWhale.UI.View
             if (now == _lastInteractable) return;
             _lastInteractable = now; Apply(_background, _text);
         }
-        private void OnDisable() { _hover = false; Refresh(); }
+        private void OnDisable() { _hover = false; if (_pressed) SetPressed(false); Refresh(); }
         public void OnPointerEnter(PointerEventData e) { _hover = true; Refresh(); }
         public void OnPointerExit(PointerEventData e) { _hover = false; Refresh(); }
 
@@ -658,6 +719,7 @@ namespace BlackWhale.UI.View
                 case Kind.Selected: _image.color = _hover ? FillSelectedHover : FillSelected; if (_frame != null) _frame.color = FrameSelected; break;
                 default: _image.color = _hover ? FillHover : Fill; if (_frame != null) _frame.color = _hover ? Palette.Accent : FrameSecondary; break;
             }
+            if (_pressed) _image.color = Color.Lerp(_image.color, Color.black, 0.25f); // 눌린 동안 어둡게
         }
     }
     /// <summary>코인을 글자뿐 아니라 금화 그림으로도 보여 주는 작은 묶음(아이콘 + "N개").</summary>
