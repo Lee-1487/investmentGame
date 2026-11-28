@@ -221,6 +221,7 @@ namespace BlackWhale.UI.Dev
             // 회색 네모 대신 가장자리로 갈수록 바탕(검정)에 녹아드는 넓고 어두운 그라데이션(내용 칸보다 크게)
             PixelBackdrop.Create(connectionPanel); // 도트 글리치 배경 효과
             PixelClickSparks.Attach(connectionPanel); // 클릭할 때 도트 파편
+            PrologueExitFx.Attach(connectionPanel);   // 초대장 → 방 만들기로 넘어갈 때 확대·흐려지며 입장
             // 도트 테마: 내용 칸을 황토 테두리 + 어두운 갈색 카드로 감싼다
             var frame = UiKit.Panel(connectionPanel, "ConnectionFrame", Palette.CardBorder, rounded: true);
             UiKit.Place(frame.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(680, 680));
