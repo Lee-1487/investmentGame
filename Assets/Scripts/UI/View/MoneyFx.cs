@@ -47,7 +47,7 @@ namespace BlackWhale.UI.View
             get
             {
                 if (_vignette != null) return _vignette;
-                const int w = 96, h = 54;
+                const int w = 192, h = 108; // 한 칸이 작아져 빨간 테두리가 얇아짐
                 var tex = new Texture2D(w, h, TextureFormat.RGBA32, false) { filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Clamp, hideFlags = HideFlags.DontSave };
                 var px = new Color32[w * h];
                 for (int y = 0; y < h; y++) for (int x = 0; x < w; x++)
@@ -90,6 +90,7 @@ namespace BlackWhale.UI.View
         private sealed class GainArrows : MonoBehaviour
         {
             public const float Seconds = 1.1f;
+            private const float MaxAlpha = 0.55f; // 더 투명하게
             private RectTransform[] _arrows;
             private Image[] _images;
             private float[] _delay;
@@ -103,13 +104,17 @@ namespace BlackWhale.UI.View
                 var rng = new System.Random();
                 for (int i = 0; i < count; i++)
                 {
-                    var img = UiKit.Panel(root, "Arrow" + i, new Color32(0x5C, 0xD1, 0x7A, 0xFF));
+                    var img = UiKit.Panel(root, "Arrow" + i, new Color(0.36f, 0.82f, 0.48f, MaxAlpha)); // 반투명 초록
                     img.sprite = sprite; img.raycastTarget = false;
                     var rt = img.rectTransform;
-                    rt.anchorMin = rt.anchorMax = new Vector2(.5f, 0);
-                    float size = i % 2 == 0 ? 4f : 3f;                       // 도트 한 칸 크기(px)
+                    // 나올 때마다 화면 전체에 무작위로: 가로는 화면을 5칸으로 나눠 칸마다 1개(골고루), 칸 안 위치·높이는 무작위
+                    float cell = 1f / count;
+                    float x = cell * i + cell * (0.15f + 0.7f * (float)rng.NextDouble());
+                    float y = 0.1f + 0.55f * (float)rng.NextDouble();
+                    rt.anchorMin = rt.anchorMax = new Vector2(x, y);
+                    float size = rng.NextDouble() < 0.5 ? 7f : 6f;          // 도트 한 칸 크기(px): 크게
                     rt.sizeDelta = new Vector2(9 * size, 10 * size);
-                    _start[i] = new Vector2((i - (count - 1) / 2f) * 120f + rng.Next(-30, 31), 90f + rng.Next(0, 60));
+                    _start[i] = Vector2.zero;
                     _delay[i] = i * 0.08f + (float)rng.NextDouble() * 0.06f;
                     _arrows[i] = rt; _images[i] = img;
                 }
@@ -123,10 +128,10 @@ namespace BlackWhale.UI.View
                 for (int i = 0; i < _arrows.Length; i++)
                 {
                     float p = Mathf.Clamp01((_t - _delay[i]) / (Seconds - 0.3f));
-                    float rise = Mathf.Round(p * 220f / 4f) * 4f;              // 4px 칸씩 올라감
+                    float rise = Mathf.Round(p * 220f / 6f) * 6f;              // 6px 칸씩 올라감
                     _arrows[i].anchoredPosition = _start[i] + new Vector2(0, rise);
                     var c = _images[i].color;
-                    c.a = p <= 0f ? 0f : p < 0.7f ? 1f : Mathf.Floor((1f - (p - 0.7f) / 0.3f) * 4f) / 4f; // 끝에 계단식으로 흐려짐
+                    c.a = MaxAlpha * (p <= 0f ? 0f : p < 0.7f ? 1f : Mathf.Floor((1f - (p - 0.7f) / 0.3f) * 4f) / 4f); // 끝에 계단식으로 흐려짐
                     _images[i].color = c;
                 }
             }
@@ -135,7 +140,7 @@ namespace BlackWhale.UI.View
         private sealed class LossFlash : MonoBehaviour
         {
             public const float Seconds = 0.6f;
-            private const float ShakeSeconds = 0.35f, ShakePx = 10f;
+            private const float ShakeSeconds = 0.35f, ShakePx = 10f, ShakeStep = 0.08f; // 흔들림 위치를 0.08초마다만 바꿈(덜 정신없게)
             private RawImage _raw;
             private RectTransform _shake;
             private Vector2 _home;
@@ -167,7 +172,7 @@ namespace BlackWhale.UI.View
                 {
                     if (_t >= _nextShake)
                     {
-                        _nextShake = _t + 0.035f;
+                        _nextShake = _t + ShakeStep;
                         float k = ShakePx * (1f - _t / ShakeSeconds);
                         _shake.anchoredPosition = _home + new Vector2(Mathf.Round((float)(_rng.NextDouble() * 2 - 1) * k / 2f) * 2f,
                                                                       Mathf.Round((float)(_rng.NextDouble() * 2 - 1) * k / 2f) * 2f);
